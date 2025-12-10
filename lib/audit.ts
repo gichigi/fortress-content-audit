@@ -1,11 +1,23 @@
 import { crawlSite, mapSite } from "./firecrawl"
-import { OpenAI } from "openai"
+import OpenAI from "openai"
 import { z } from "zod"
-import { zodResponseFormat } from "openai/helpers/zod"
 
-const ONE_LINE_SYSTEM = "You are a forensic content auditor. Your job is to find REAL inconsistencies, contradictions, and actual problems in the content—not suggestions for improvement. Look for: conflicting information, inconsistent terminology, copy that contradicts itself, factual errors, and genuine content issues that would confuse or mislead readers."
+// MVP: Simple, focused system prompt
+const SYSTEM_PROMPT = `You are a content auditor. Find REAL inconsistencies in website content.
 
-// Zod schema for structured output
+Focus on these 4 issue types only:
+1. Terminology conflicts - Same concept called different names
+2. Contradictory claims - Facts/numbers that don't match across pages
+3. Voice inconsistencies - Formal vs casual tone switching
+4. Naming conflicts - Product/brand names spelled differently
+
+Rules:
+- Only report OBJECTIVE issues with exact quote evidence
+- High severity = would confuse users or damage trust
+- Keep snippets SHORT (10-30 words max)
+- Return valid JSON only`
+
+// Zod schema for structured output (use .nullable() for OpenAI compatibility)
 const AuditIssueExampleSchema = z.object({
   url: z.string(),
   snippet: z.string(),
@@ -14,17 +26,14 @@ const AuditIssueExampleSchema = z.object({
 const AuditIssueGroupSchema = z.object({
   title: z.string(),
   severity: z.enum(["low", "medium", "high"]),
-  impact: z.string(), // Why this matters (business consequence)
-  fix: z.string(), // One clear actionable fix
-  recommendations: z.array(z.string()), // Detailed steps (keep for detail view)
+  impact: z.string(),
+  fix: z.string(),
   examples: z.array(AuditIssueExampleSchema),
   count: z.number(),
 })
 
 const AuditResultSchema = z.object({
   groups: z.array(AuditIssueGroupSchema),
-  top_findings: z.array(z.string()).nullable().optional(),
-  summary: z.string(),
 })
 
 export type AuditResult = z.infer<typeof AuditResultSchema> & {
@@ -32,8 +41,9 @@ export type AuditResult = z.infer<typeof AuditResultSchema> & {
   discoveredPages?: { url: string; title?: string | null }[]
 }
 
+// MVP: Build simple user prompt with page content
 function buildUserPrompt(domain: string, pageBlobs: { url: string; text: string }[]) {
-  const textBudget = 12000 // Increased to analyze more content per page
+  const textBudget = 25000 // Increased for 10-page scans
   let used = 0
   const included: { url: string; text: string }[] = []
   for (const b of pageBlobs) {
@@ -45,62 +55,13 @@ function buildUserPrompt(domain: string, pageBlobs: { url: string; text: string 
     used += slice.length
   }
 
-  return `You are a forensic content auditor. Find REAL inconsistencies, contradictions, and actual problems in the content below. Focus on issues that are OBJECTIVELY wrong or inconsistent—not subjective improvements.
+  // Zod schema handles JSON structure - just provide content
+  return `Audit this website for content inconsistencies.
 
 Domain: ${domain}
 
 Pages analyzed:
-${included
-  .map(
-    (b) => `
-URL: ${b.url}
-TEXT:
-${b.text}
-`
-  )
-  .join("\n")}
-
-Find ACTUAL problems and inconsistencies:
-
-1. **Terminology Inconsistencies**: Same concept called different things (e.g., "workspace" vs "office" vs "space" for the same thing), inconsistent capitalization, different spellings of the same term
-2. **Contradictory Information**: Claims that contradict each other across pages, conflicting numbers/statistics, opposing statements about the same thing
-3. **Copy Duplication**: Identical or near-identical text appearing in multiple places (exact duplicates, not similar themes)
-4. **Inconsistent Formatting**: Same type of content formatted differently (dates, prices, names, titles), inconsistent punctuation styles
-5. **Factual Errors**: Numbers that don't add up, dates that conflict, claims that contradict each other
-6. **Voice Contradictions**: Same page using both formal and informal voice for similar content, switching between first/second/third person inconsistently
-7. **Conflicting CTAs**: Different pages directing users to do opposite things, competing calls-to-action
-8. **Inconsistent Naming**: Product/service names spelled or capitalized differently, brand name variations
-9. **Style Inconsistencies**: Same grammatical constructions used inconsistently (e.g., using contractions in some places but not others for similar content)
-10. **Content Conflicts**: Information on one page that directly contradicts information on another page
-
-CRITICAL: Only flag issues that are OBJECTIVELY inconsistent or contradictory. Do NOT suggest improvements or subjective "could be better" items. Focus on finding actual errors and inconsistencies.
-
-Return JSON only with this shape:
-{
-  "groups": [
-    {
-      "title": "Specific inconsistency name (e.g., 'Product name spelled 3 different ways')",
-      "severity": "low|medium|high",
-      "impact": "Punchy 1-sentence business consequence (e.g. 'Confuses users and lowers trust', 'Creates legal ambiguity')",
-      "fix": "The primary action to resolve this (e.g. 'Standardize on X')",
-      "recommendations": ["Detailed step 1", "Detailed step 2"],
-      "examples": [{"url": "string", "snippet": "Exact quote showing the inconsistency"}],
-      "count": 3
-    }
-  ],
-  "top_findings": ["Most significant inconsistency found", "Second most significant inconsistency"],
-  "summary": "Brief 1-sentence overview of inconsistencies found. General, no brand names."
-}
-
-Rules:
-- IMPACT is critical: Tell the user WHY they should care (lost money, lost trust, confusion).
-- TITLE must be specific: "Contradictory Refund Policy" not "Policy Issues".
-- Only report OBJECTIVE inconsistencies and contradictions.
-- EXAMPLES: Extract ONLY the conflicting part (10-30 words max). Show the contradiction side-by-side if possible. Example: If "workspace" vs "office", show: "Our workspace..." and "The office..." - not full paragraphs.
-- Snippets must be SHORT and highlight the actual inconsistency, not full context.
-- High severity = contradictions that would confuse users or create legal/trust issues.
-- Summary must be general and brief.
-- Output VALID JSON only. No prose.`
+${included.map((b) => `--- ${b.url} ---\n${b.text}`).join("\n\n")}`
 }
 
 async function fetchHomepageContent(url: string): Promise<string> {
@@ -180,9 +141,8 @@ async function fetchHomepageContent(url: string): Promise<string> {
   }
 }
 
-export async function auditSite(domain: string, pageLimit: number = 5): Promise<AuditResult> {
-  // Crawl site using Firecrawl (up to pageLimit pages)
-  // For MVP, reduce to 3 pages to save credits
+export async function auditSite(domain: string, pageLimit: number = 3): Promise<AuditResult> {
+  // Temp: limit to 3 pages for faster testing
   const actualLimit = Math.min(pageLimit, 3)
   let pages: { url: string; text: string }[] = []
   
@@ -241,93 +201,84 @@ export async function auditSite(domain: string, pageLimit: number = 5): Promise<
 
   const userPrompt = buildUserPrompt(domain, pages)
   
-  // Use structured output with OpenAI
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-  
   try {
-    // Use parse method if available, otherwise fall back to create with response_format
-    let completion: any
-    let parsed: any
+    // MVP: Use OpenAI Responses API directly with GPT-5
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    })
 
-    // Try parse method first (available in newer SDK versions)
-    if (typeof (openai.chat.completions as any).parse === 'function') {
-      completion = await (openai.chat.completions as any).parse({
-        model: "gpt-4.1",
-        messages: [
-          { role: "system", content: ONE_LINE_SYSTEM },
-          { role: "user", content: userPrompt }
-        ],
-        temperature: 0.3, // Lower temperature for more consistent, focused analysis
-        max_tokens: 3000, // Increased for more detailed findings
-        response_format: zodResponseFormat(AuditResultSchema, "audit_result"),
-      })
+    // Use responses API for structured output
+    const response = await openai.responses.create({
+      model: "gpt-5.1",
+      input: `${SYSTEM_PROMPT}\n\n${userPrompt}`,
+      reasoning: { effort: "low" },
+      text: { 
+        verbosity: "low",
+        format: {
+          type: "json_schema",
+          name: "audit_result",
+          schema: {
+            type: "object",
+            properties: {
+              groups: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string" },
+                    severity: { type: "string", enum: ["low", "medium", "high"] },
+                    impact: { type: "string" },
+                    fix: { type: "string" },
+                    examples: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          url: { type: "string" },
+                          snippet: { type: "string" },
+                        },
+                        required: ["url", "snippet"],
+                        additionalProperties: false,
+                      },
+                    },
+                    count: { type: "number" },
+                  },
+                  required: ["title", "severity", "impact", "fix", "examples", "count"],
+                  additionalProperties: false,
+                },
+              },
+            },
+            required: ["groups"],
+            additionalProperties: false,
+          },
+        },
+      },
+    })
 
-      const message = completion.choices[0]?.message
-      if (!message) {
-        throw new Error("Empty response from OpenAI")
-      }
-
-      if (message.refusal) {
-        throw new Error(`Model refused: ${message.refusal}`)
-      }
-
-      if (!message.parsed) {
-        throw new Error("Failed to parse structured output")
-      }
-
-      parsed = message.parsed
-    } else {
-      // Fallback to regular create with response_format
-      completion = await openai.chat.completions.create({
-        model: "gpt-4.1",
-        messages: [
-          { role: "system", content: ONE_LINE_SYSTEM },
-          { role: "user", content: userPrompt }
-        ],
-        temperature: 0.3, // Lower temperature for more consistent, focused analysis
-        max_tokens: 3000, // Increased for more detailed findings
-        response_format: zodResponseFormat(AuditResultSchema, "audit_result"),
-      })
-
-      const content = completion.choices[0]?.message?.content
-      if (!content) {
-        throw new Error("Empty response from OpenAI")
-      }
-
-      // Parse the JSON response
-      try {
-        parsed = JSON.parse(content)
-        // Validate with Zod schema
-        parsed = AuditResultSchema.parse(parsed)
-      } catch (parseError) {
-        throw new Error(`Failed to parse response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`)
-      }
-    }
+    // Parse the JSON output
+    const parsed = JSON.parse(response.output_text || "{}")
+    
+    // Validate with Zod schema
+    const validated = AuditResultSchema.parse(parsed)
+    
+    console.log(`[Audit] Generated ${validated.groups?.length || 0} issue groups`)
     
     return {
-      groups: parsed.groups || [],
-      top_findings: parsed.top_findings || [],
-      summary: parsed.summary || "",
+      groups: validated.groups || [],
       pagesScanned: pages.length,
       discoveredPages,
     }
   } catch (error) {
-    // Check for OpenAI-specific errors
-    if (error && typeof error === 'object' && 'constructor' in error) {
-      const errorName = error.constructor.name
-      if (errorName === 'LengthFinishReasonError' || errorName.includes('Length')) {
-        throw new Error("Response truncated due to length")
-      }
-      if (errorName === 'ContentFilterFinishReasonError' || errorName.includes('ContentFilter')) {
-        throw new Error("Response blocked by content filter")
-      }
-    }
+    console.error("[Audit] Generation error:", error instanceof Error ? error.message : error)
     
-    // Re-throw with better error message
+    // Re-throw with user-friendly message
     if (error instanceof Error) {
+      if (error.message.includes("content-filter")) {
+        throw new Error("Content was blocked by safety filters. Try a different URL.")
+      }
       throw error
     }
-    throw new Error(error ? String(error) : "Audit generation failed")
+    throw new Error("Audit generation failed. Please try again.")
   }
 }
 

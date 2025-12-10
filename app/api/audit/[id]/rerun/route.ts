@@ -49,8 +49,6 @@ export async function POST(
 
     const issuesJson = {
       groups: result.groups,
-      top_findings: result.top_findings || [],
-      summary: result.summary || '',
     }
 
     const { data: inserted, error: insErr } = await supabaseAdmin

@@ -517,7 +517,7 @@ export default function DashboardPage() {
                                   >
                                     Upgrade to {PLAN_NAMES.pro}
                                   </Button>{' '}
-                                  to see all issues, unlimited audits, and 20+ page scans.
+                                  to see all issues and unlock unlimited audits.
                                 </p>
                               </div>
                             )}

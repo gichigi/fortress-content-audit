@@ -50,8 +50,8 @@ export async function POST(request: Request) {
     }
     const normalized = val.url
 
-    // Determine page limit based on auth status
-    const pageLimit = isAuthenticated ? 5 : 5 // MVP: 5 pages for both, can adjust later
+    // Temp: 3 pages for faster testing
+    const pageLimit = 3
     const finalSessionToken = session_token || sessionToken
 
     // Check plan (only for authenticated users)
@@ -86,8 +86,6 @@ export async function POST(request: Request) {
     // Build issues JSON payload
     const issuesJson = {
       groups: result.groups,
-      top_findings: result.top_findings || [],
-      summary: result.summary || '',
       discoveredPages: result.discoveredPages || [],
     }
     
