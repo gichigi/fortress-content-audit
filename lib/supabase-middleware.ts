@@ -1,0 +1,110 @@
+// Middleware utility for Supabase session management
+// Handles token refresh and route protection
+
+import { createServerClient } from '@supabase/ssr'
+import { NextResponse, type NextRequest } from 'next/server'
+
+// Routes that don't require authentication
+const PUBLIC_ROUTES = [
+  '/',
+  '/sign-up',
+  '/start',
+  '/demo',
+  '/blog',
+  '/brand-details',
+  '/preview',
+  '/payment',
+  '/api/scrape',
+  '/api/preview',
+  '/api/generate-styleguide',
+  '/api/analyze-brand',
+  '/api/clarifying-questions',
+  '/api/ab-comparison',
+  '/api/ab-comparisons',
+  '/api/voice-profile',
+  '/api/onboarding',
+  '/api/webhook',
+  '/api/checkout',
+  '/api/email-capture',
+  '/api/process-abandoned-emails',
+  '/api/audit', // Allow unauthenticated audit requests for preview
+  '/auth',
+]
+
+// Check if path matches any public route (including nested paths)
+function isPublicRoute(pathname: string): boolean {
+  return PUBLIC_ROUTES.some(route => {
+    if (route === '/') return pathname === '/'
+    return pathname === route || pathname.startsWith(`${route}/`)
+  })
+}
+
+export async function updateSession(request: NextRequest) {
+  // Check for required environment variables
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.error(
+      'Missing Supabase environment variables. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in your .env.local file'
+    )
+    // Return a response without Supabase auth for now
+    // This allows the app to run, but auth won't work until env vars are set
+    return NextResponse.next({ request })
+  }
+
+  let supabaseResponse = NextResponse.next({
+    request,
+  })
+
+  const supabase = createServerClient(
+    supabaseUrl,
+    supabaseAnonKey,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+          supabaseResponse = NextResponse.next({
+            request,
+          })
+          cookiesToSet.forEach(({ name, value, options }) =>
+            supabaseResponse.cookies.set(name, value, options)
+          )
+        },
+      },
+    }
+  )
+
+  // IMPORTANT: Avoid writing any logic between createServerClient and
+  // supabase.auth.getUser(). A simple mistake could make it very hard to debug
+  // issues with users being randomly logged out.
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  const pathname = request.nextUrl.pathname
+
+  // Protected routes: redirect unauthenticated users to sign-up
+  if (!user && !isPublicRoute(pathname)) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/sign-up'
+    url.searchParams.set('next', pathname)
+    return NextResponse.redirect(url)
+  }
+
+  // IMPORTANT: You *must* return the supabaseResponse object as it is.
+  // If you're creating a new response object with NextResponse.next() make sure to:
+  // 1. Pass the request in it
+  // 2. Copy over the cookies
+  // 3. Change the myNewResponse object to fit your needs
+  // 4. Return it
+  // If this is not done, you may cause the browser and server to go out
+  // of sync and terminate the user's session prematurely!
+
+  return supabaseResponse
+}
+

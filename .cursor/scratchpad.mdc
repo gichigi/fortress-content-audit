@@ -1,0 +1,261 @@
+# AI Style Guide Generator - Project Scratchpad
+
+## 📋 Project Overview
+Web app that generates brand style guides from website URLs using AI to extract and analyze brand elements. Built with Next.js, TypeScript, Tailwind CSS, OpenAI API, and Stripe.
+
+## 🎯 Core User Journey
+1. **Landing Page** → Enter website URL or create manually
+2. **Website Analysis** → AI extracts brand info and autofills form
+3. **Brand Details** → User reviews/edits brand information  
+4. **Preview** → Shows partial style guide with paywall
+5. **Payment** → Stripe checkout for full access
+6. **Email Capture** → Collects email for thank you & abandoned cart recovery
+7. **Full Access** → Complete style guide with download options
+
+---
+
+## 🚧 Active Tasks
+
+Note on terminology: "Clear" means remove the task from Active Tasks, add a short summary under Completed, and record any key lessons learned.
+
+### High Priority (P0)
+
+- Collect usability feedback on new Keywords tag UI (Foundation variant) and adjust spacing/contrast as needed
+- Evaluate impact of passing keywords to prompts; if weak, enable Task 3 variants (lexicon linking, required usage)
+
+### Medium Priority (P1)
+- **Benefit**: More complete and useful style guides that include brand context alongside voice guidelines
+
+
+
+### Low Priority (P2)
+
+**🏷️ Fix Preview Page Title Display**
+- **Issue**: Preview page still shows "Core Style Guide" instead of "Preview Style Guide" at the top
+- **Root Cause**: Title likely coming from template content, not the React component we updated
+- **Location**: May be in template markdown or different component than expected
+- **Impact**: User confusion - contradicts transparency goals
+
+**📧 Test & Debug Abandoned Cart Email System**
+- **Issue**: Automated abandoned cart emails may not be working in production
+- **Current State**: System deployed with hourly cron, admin client, and proper environment variables
+- **Need To Check**: Vercel cron logs, email processing logs, database status after 2+ hours
+- **Testing**: Create test email capture, wait 2+ hours, verify automated email delivery
+- **Debug**: Check if cron job actually runs, if database queries work, if emails send
+
+**Investigate Complete Guide Generation Performance**
+- **Observation**: Complete guides make 2 sequential OpenAI calls (voice traits + style rules)
+- **Impact**: Takes 60-90 seconds total, contributing to timeout issues
+- **Consider**: Parallel generation or caching to reduce time
+- **Note**: May not be a bug - could be intentional design for complete guides
+
+### Done/Completed
+
+**✅ Latest Session Achievements (Aug 2025)**
+- **Task 1 — Pass traits (predefined and custom) into rules prompts**
+  - Implemented conditional "Traits Context" in rules prompts.
+  - Predefined traits use static `TRAITS`; custom traits use AI-generated descriptions.
+  - If traits are missing/fail, omit the section so prompts rely on brand info only.
+  - Verified via CLI across formal and casual brands; observed expected tone shifts.
+- **Task 2 — Audience summary from extraction + prompt usage**
+  - Extraction API now returns `audience` for URL and description paths.
+  - Wired audience through homepage/start → brand-details → generation.
+  - `renderStyleGuideTemplate` uses audience in prompts; hidden from templates.
+  - Verified end-to-end via CLI; output reflects formal/inclusive choices for healthcare.
+- **Custom traits prompt enhancement**
+  - Custom trait generator now explicitly references the core audience in the one-sentence description and tailors examples to that audience.
+  - Expect more lines like “instills confidence in healthcare providers.”
+- **Preview Page Overhaul**: Dynamic brand voice generation with 50%+ performance improvement (8s → 3-4s)
+- **Abandoned Cart Automation**: Fully automated hourly email scheduler with Vercel cron and admin Supabase client
+- **Webhook System Fixed**: Stripe signature validation now working - payment processing and email delivery functional
+- **Email Capture Optimization**: Changed from onChange to onBlur - 95% fewer API calls and better data quality
+- **Performance Optimization**: Parallel processing for custom traits using Promise.all() vs sequential calls
+- **Security Enhancement**: Moved AI generation from client-side to server-side API endpoints
+- **Mobile Homepage UX**: Responsive input layout, optimized icon sizing, and "Try it out" CTA for better mobile experience
+- **Brand Description in Style Guides**: Added "About [Brand]" section to all templates with AI-extracted brand context and audience info
+
+**✅ Major System Components (Jan 2025)**
+- **Payment & Generation Pipeline**: Fixed race conditions, hardcoded values, and timeout issues for $149 complete guides
+- **Email Systems**: Complete abandoned cart recovery with session linking, webhook integration, and automated processing
+- **Dynamic Content**: Homepage URL/description processing, preview generation, and template processing working end-to-end
+- **User Experience**: Mobile-first design, loading states, error handling, and payment success flows optimized
+
+---
+
+
+
+## 📚 Key Lessons Learned
+
+### Brand Voice & Rules — Key Learnings (Task 1)
+- **Audience at crawl-time > post-form**: Generating audience from crawled content yields higher-quality guidance and better grounding vs. generating it later from trimmed brand details.
+- **Audience-aware custom traits**: Prompting custom trait generation to reference audience improves specificity and perceived intentionality.
+
+- **Traits subtly steer rules**: Passing full trait descriptions nudges choices (e.g., contractions, pronouns, date formats) in the expected direction for both formal and casual brands.
+- **Custom traits add specificity**: AI-generated custom traits (e.g., "Technical", "Conversational") produce clearer, brand-fitting guidance than predefined-only.
+- **Predefined traits are static**: Good baseline but generic; plan to tailor via AI rewrite (Task 3) for brand fit.
+- **Model infers from brand context**: Even without traits, rules are reasonable; trait context strengthens intent rather than fully changing direction.
+- **Conditional traits context is safer**: If trait gen fails, we omit the section; prompts fall back to brand info—no invented traits.
+- **User-perceived intent depends on content**: Domain terms + brand lexicon and rules that explicitly reference tone/traits (e.g., "Use contractions to reinforce your casual, conversational voice") best demonstrate intentionality.
+- **Control gaps identified**: Formality and reading level not yet enforced by prompts—causes mixed contractions/pronouns in some cases; wiring (Task 2b) will fix.
+- **Token efficiency**: Trimming trait context (~4k chars) keeps calls stable while preserving signal.
+
+### Technical Architecture
+- **Markdown rendering complexity** - `react-markdown` provides safer, more consistent rendering than `marked` + dangerouslySetInnerHTML
+- **Plugin ecosystem** - `remark-breaks` solved line break issues more robustly than custom formatting functions
+- **Template consistency is critical** - Always use shared components for uniform styling across all generated content
+- **Type safety prevents runtime errors** - Add type guards before accessing AI responses
+
+### User Experience  
+- **Mobile-first + loading states** - Most users access on mobile, always provide feedback instead of blank screens
+- **Payment UX strategy** - Static previews save OpenAI costs, full generation only post-payment
+- **Error handling matters** - Generic errors cause user dropoff, need specific helpful messages
+
+### AI Integration
+- **OpenAI responses need validation** - Always check format, handle edge cases, use chunked generation
+- **Cost optimization matters** - GPT-3.5 for extraction, GPT-4 for generation, 10k character limits
+- **Model fallbacks** - Having backup models prevents complete failures
+- **Parallel processing wins** - Promise.all() for multiple AI calls reduces latency by 50%+ vs sequential
+- **Client-side AI is dangerous** - Always use server-side endpoints to protect API keys and ensure reliability
+
+### Development Process
+- **Incremental implementation** - Break complex changes into phases for testing and validation
+- **Visual proof testing** - Side-by-side comparisons on test pages catch issues early
+- **Data flow validation** - Test through all system layers before marking complete
+- **T-shirt sizing works** - SMALL (30 min), MEDIUM (1-2 hours), LARGE (half day+) for realistic estimates
+- **Test CLI first, then UI** - Faster feedback loop for API issues, easier debugging
+- **Clean as you go** - Move completed tasks immediately to keep scratchpad focused
+
+### Email & Automation Systems
+- **Email capture timing** - onBlur vs onChange makes huge difference in data quality and API efficiency
+- **Admin vs anon clients** - Use service role keys for automated operations, anon keys for user-facing features
+- **Webhook secret management** - Different secrets for CLI vs dashboard vs production - match environment correctly
+- **Automation scheduling** - Vercel Pro cron jobs work great for hourly tasks, require proper environment setup
+- **Database permissions** - RLS policies block automation - service role bypasses for reliable background jobs
+
+### React State & Race Conditions
+- **Race Condition Pattern**: `setState()` is async - don't call functions immediately after that depend on the new state value. React batches state updates for performance, so the new value isn't available instantly
+- **Race Condition Fix**: Pass values directly to functions instead of relying on state that may not be updated yet. E.g., `generateStyleGuide(paramValue)` instead of `setState(paramValue); generateStyleGuide()`
+- **Debug Pattern**: When UI shows one thing but backend processes another, check for async state issues and parameter passing mismatches between frontend and API
+- **React State Timing**: State updates don't happen immediately - they're queued and processed later in the React lifecycle
+
+### Error Handling & Validation
+- **Frontend validation > backend validation** - Better UX to block submission early vs show errors after
+- **Context-specific error types** - Payment success page only needs 9 of 16 total error types
+- **Smart retry > page reload** - 3x faster, preserves state, better analytics
+- **Pre-filled support emails** - Include error context and timestamps for better support experience
+- **Consistent error UX** - Same patterns across all pages build user confidence
+
+### Project Management
+- **1-line summaries > detailed histories** - Keep completed work concise and scannable
+- **Break large tasks into small testable pieces** - Each step should have clear completion criteria
+- **Visual feedback guides behavior** - Colors, disabled states help users understand what to do next
+- **Fix at source > downstream processing** - Remove duplicate content from templates rather than filtering it later
+
+---
+
+## 🗺️ Future Roadmap
+
+### Short Term (Next 2 weeks)
+- **Complete payment flow polish** - Status tracking, better UI, proper redirects
+- **Content validation testing** - Ensure all generated content displays correctly
+- **Performance monitoring setup** - Add logging for production debugging
+
+### Medium Term (1-2 months)  
+- **Editable Style Guides with Plate.js** - Allow users to edit generated content before download
+- **Template variety** - Add different style guide formats and structures
+- **Export enhancements** - Better PDF styling, additional formats (JSON, Figma)
+
+### Long Term (3+ months)
+- **Team collaboration features** - Share guides within organizations
+- **API for developers** - Allow programmatic access to style guide generation
+- **White-label solution** - Allow agencies to rebrand and resell the tool
+
+### Future Ideas (6+ months)
+- Advanced customization options (industry-specific templates, custom voice traits)
+- Integration with design tools (Figma, Sketch)
+- Multi-language support for international brands
+- Team collaboration features (comments, suggestions, approval workflows)
+- API for developers to integrate style guide generation into their tools
+- Advanced analytics (content performance tracking, style guide usage metrics)
+- Version control for style guides (track changes, rollback to previous versions)
+- Bulk processing for multiple brands or sub-brands
+- Custom branding for agencies (white-label solution)
+- Advanced export options (InDesign, PowerPoint, Confluence)
+
+---
+
+## 🔧 Technical Notes
+
+### Current Architecture
+- **Frontend**: Next.js 14, TypeScript, Tailwind CSS, Lucide Icons
+- **Backend**: Next.js API routes, OpenAI API, Stripe integration
+- **Markdown**: react-markdown + remark-gfm + remark-breaks
+- **Storage**: localStorage for client state, sessionStorage for temporary data
+- **Styling**: Tailwind Typography, shared MarkdownRenderer, dark mode support
+
+### Key Files & Directories
+- `app/page.tsx` - Landing page with URL input
+- `app/brand-details/page.tsx` - Brand information form  
+- `app/preview/page.tsx` - Style guide preview with paywall
+- `app/full-access/page.tsx` - Complete style guide display
+- `components/MarkdownRenderer.tsx` - Unified markdown rendering
+- `lib/template-processor.ts` - Template loading and processing
+- API routes: extract-website, generate-styleguide, preview
+
+### Environment Variables
+```
+RESEND_API_KEY=re_your_api_key_here
+STRIPE_MODE=test (switches between test/live)
+NEXT_PUBLIC_APP_URL=http://localhost:3002 (for local testing)
+```
+
+---
+
+## 🎉 **CHERRY-PICK INTEGRATION SUCCESS** *(January 2025)*
+
+### **✅ COMPLETED: Strategic Feature Integration from feature/copywriter-rebuild**
+Successfully implemented targeted merge strategy to add 2 key user experience improvements to main branch while preserving all revenue features.
+
+### **🔧 3-PHASE IMPLEMENTATION COMPLETED:**
+
+**✅ Phase 1: Core Components**
+- VoiceTraitSelector with TraitCard for granular brand personality controls
+- Enhanced input validation utilities (URL/description detection)  
+- Email capture API for abandoned cart retargeting
+- lib/traits.ts with predefined brand voice traits
+
+**✅ Phase 2: Homepage URL/Description Dual Input**
+- Users can enter website URLs OR brand descriptions
+- Enhanced error classification (10+ specific message types)
+- Smart input sanitization and validation
+- Preserved all Vercel analytics and main branch features
+
+**✅ Phase 3: Advanced Brand Details Form**
+- VoiceTraitSelector requiring exactly 3 personality traits
+- English variant selection (American vs British spelling)
+- Formality level (Professional/Neutral/Casual)
+- Reading level targeting (Grade 6-8, 10-12, 13+)
+- Progressive email capture when core form complete
+- All enhanced fields flow to style guide generation
+
+### **🚀 USER EXPERIENCE DELIVERED:**
+- **Dual input options**: Website URLs or brand descriptions
+- **Granular voice control**: 3 required personality traits + language customization
+- **Marketing integration**: Email capture for abandoned cart recovery
+- **Enhanced validation**: Clear requirements with better UX feedback
+- **Complete data flow**: All controls influence style guide output
+
+### **💪 STRATEGIC SUCCESS:**
+- **Zero risk merge**: Preserved all main's revenue features (analytics, coupons, payments)
+- **Targeted extraction**: Enhanced only 2 core user flows vs full branch merge
+- **Incremental testing**: Each phase independently functional and testable
+- **Clean integration**: 3 atomic commits, no architectural conflicts
+
+**Branch:** `feature/homepage-brand-improvements`
+**Files Modified:** 6 files, 1400+ lines added
+**Status:** Ready for Phase 4 testing and production merge
+
+---
+
+*Last updated: January 2025*
+*Status: Active Development - Integration Complete*

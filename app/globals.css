@@ -1,0 +1,367 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Print-specific styles for PDF export */
+@media print {
+  .voice-trait, .rule-section {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  h2, h3, h4 {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+  .print-optimized h2 {
+    page-break-before: auto;
+    break-before: auto;
+  }
+  .print-optimized h3 {
+    margin-top: 1.5rem;
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+}
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+
+    --radius: 0.5rem;
+
+    --blog-text: 0 0% 14.1%; /* #242424 - Medium-style blog text color */ --highlight: oklch(0.852 0.199 91.936);
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+    --highlight: oklch(0.852 0.199 91.936);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Page transitions */
+.fade-in {
+  animation: fadeIn 0.5s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Mobile optimizations */
+@media (max-width: 640px) {
+  /* Improve button visibility on mobile */
+  .mobile-button {
+    min-height: 44px;
+    padding-left: 16px;
+    padding-right: 16px;
+    font-size: 16px;
+    width: 100%;
+  }
+
+  /* Ensure dropdown menus are properly sized on mobile */
+  .mobile-dropdown {
+    width: 100%;
+    max-width: 280px;
+  }
+
+  /* Fix dialog footer on mobile */
+  .dialog-footer-mobile {
+    flex-direction: column-reverse;
+    gap: 0.75rem;
+  }
+
+  .dialog-footer-mobile > * {
+    width: 100%;
+  }
+
+  /* Ensure buttons don't get too small on mobile */
+  .mobile-action-button {
+    min-width: 44px;
+    min-height: 44px;
+    padding-left: 12px;
+    padding-right: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Fix header layout on small screens */
+  .header-container {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+
+  .app-title {
+    max-width: 120px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Ensure buttons have text labels on mobile */
+  .mobile-button-text {
+    display: inline-block !important;
+  }
+
+  /* Format selection buttons on mobile */
+  .format-buttons {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .hero-lead {
+    font-size: 1rem;
+    line-height: 1.4;
+    max-width: 95vw;
+  }
+}
+
+/* Ensure dialog buttons have proper spacing */
+.dialog-footer {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .dialog-footer {
+    flex-direction: row;
+    justify-content: flex-end;
+  }
+}
+
+/* Fix button layout in header */
+.header-buttons {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+@media (max-width: 640px) {
+  .header-buttons {
+    gap: 0.25rem;
+  }
+
+  /* Make buttons more tappable on mobile */
+  .header-buttons button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Enhance dropdown menu visibility on mobile */
+.dropdown-menu-mobile {
+  width: 100%;
+  min-width: 200px;
+}
+
+/* Improve purchase button visibility */
+.purchase-button {
+  font-weight: 500;
+}
+
+/* Download button enhancements */
+.download-button {
+  position: relative;
+}
+
+.download-button:active {
+  transform: translateY(1px);
+}
+
+/* Format selection buttons */
+.format-buttons {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+/* Download format buttons */
+.format-button {
+  transition: all 0.2s ease;
+}
+
+.format-button:hover {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+}
+
+/* Ensure buttons are on same line on mobile */
+@media (max-width: 640px) {
+  .action-buttons {
+    display: flex;
+    flex-direction: row !important;
+    gap: 8px;
+  }
+
+  .action-buttons button {
+    flex: 1;
+    white-space: nowrap;
+  }
+}
+
+/* Dialog z-index fix */
+.dialog-content {
+  z-index: 100;
+}
+
+.prose.style-guide-content h2 {
+  color: #111827;
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+  line-height: 2rem;
+}
+
+/* How to Use Document callout styling */
+.prose.style-guide-content .how-to-use-callout {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  margin: 1.5rem 0;
+}
+
+.prose.style-guide-content .how-to-use-callout h2 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  color: #475569;
+}
+
+.prose.style-guide-content .how-to-use-callout p {
+  margin-bottom: 0;
+  color: #64748b;
+}
+
+/* Section divider styling */
+.prose.style-guide-content hr {
+  border: none;
+  border-top: 1px solid #e2e8f0;
+  margin: 2rem 0;
+}
+
+html, body {
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+
+@layer utilities {
+  @keyframes slide-up {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+  @keyframes slide-down {
+    from { transform: translateY(0); }
+    to { transform: translateY(100%); }
+  }
+  @keyframes slide-in-right-fade {
+    from {
+      opacity: 0;
+      transform: translateX(1rem);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+  .animate-slide-up {
+    animation: slide-up 0.3s cubic-bezier(0.4,0,0.2,1);
+  }
+  .animate-slide-down {
+    animation: slide-down 0.2s cubic-bezier(0.4,0,0.2,1);
+  }
+  .animate-slide-in-right-fade {
+    animation: slide-in-right-fade 1s ease-out forwards;
+  }
+  @keyframes glow-pulse {
+    0%, 100% {
+      box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.7), 0 0 20px 5px rgba(147, 197, 253, 0.3);
+    }
+    50% {
+      box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.7), 0 0 30px 10px rgba(147, 197, 253, 0.5);
+    }
+  }
+  .animate-glow-pulse {
+    animation: glow-pulse 2s ease-in-out;
+  }
+}
+
+/* PDF export visibility controls */
+.pdf-only {
+  display: none; /* Hidden on page by default, shown during PDF generation */
+}
+
+.pdf-exclude {
+  display: block; /* Visible on page by default, hidden during PDF generation */
+}

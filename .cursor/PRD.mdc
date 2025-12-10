@@ -1,0 +1,108 @@
+# AI Style Guide Generator - Product Requirements Document
+
+## Product Overview
+**Vision**: Enable any brand to create professional content style guides in minutes, not months.
+
+**Problem**: Brands struggle with inconsistent messaging across content channels. Creating style guides manually takes weeks and requires expensive consultants.
+
+**Solution**: AI-powered tool that analyzes websites or brand details to generate comprehensive style guides instantly.
+
+---
+
+## Core Features
+
+### 1. Website Analysis
+- **Input**: Any website URL (e.g., nike.com)
+- **Output**: Auto-extracted brand name, description, and tone
+- **Fallback**: Manual brand details entry form
+
+### 2. Style Guide Generation
+- **Core Guide ($99)**: Brand voice + 25 essential writing rules
+- **Complete Guide ($149)**: Brand voice + 99+ enterprise-grade rules
+- **AI-Generated**: Brand voice traits, tone guidelines, do's/don'ts with examples
+
+### 3. Multi-Format Export
+- **Formats**: PDF, Word-compatible HTML, web HTML, Markdown
+- **Use Cases**: Team sharing, presentations, internal documentation
+- **Instant Download**: No waiting, immediate access
+
+---
+
+## User Journey
+
+```
+Landing Page → Website Analysis → Brand Details → Preview → Payment → Full Access
+     ↓              ↓               ↓           ↓         ↓          ↓
+Enter URL → AI extracts info → Review/edit → See sample → Pay once → Download guide
+```
+
+### Success Flow
+1. **Input** (30 seconds): Enter website URL or manual details
+2. **Generation** (2-3 minutes): AI creates personalized style guide
+3. **Export** (instant): Download in preferred format
+4. **Share**: Distribute to team with permanent access link
+
+---
+
+## Target Users
+
+### Primary
+- **Marketing professionals** (25-45) seeking brand consistency
+- **Copywriters** needing clear style guidelines  
+- **Agencies** creating guides for multiple clients
+- **Founders** establishing brand voice standards
+
+### Use Cases
+- New brand establishing voice guidelines
+- Existing brand standardizing messaging
+- Agency delivering client style guides
+- Team onboarding for content creators
+
+---
+
+## Technical Requirements
+
+### Core Technology
+- **Frontend**: Next.js 15.2, React 19, TypeScript, Tailwind CSS
+- **AI**: OpenAI API (GPT-4 for generation, GPT-3.5 for extraction)
+- **Payments**: Stripe one-time payments
+- **Hosting**: Vercel deployment
+
+### Performance Goals
+- **Generation Time**: < 3 minutes for complete guides
+- **Page Load**: < 2 seconds on mobile
+- **Uptime**: 99.9% availability
+- **Error Rate**: < 1% generation failures
+
+---
+
+## Business Model
+
+### Pricing
+- **Core Style Guide**: $99 one-time (25 rules)
+- **Complete Style Guide**: $149 one-time (99+ rules)  
+- **Enterprise**: Custom pricing with training/support
+
+### Success Metrics
+- **Conversion Rate**: 15%+ from preview to payment
+- **NPS Score**: 70+ customer satisfaction
+- **Time to Value**: < 5 minutes total user journey
+- **Retention**: 80%+ completion rate post-payment
+
+---
+
+## Future Roadmap
+
+### Phase 2 (Q2 2025)
+- Editable style guides with Plate.js
+- Team collaboration features
+- Template variety (industry-specific)
+
+### Phase 3 (Q3-Q4 2025)
+- API for developers
+- Figma/Sketch integrations
+- White-label solution for agencies
+
+---
+
+*Last updated: January 2025*
