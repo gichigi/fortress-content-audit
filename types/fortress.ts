@@ -17,7 +17,6 @@ export interface AuditIssue {
 
 export interface AuditResult {
   issues: AuditIssue[]
-  summary: string
   score?: number
 }
 

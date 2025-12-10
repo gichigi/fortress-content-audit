@@ -46,7 +46,12 @@ export default function Home() {
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
 
-      const response = await fetch('/api/audit', {
+      const baseUrl =
+        typeof window !== 'undefined'
+          ? window.location.origin
+          : process.env.NEXT_PUBLIC_APP_URL || ''
+
+      const response = await fetch(`${baseUrl}/api/audit`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -148,7 +153,13 @@ export default function Home() {
               onChange={(e) => setUrl(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAudit()}
             />
-            <Button size="lg" className="h-14 px-8 text-lg font-medium" onClick={handleAudit} disabled={loading}>
+            <Button 
+              size="lg" 
+              className={`h-14 px-8 text-lg font-medium transition-opacity ${loading ? 'opacity-80 cursor-wait' : ''}`} 
+              onClick={handleAudit} 
+              disabled={loading}
+              aria-busy={loading}
+            >
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-5 w-5 animate-spin" />
@@ -163,7 +174,7 @@ export default function Home() {
           <div className="flex items-center justify-center gap-8 text-sm text-muted-foreground">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-green-600" />
-              <span>Free 5-page scan</span>
+              <span>Free 10-page scan</span>
             </div>
             <div className="flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-green-600" />
@@ -192,7 +203,7 @@ export default function Home() {
               </div>
               <h3 className="font-serif text-2xl font-semibold mb-4">Crawl Your Site</h3>
               <p className="text-muted-foreground leading-relaxed">
-                Automatically scan up to 5 pages of your website to identify content issues and inconsistencies.
+                Automatically scan up to 10 pages of your website to identify content issues and inconsistencies.
               </p>
             </div>
 
@@ -212,7 +223,7 @@ export default function Home() {
               </div>
               <h3 className="font-serif text-2xl font-semibold mb-4">Track Progress</h3>
               <p className="text-muted-foreground leading-relaxed">
-                Run regular audits to monitor improvements and catch new issues before they become problems.
+                Save your audit results and re-run to track improvements over time. Regular audits coming soon.
               </p>
             </div>
           </div>

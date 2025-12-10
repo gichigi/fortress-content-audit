@@ -110,8 +110,6 @@ Return JSON only:
       audit: auditResult
         ? {
             groups: auditResult.groups || [],
-            summary: auditResult.summary || "",
-            topFindings: auditResult.top_findings || [],
           }
         : null,
       locale: detectedLocale,
