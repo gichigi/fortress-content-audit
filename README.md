@@ -1,14 +1,18 @@
-# Style Guide AI
+# Fortress - Content Audit
 
-A powerful web application that generates professional style guides for brands using AI. Create, customize, and download comprehensive style guidelines with just a few clicks.
+A powerful web application that automatically audits websites for content inconsistencies. Identify terminology conflicts, contradictory claims, voice inconsistencies, and naming conflicts across your site with AI-powered analysis.
 
 ## Features
 
-- **AI-Powered Style Guide Generation**: Create complete brand style guides based on brand details
-- **Core and Complete Guides**: Choose between concise core guides or full comprehensive guides
-- **Multiple Export Formats**: Download your style guide as PDF, Word-compatible HTML, web-ready HTML, or markdown
-- **Brand Voice Traits**: Automatically generate distinctive voice characteristics that match your brand's tone and audience
-- **25 Core Writing Rules**: Get detailed writing guidance specific to your brand identity
+- **AI-Powered Content Auditing**: Automatically scan up to 10 pages of any website
+- **Comprehensive Issue Detection**: Find 4 core issue types:
+  - Terminology conflicts - Same concept called different names
+  - Contradictory claims - Facts/numbers that don't match across pages
+  - Voice inconsistencies - Formal vs casual tone switching
+  - Naming conflicts - Product/brand names spelled differently
+- **Free 10-Page Scans**: No signup required for initial audits
+- **Detailed Reports**: Get prioritized recommendations with specific examples and URLs
+- **Dashboard**: Save and track your audit results over time
 
 ## Technologies
 
@@ -17,23 +21,26 @@ A powerful web application that generates professional style guides for brands u
 - TypeScript
 - Tailwind CSS
 - Radix UI Components
-- OpenAI API
-- jsPDF for PDF generation
-- Markdown processing with react-markdown + remark-gfm
+- OpenAI API (GPT-5.1)
+- Firecrawl for website crawling
+- Supabase for authentication and data storage
+- PostHog for analytics
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js 18+ and npm/pnpm
+- Node.js 18+ and pnpm
 - OpenAI API key
+- Firecrawl API key
+- Supabase project (for authentication and database)
 
 ### Installation
 
 1. Clone the repository
    ```bash
-   git clone https://github.com/your-username/style-guide-ai.git
-   cd style-guide-ai
+   git clone https://github.com/your-username/fortress-content-audit.git
+   cd fortress-content-audit
    ```
 
 2. Install dependencies
@@ -45,21 +52,37 @@ A powerful web application that generates professional style guides for brands u
    Create a `.env.local` file with:
    ```
    OPENAI_API_KEY=your_openai_api_key
+   FIRECRAWL_API_KEY=your_firecrawl_api_key
+   NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+   SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
    ```
 
-4. Start the development server
+4. Set up database
+   Run the Supabase migrations in the `supabase/migrations/` directory
+
+5. Start the development server
    ```bash
    pnpm dev
    ```
 
-5. Open [http://localhost:3000](http://localhost:3000) to view the app
+6. Open [http://localhost:3000](http://localhost:3000) to view the app
 
 ## Usage
 
-1. Enter your brand details (name, audience, tone, description)
-2. Choose between core or complete style guide
-3. View the generated style guide with brand voice traits and writing rules
-4. Download in your preferred format (PDF, Word HTML, web HTML, or Markdown)
+1. Enter a website URL on the homepage
+2. The system automatically crawls up to 10 pages
+3. AI analyzes content for inconsistencies
+4. View detailed audit results with prioritized issues
+5. Save audits to your dashboard (sign up required)
+
+## Project Structure
+
+- `app/` - Next.js app router pages and API routes
+- `components/` - React components
+- `lib/` - Core utilities (audit logic, API clients)
+- `supabase/migrations/` - Database migrations
+- `scripts/` - Utility scripts for content generation
 
 ## License
 
@@ -68,5 +91,6 @@ MIT
 ## Acknowledgements
 
 - OpenAI for AI capabilities
+- Firecrawl for website crawling
 - Vercel for hosting and deployment
-- Various open-source libraries that made this project possible 
+- Supabase for backend infrastructure
