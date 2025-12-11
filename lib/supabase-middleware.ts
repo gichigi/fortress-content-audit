@@ -17,7 +17,6 @@ const PUBLIC_ROUTES = [
   '/api/scrape',
   '/api/preview',
   '/api/generate-styleguide',
-  '/api/analyze-brand',
   '/api/clarifying-questions',
   '/api/ab-comparison',
   '/api/ab-comparisons',

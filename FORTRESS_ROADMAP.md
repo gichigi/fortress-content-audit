@@ -225,7 +225,6 @@ Migrate from legacy `full-access` page to new editor-based flow to complete Core
 
 **Error logging coverage:**
 - ✅ `/api/audit` — crawl errors
-- ✅ `/api/analyze-brand` — LLM errors
 - ✅ `/api/preview` — generation errors
 - ✅ `/api/generate-styleguide` — generation errors
 - ✅ `/api/create-checkout-session` — billing errors
