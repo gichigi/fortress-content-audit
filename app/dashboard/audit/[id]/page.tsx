@@ -1,5 +1,6 @@
 "use client"
 
+import * as React from "react"
 import { useEffect, useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -7,8 +8,6 @@ import { ArrowLeft, Loader2, RefreshCw, Clock, Download } from "lucide-react"
 import { createClient } from "@/lib/supabase-browser"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
-import { AuditResults } from "@/components/AuditResults"
-import Header from "@/components/Header"
 import { useParams } from "next/navigation"
 import { Card, CardContent } from "@/components/ui/card"
 import {
@@ -17,6 +16,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { AppSidebar } from "@/components/app-sidebar"
+import { DataTable } from "@/components/data-table"
+import { SectionCards } from "@/components/section-cards"
+import { SiteHeader } from "@/components/site-header"
+import {
+  SidebarInset,
+  SidebarProvider,
+} from "@/components/ui/sidebar"
+import { transformAuditToTableRows } from "@/lib/audit-table-adapter"
 
 export default function AuditDetailPage() {
   const router = useRouter()
@@ -335,107 +343,164 @@ export default function AuditDetailPage() {
     }
   }
 
+  // Transform audit groups to table rows
+  const tableRows = audit?.groups ? transformAuditToTableRows(audit.groups) : []
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-background">
-        <Header />
-        <div className="flex items-center justify-center h-[calc(100vh-80px)]">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-      </div>
+      <SidebarProvider
+        style={
+          {
+            "--sidebar-width": "calc(var(--spacing) * 72)",
+            "--header-height": "calc(var(--spacing) * 12)",
+          } as React.CSSProperties
+        }
+      >
+        <AppSidebar variant="inset" />
+        <SidebarInset>
+          <SiteHeader />
+          <div className="flex items-center justify-center h-[calc(100vh-80px)]">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        </SidebarInset>
+      </SidebarProvider>
     )
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <div className="container mx-auto px-6 py-8">
-        <div className="flex items-center justify-between mb-8 max-w-6xl mx-auto">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" asChild>
-              <Link href="/dashboard" className="flex items-center gap-2">
-                <ArrowLeft className="h-4 w-4" />
-                Back to Dashboard
-              </Link>
-            </Button>
-            <h1 className="font-serif text-2xl font-medium">
-              {audit?.title || audit?.brand_name || audit?.domain || 'Audit Details'}
-            </h1>
-          </div>
-          <div className="flex gap-2">
-            {canResume && (
-              <Button variant="outline" size="sm" onClick={handleResume}>
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Resume Audit
-              </Button>
-            )}
-            <Button variant="outline" size="sm" onClick={handleRerun}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Rerun Audit
-            </Button>
-            {canExport && audit && !polling && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" disabled={exporting}>
-                    <Download className="h-4 w-4 mr-2" />
-                    {exporting ? 'Exporting...' : 'Export'}
+    <SidebarProvider
+      style={
+        {
+          "--sidebar-width": "calc(var(--spacing) * 72)",
+          "--header-height": "calc(var(--spacing) * 12)",
+        } as React.CSSProperties
+      }
+    >
+      <AppSidebar variant="inset" />
+      <SidebarInset>
+        <SiteHeader />
+        <div className="flex flex-1 flex-col">
+          <div className="@container/main flex flex-1 flex-col gap-2">
+            <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
+              {/* Header Actions */}
+              <div className="flex items-center justify-between px-4 lg:px-6">
+                <div className="flex items-center gap-4">
+                  <Button variant="ghost" size="sm" asChild>
+                    <Link href="/dashboard" className="flex items-center gap-2">
+                      <ArrowLeft className="h-4 w-4" />
+                      Back to Dashboard
+                    </Link>
                   </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => handleExport('pdf')}>
-                    Export as PDF
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleExport('json')}>
-                    Export as JSON
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleExport('md')}>
-                    Export as Markdown
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-          </div>
-        </div>
-
-        {/* Progress indicator for in-progress audits */}
-        {polling && (
-          <Card className="mb-8 border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-4">
-                <Loader2 className="h-6 w-6 animate-spin text-blue-600 dark:text-blue-400" />
-                <div className="flex-1">
-                  <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-1">
-                    Audit in progress
-                  </h3>
-                  {progress && (
-                    <div className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
-                      {progress.pagesScanned > 0 && (
-                        <p>Pages scanned: {progress.pagesScanned}</p>
-                      )}
-                      {progress.issuesFound > 0 && (
-                        <p>Issues found so far: {progress.issuesFound}</p>
-                      )}
-                    </div>
+                  <h1 className="font-serif text-2xl font-medium">
+                    {audit?.title || audit?.brand_name || audit?.domain || 'Audit Details'}
+                  </h1>
+                </div>
+                <div className="flex gap-2">
+                  {canResume && (
+                    <Button variant="outline" size="sm" onClick={handleResume}>
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Resume Audit
+                    </Button>
                   )}
-                  {!progress && (
-                    <p className="text-sm text-blue-700 dark:text-blue-300">
-                      Processing your audit...
-                    </p>
+                  <Button variant="outline" size="sm" onClick={handleRerun}>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Rerun Audit
+                  </Button>
+                  {canExport && audit && !polling && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm" disabled={exporting}>
+                          <Download className="h-4 w-4 mr-2" />
+                          {exporting ? 'Exporting...' : 'Export'}
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleExport('pdf')}>
+                          Export as PDF
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleExport('json')}>
+                          Export as JSON
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleExport('md')}>
+                          Export as Markdown
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   )}
                 </div>
-                <Clock className="h-5 w-5 text-blue-600 dark:text-blue-400" />
               </div>
-            </CardContent>
-          </Card>
-        )}
 
-        {audit && !polling && (
-          <AuditResults 
-            results={audit} 
-            isAuthenticated={true} 
-          />
-        )}
-      </div>
-    </div>
+              {/* Progress indicator for in-progress audits */}
+              {polling && (
+                <div className="px-4 lg:px-6">
+                  <Card className="border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20">
+                    <CardContent className="p-6">
+                      <div className="flex items-center gap-4">
+                        <Loader2 className="h-6 w-6 animate-spin text-blue-600 dark:text-blue-400" />
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-1">
+                            Audit in progress
+                          </h3>
+                          {progress && (
+                            <div className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
+                              {progress.pagesScanned > 0 && (
+                                <p>Pages scanned: {progress.pagesScanned}</p>
+                              )}
+                              {progress.issuesFound > 0 && (
+                                <p>Issues found so far: {progress.issuesFound}</p>
+                              )}
+                            </div>
+                          )}
+                          {!progress && (
+                            <p className="text-sm text-blue-700 dark:text-blue-300">
+                              Processing your audit...
+                            </p>
+                          )}
+                        </div>
+                        <Clock className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+
+              {/* Summary Cards - TODO: Update SectionCards to show audit stats */}
+              {audit && !polling && (
+                <>
+                  {/* Temporary: Custom summary cards for audit */}
+                  <div className="px-4 lg:px-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <Card>
+                        <CardContent className="p-6">
+                          <div className="text-sm text-muted-foreground mb-1">Total Issues</div>
+                          <div className="text-3xl font-semibold">{audit.totalIssues || 0}</div>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="p-6">
+                          <div className="text-sm text-muted-foreground mb-1">Pages Scanned</div>
+                          <div className="text-3xl font-semibold">{audit.meta?.pagesScanned || 0}</div>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="p-6">
+                          <div className="text-sm text-muted-foreground mb-1">Domain</div>
+                          <div className="text-lg font-medium truncate">{audit.domain || 'N/A'}</div>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  </div>
+
+                  {/* Data Table */}
+                  {tableRows.length > 0 && (
+                    <DataTable data={tableRows} />
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </SidebarInset>
+    </SidebarProvider>
   )
 }

@@ -5,10 +5,13 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Card } from "@/components/ui/card"
 import { Loader2, CheckCircle2, FileText, Search, AlertCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { createClient } from "@/lib/supabase-browser"
-import { AuditResults } from "@/components/AuditResults"
+import { AuditTable } from "@/components/audit-table"
+import { transformAuditToTableRows } from "@/lib/audit-table-adapter"
 
 export default function Home() {
   const router = useRouter()
@@ -187,12 +190,66 @@ export default function Home() {
       </section>
 
       {/* Audit Results Preview */}
-      {auditResults && (
-        <AuditResults 
-          results={auditResults} 
-          isAuthenticated={isAuthenticated}
-          sessionToken={sessionToken}
-        />
+      {loading && (
+        <section className="border-t border-border py-24 md:py-32">
+          <div className="container mx-auto px-6">
+            <div className="mb-8">
+              <Skeleton className="h-12 w-80 mb-4" />
+              <Skeleton className="h-6 w-96 max-w-2xl" />
+            </div>
+            <div className="space-y-4">
+              {/* Table skeleton */}
+              <Card className="border">
+                <div className="p-4 space-y-4">
+                  {/* Header row skeleton */}
+                  <div className="flex items-center gap-4 pb-4 border-b">
+                    <Skeleton className="h-4 w-4" />
+                    <Skeleton className="h-4 w-64" />
+                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className="h-4 w-48" />
+                    <Skeleton className="h-4 w-16 ml-auto" />
+                    <Skeleton className="h-4 w-8" />
+                  </div>
+                  {/* Table rows skeleton */}
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <div key={i} className="flex items-center gap-4 py-3 border-b last:border-0">
+                      <Skeleton className="h-4 w-4" />
+                      <Skeleton className="h-4 w-64" />
+                      <Skeleton className="h-6 w-20 rounded" />
+                      <Skeleton className="h-4 w-48" />
+                      <Skeleton className="h-4 w-16 ml-auto" />
+                      <Skeleton className="h-8 w-8 rounded" />
+                    </div>
+                  ))}
+                </div>
+              </Card>
+              {/* View all button skeleton */}
+              <div className="flex justify-center pt-4">
+                <Skeleton className="h-10 w-48" />
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+      {!loading && auditResults && auditResults.groups && auditResults.groups.length > 0 && (
+        <section className="border-t border-border py-24 md:py-32">
+          <div className="container mx-auto px-6">
+            <div className="mb-8">
+              <h2 className="font-serif text-4xl md:text-5xl font-light tracking-tight mb-4">
+                Your Audit Results
+              </h2>
+              <p className="text-xl text-muted-foreground leading-relaxed max-w-2xl">
+                Found {auditResults.totalIssues || auditResults.groups.length} issues across {auditResults.meta?.pagesScanned || auditResults.pagesScanned || 0} pages
+              </p>
+            </div>
+            <AuditTable
+              data={transformAuditToTableRows(auditResults.groups)}
+              showPreview={true}
+              auditId={auditResults.runId}
+              totalIssues={auditResults.totalIssues || auditResults.groups.length}
+            />
+          </div>
+        </section>
       )}
 
       {/* Features Section */}

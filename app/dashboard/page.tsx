@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase-browser"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { Skeleton } from "@/components/ui/skeleton"
 import { ArrowLeft, FileText, Copy, Trash2, ExternalLink, RefreshCw, Loader2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import Header from "@/components/Header"
@@ -314,8 +315,49 @@ export default function DashboardPage() {
       <div className="min-h-screen bg-background">
         <Header />
         <div className="container mx-auto px-6 py-16 max-w-5xl">
-          <div className="flex items-center justify-center py-24">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <div className="mb-12">
+            <Skeleton className="h-4 w-16 mb-6" />
+            <Skeleton className="h-16 w-96 mb-4" />
+            <Skeleton className="h-6 w-96 max-w-2xl" />
+          </div>
+          
+          <div className="space-y-8">
+            <Tabs defaultValue="audit" className="space-y-8">
+              <TabsList>
+                <Skeleton className="h-10 w-24" />
+                <Skeleton className="h-10 w-32 ml-2" />
+              </TabsList>
+              
+              <TabsContent value="audit" className="space-y-4">
+                <div className="flex items-center justify-between mb-4">
+                  <Skeleton className="h-8 w-40" />
+                  <Skeleton className="h-10 w-32" />
+                </div>
+                
+                <div className="grid gap-4">
+                  {[1, 2, 3].map((i) => (
+                    <Card key={i} className="border border-border">
+                      <CardHeader>
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1 space-y-3">
+                            <Skeleton className="h-8 w-64" />
+                            <div className="flex items-center gap-4">
+                              <Skeleton className="h-4 w-32" />
+                              <Skeleton className="h-4 w-24" />
+                              <Skeleton className="h-4 w-28" />
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Skeleton className="h-9 w-24" />
+                            <Skeleton className="h-9 w-9" />
+                          </div>
+                        </div>
+                      </CardHeader>
+                    </Card>
+                  ))}
+                </div>
+              </TabsContent>
+            </Tabs>
           </div>
         </div>
       </div>

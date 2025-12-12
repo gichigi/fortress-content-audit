@@ -191,6 +191,84 @@ Benefits:
 
 ---
 
+### Phase 3.7: Testing + Design System Redesign
+
+**Testing Requirements**
+
+**Mini Audit Testing:**
+- Test mini audit via API (curl or Postman - happy path, error cases, timeout)
+- Test mini audit via UI (homepage flow, results display, session token storage)
+- Test unauthenticated → authenticated flow (audit → signup → auto-claim)
+- Test authenticated free tier (mini audit with account storage)
+
+**Auth & Database Testing:**
+- Test signup flow (email → magic link → dashboard)
+- Test auto-claim on dashboard load (localStorage → API call → DB update)
+- Test database storage (unauthenticated saves with session_token, authenticated saves with user_id)
+- Test database retrieval (RLS policies, user isolation, session token lookup)
+- Test session token expiry (24h window, cleanup of expired tokens)
+- Test concurrent claims (multiple users, same token edge cases)
+
+**Stripe Payment Testing:**
+- Test checkout flow (button click → Stripe session → redirect)
+- Test payment success (webhook → plan update → redirect to success page)
+- Test payment cancel (redirect to cancel page, no plan change)
+- Test webhook reliability (retry logic, idempotency, error handling)
+- Test plan activation (verify profile.plan updates correctly)
+- Test redirects (success_url, cancel_url, return_url)
+
+**Export & Design Testing:**
+- Test PDF export (formatting, layout, file download)
+- Test JSON export (schema validation, all fields present)
+- Test Markdown export (AI prompt header, structure, formatting)
+- Test export gating (free users see upgrade prompt, paid users can export)
+- Test export UI (dropdown menu, loading states, error handling)
+- Test export design/presentation (PDF looks professional, markdown is readable)
+
+**Progress Polling Testing:**
+- Test background audit polling (status updates, progress display)
+- Test timeout handling (long-running audits, connection issues)
+- Test resume functionality (interrupted audits, status recovery)
+
+**Error Handling Testing:**
+- Test API failures (network errors, 500s, malformed responses)
+- Test empty audit results (no issues found)
+- Test very large audits (many issues, pagination if needed)
+- Test malformed domain input (invalid URLs, edge cases)
+
+**Design System Redesign**
+
+**Homepage Redesign:**
+- Apply design system typography (serif headlines, sans-serif body)
+- Use design system spacing (multiples of 8px, generous whitespace)
+- Apply design system components (Button, Input, Card, Alert)
+- Match design system color palette (neutral, minimal saturation)
+- Use design system principles (clarity, generous spacing, typographic hierarchy)
+- Replace custom styles with design system tokens
+
+**Audit Detail Page Redesign:**
+- Apply design system to audit results display
+- Redesign export UI using design system components
+- Use Interstitial Loader for audit loading states
+- Apply consistent error states using Alert components
+- Match design system spacing and typography
+- Improve export button/dropdown design
+
+**Loading & Error States:**
+- Use Interstitial Loader component for blocking operations
+- Use Alert components for error messages consistently
+- Apply design system to progress indicators
+- Match design system to toast notifications
+
+**Implementation requirements:**
+- Review all pages against design system reference (`/design-system`)
+- Replace custom styles with design system components
+- Ensure consistent spacing, typography, and color usage
+- Test responsive design with design system components
+- Verify accessibility (keyboard navigation, screen readers)
+
+---
+
 ### Phase 3.6: OpenAI Batch Processing for Cost Optimization
 
 **Automated audit cost reduction**
