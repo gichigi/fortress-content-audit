@@ -39,22 +39,15 @@ export function AuditTable({
   }, [])
 
   const handleViewAll = () => {
-    if (!auditId) {
-      // No audit ID, just go to dashboard
-      router.push('/dashboard')
-      return
-    }
-
     if (!isAuthenticated) {
       // Not authenticated, redirect to signup
       // After signup, user goes to dashboard which auto-claims the audit
-      // Then they can click the audit from dashboard list, or we can improve this later
       router.push(`/sign-up?next=${encodeURIComponent('/dashboard')}`)
       return
     }
 
-    // Authenticated, go directly to audit detail
-    router.push(`/dashboard/audit/${auditId}`)
+    // Authenticated, go to dashboard to see all audits
+    router.push('/dashboard')
   }
 
   const previewRows = showPreview ? data.slice(0, 5) : data

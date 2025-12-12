@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ArrowLeft, FileText, Copy, Trash2, ExternalLink, RefreshCw, Loader2 } from "lucide-react"
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import { useToast } from "@/hooks/use-toast"
 import Header from "@/components/Header"
 import { PLAN_NAMES } from "@/lib/plans"
@@ -41,6 +42,7 @@ export default function DashboardPage() {
   const [audits, setAudits] = useState<AuditRun[]>([])
   const [plan, setPlan] = useState<string>("free")
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     checkAuthAndLoad()
@@ -153,11 +155,7 @@ export default function DashboardPage() {
       ])
     } catch (error) {
       console.error("Error loading dashboard:", error)
-      toast({
-        title: "Error",
-        description: "Failed to load dashboard",
-        variant: "destructive"
-      })
+      setError("Failed to load dashboard. Please refresh the page.")
     } finally {
       setLoading(false)
     }
@@ -395,6 +393,14 @@ export default function DashboardPage() {
             <TabsTrigger value="guidelines">Guidelines</TabsTrigger>
           </TabsList>
 
+          {/* Error Alert */}
+          {error && (
+            <Alert variant="destructive">
+              <AlertTitle>Error</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
           <TabsContent value="guidelines" className="space-y-4">
             {guidelines.length === 0 ? (
               <Card className="border border-border">
@@ -529,23 +535,16 @@ export default function DashboardPage() {
                               <span>{formatDate(audit.created_at)}</span>
                             </CardDescription>
                           </div>
-                          <div className="flex gap-2">
-                            {plan === 'pro' && audit.domain && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleRerunAudit(audit.id, audit.domain!)}
-                              >
-                                <RefreshCw className="h-4 w-4 mr-2" />
-                                Re-run
-                              </Button>
-                            )}
-                            <Button asChild size="sm">
-                              <Link href={`/dashboard/audit/${audit.id}`}>
-                                View Details
-                              </Link>
+                          {plan === 'pro' && audit.domain && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleRerunAudit(audit.id, audit.domain!)}
+                            >
+                              <RefreshCw className="h-4 w-4 mr-2" />
+                              Re-run
                             </Button>
-                          </div>
+                          )}
                         </div>
                       </CardHeader>
                       <CardContent>

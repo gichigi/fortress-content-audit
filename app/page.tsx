@@ -7,8 +7,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Card } from "@/components/ui/card"
-import { Loader2, CheckCircle2, FileText, Search, AlertCircle } from "lucide-react"
+import { CheckCircle2, FileText, Search, AlertCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { InterstitialLoader } from "@/components/ui/interstitial-loader"
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import { createClient } from "@/lib/supabase-browser"
 import { AuditTable } from "@/components/audit-table"
 import { transformAuditToTableRows } from "@/lib/audit-table-adapter"
@@ -18,6 +20,7 @@ export default function Home() {
   const { toast } = useToast()
   const [url, setUrl] = useState("")
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [auditResults, setAuditResults] = useState<any>(null)
   const [sessionToken, setSessionToken] = useState<string | null>(null)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -33,15 +36,12 @@ export default function Home() {
 
   const handleAudit = async () => {
     if (!url) {
-      toast({
-        title: "URL required",
-        description: "Please enter a website URL to audit",
-        variant: "destructive"
-      })
+      setError("Please enter a website URL to audit")
       return
     }
 
     setLoading(true)
+    setError(null)
     setAuditResults(null)
 
     try {
@@ -111,11 +111,7 @@ export default function Home() {
         errorMessage = error
       }
       
-      toast({
-        title: "Audit failed",
-        description: errorMessage,
-        variant: "destructive"
-      })
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }
@@ -160,19 +156,12 @@ export default function Home() {
             />
             <Button 
               size="lg" 
-              className={`h-14 px-8 text-lg font-medium transition-opacity ${loading ? 'opacity-80 cursor-wait' : ''}`} 
+              className="h-14 px-8 text-lg font-medium" 
               onClick={handleAudit} 
               disabled={loading}
               aria-busy={loading}
             >
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Analyzing...
-                </>
-              ) : (
-                "Run Audit"
-              )}
+              Run Audit
             </Button>
           </div>
           
@@ -189,48 +178,26 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Audit Results Preview */}
-      {loading && (
+      {/* Loading State */}
+      <InterstitialLoader 
+        open={loading}
+        title="Analyzing your website..."
+        description="Scanning pages and identifying content issues. This may take a moment."
+      />
+
+      {/* Error Alert */}
+      {error && !loading && (
         <section className="border-t border-border py-24 md:py-32">
-          <div className="container mx-auto px-6">
-            <div className="mb-8">
-              <Skeleton className="h-12 w-80 mb-4" />
-              <Skeleton className="h-6 w-96 max-w-2xl" />
-            </div>
-            <div className="space-y-4">
-              {/* Table skeleton */}
-              <Card className="border">
-                <div className="p-4 space-y-4">
-                  {/* Header row skeleton */}
-                  <div className="flex items-center gap-4 pb-4 border-b">
-                    <Skeleton className="h-4 w-4" />
-                    <Skeleton className="h-4 w-64" />
-                    <Skeleton className="h-4 w-20" />
-                    <Skeleton className="h-4 w-48" />
-                    <Skeleton className="h-4 w-16 ml-auto" />
-                    <Skeleton className="h-4 w-8" />
-                  </div>
-                  {/* Table rows skeleton */}
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <div key={i} className="flex items-center gap-4 py-3 border-b last:border-0">
-                      <Skeleton className="h-4 w-4" />
-                      <Skeleton className="h-4 w-64" />
-                      <Skeleton className="h-6 w-20 rounded" />
-                      <Skeleton className="h-4 w-48" />
-                      <Skeleton className="h-4 w-16 ml-auto" />
-                      <Skeleton className="h-8 w-8 rounded" />
-                    </div>
-                  ))}
-                </div>
-              </Card>
-              {/* View all button skeleton */}
-              <div className="flex justify-center pt-4">
-                <Skeleton className="h-10 w-48" />
-              </div>
-            </div>
+          <div className="container mx-auto px-6 max-w-2xl">
+            <Alert variant="destructive">
+              <AlertTitle>Error</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           </div>
         </section>
       )}
+
+      {/* Audit Results Preview */}
       {!loading && auditResults && auditResults.groups && auditResults.groups.length > 0 && (
         <section className="border-t border-border py-24 md:py-32">
           <div className="container mx-auto px-6">

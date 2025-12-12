@@ -260,6 +260,54 @@ export default function DesignSystemPage() {
                 <AlertTitle>Error</AlertTitle>
                 <AlertDescription>This is a destructive variant.</AlertDescription>
               </Alert>
+              <p className="text-sm text-muted-foreground mt-4">
+                Use Alert components for persistent error messages and important warnings that need user attention. 
+                They remain visible until dismissed. Use the destructive variant for errors, warnings, and critical information.
+              </p>
+              <div className="mt-4 p-4 bg-muted/50 border border-border">
+                <p className="text-xs text-muted-foreground font-mono mb-2">Usage example:</p>
+                <p className="text-xs text-muted-foreground font-mono">
+                  {'<Alert variant="destructive">'}
+                  <br />
+                  {'  <AlertTitle>Error</AlertTitle>'}
+                  <br />
+                  {'  <AlertDescription>Failed to load audit details</AlertDescription>'}
+                  <br />
+                  {'</Alert>'}
+                </p>
+              </div>
+            </div>
+            {/* Toast */}
+            <div>
+              <h3 className="font-serif text-2xl font-semibold mb-6">Toast</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                Toast notifications appear at the bottom right of the screen and automatically dismiss after a few seconds. 
+                Use toasts for success messages, quick confirmations, and non-critical status updates.
+              </p>
+              <p className="text-sm text-muted-foreground mb-4">
+                <strong>When to use Toast:</strong> Success messages (e.g., "Export successful"), quick confirmations, non-critical updates.
+                <br />
+                <strong>When to use Alert:</strong> Errors requiring attention, permission issues, critical failures that need user action.
+              </p>
+              <div className="p-4 bg-muted/50 border border-border">
+                <p className="text-xs text-muted-foreground font-mono mb-2">Usage example (using sonner/toast):</p>
+                <p className="text-xs text-muted-foreground font-mono">
+                  {'import { toast } from "sonner"'}
+                  <br />
+                  <br />
+                  {'// Success toast'}
+                  <br />
+                  {'toast.success("Export successful")'}
+                  <br />
+                  <br />
+                  {'// Error toast (for non-critical errors)'}
+                  <br />
+                  {'toast.error("Failed to export")'}
+                </p>
+              </div>
+              <p className="text-sm text-muted-foreground mt-4">
+                Toasts are displayed via the Toaster component which should be mounted in your root layout.
+              </p>
             </div>
             {/* Card */}
             <div>
@@ -411,12 +459,6 @@ export default function DesignSystemPage() {
                   </div>
                 </div>
               </div>
-            </div>
-            {/* Toast (Toaster) - just show mount, demo needs to be user-action driven */}
-            <div>
-              <h3 className="font-serif text-2xl font-semibold mb-6">Toast (Toaster)</h3>
-              <p className="text-sm text-muted-foreground mb-2">Toasts show at bottom right on action in live app.</p>
-              <Toaster />
             </div>
           </div>
         </section>

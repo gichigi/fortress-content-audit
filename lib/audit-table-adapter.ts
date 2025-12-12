@@ -53,15 +53,18 @@ export function transformAuditToTableRows(
 
 /**
  * Get severity badge variant
+ * High: Destructive (red)
+ * Medium: Warning (yellow/orange)
+ * Low: Secondary (gray)
  */
 export function getSeverityBadgeVariant(
   severity: "low" | "medium" | "high"
-): "default" | "secondary" | "destructive" {
+): "default" | "secondary" | "destructive" | "warning" {
   switch (severity) {
     case "high":
       return "destructive"
     case "medium":
-      return "default"
+      return "warning"
     case "low":
       return "secondary"
     default:
