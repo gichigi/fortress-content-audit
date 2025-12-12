@@ -48,25 +48,35 @@ export default function DashboardPage() {
   // Claim pending audit from localStorage (set during unauthenticated audit + email signup)
   const claimPendingAudit = async (token: string) => {
     try {
-      const pendingAuditStr = localStorage.getItem('pendingAudit')
-      if (!pendingAuditStr) return
-
-      const pendingAudit = JSON.parse(pendingAuditStr)
+      // Check for direct sessionToken first (as per roadmap)
+      let sessionToken: string | null = localStorage.getItem('audit_session_token')
       
-      // Check if expired (24 hours)
-      if (pendingAudit.expiry && Date.now() > pendingAudit.expiry) {
-        console.log('[Dashboard] Pending audit expired, clearing')
-        localStorage.removeItem('pendingAudit')
+      // Fallback to pendingAudit for backward compatibility
+      if (!sessionToken) {
+        const pendingAuditStr = localStorage.getItem('pendingAudit')
+        if (pendingAuditStr) {
+          try {
+            const pendingAudit = JSON.parse(pendingAuditStr)
+            // Check if expired (24 hours)
+            if (pendingAudit.expiry && Date.now() > pendingAudit.expiry) {
+              console.log('[Dashboard] Pending audit expired, clearing')
+              localStorage.removeItem('pendingAudit')
+              return
+            }
+            sessionToken = pendingAudit.sessionToken
+          } catch (e) {
+            console.log('[Dashboard] Failed to parse pendingAudit, clearing')
+            localStorage.removeItem('pendingAudit')
+            return
+          }
+        }
+      }
+
+      if (!sessionToken) {
         return
       }
 
-      if (!pendingAudit.sessionToken) {
-        console.log('[Dashboard] No session token in pending audit')
-        localStorage.removeItem('pendingAudit')
-        return
-      }
-
-      console.log('[Dashboard] Claiming pending audit with session token:', pendingAudit.sessionToken)
+      console.log('[Dashboard] Claiming pending audit with session token:', sessionToken)
 
       const response = await fetch('/api/audit/claim', {
         method: 'POST',
@@ -74,7 +84,7 @@ export default function DashboardPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ sessionToken: pendingAudit.sessionToken })
+        body: JSON.stringify({ sessionToken })
       })
 
       if (response.ok) {
@@ -90,10 +100,12 @@ export default function DashboardPage() {
         // Don't show error to user - audit may have already been claimed or doesn't exist
       }
 
-      // Always clear the pending audit from localStorage
+      // Clear both storage methods after successful claim
+      localStorage.removeItem('audit_session_token')
       localStorage.removeItem('pendingAudit')
     } catch (error) {
       console.error('[Dashboard] Error claiming pending audit:', error)
+      localStorage.removeItem('audit_session_token')
       localStorage.removeItem('pendingAudit')
     }
   }

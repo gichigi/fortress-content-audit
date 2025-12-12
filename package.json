@@ -69,6 +69,7 @@
     "path": "latest",
     "posthog-js": "^1.288.0",
     "posthog-node": "^5.11.1",
+    "puppeteer": "^24.33.0",
     "react": "^19",
     "react-day-picker": "8.10.1",
     "react-dom": "^19",

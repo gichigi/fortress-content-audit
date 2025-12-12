@@ -93,6 +93,7 @@ export async function POST(request: Request) {
     // Handle background execution (paid tiers may return in_progress)
     if (result.status === 'in_progress' && result.responseId) {
       // Save pending audit run for polling
+      // Store tier in issues_json so it can be retrieved during polling
       const { data: run } = await supabaseAdmin
         .from('brand_audit_runs')
         .insert({
@@ -103,7 +104,7 @@ export async function POST(request: Request) {
           title,
           brand_name: brandName,
           pages_scanned: 0,
-          issues_json: { groups: [], auditedUrls: [], responseId: result.responseId },
+          issues_json: { groups: [], auditedUrls: [], responseId: result.responseId, tier: auditTier },
           is_preview: false,
         })
         .select('id')

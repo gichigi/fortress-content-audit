@@ -1,7 +1,7 @@
 // Poll background audit status (for paid/enterprise tiers)
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { pollAuditStatus } from '@/lib/audit'
+import { pollAuditStatus, AuditTier } from '@/lib/audit'
 
 function getBearer(req: Request) {
   const a = req.headers.get('authorization') || req.headers.get('Authorization')
@@ -29,15 +29,39 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing responseId' }, { status: 400 })
     }
 
-    console.log(`[Poll] Checking status for responseId: ${responseId}`)
-    const result = await pollAuditStatus(responseId)
+    // Retrieve tier from database if runId is provided
+    let tier: AuditTier | undefined = undefined
+    if (runId) {
+      const { data: auditRun } = await supabaseAdmin
+        .from('brand_audit_runs')
+        .select('issues_json')
+        .eq('id', runId)
+        .eq('user_id', userId)
+        .maybeSingle()
+      
+      if (auditRun?.issues_json && typeof auditRun.issues_json === 'object' && 'tier' in auditRun.issues_json) {
+        const storedTier = (auditRun.issues_json as any).tier
+        // Validate tier is a valid AuditTier
+        if (storedTier === 'FREE' || storedTier === 'PAID' || storedTier === 'ENTERPRISE') {
+          tier = storedTier as AuditTier
+          console.log(`[Poll] Retrieved tier ${tier} from database for runId: ${runId}`)
+        }
+      }
+    }
 
-    // If still in progress, return status
+    console.log(`[Poll] Checking status for responseId: ${responseId}${tier ? ` (tier: ${tier})` : ''}`)
+    const result = await pollAuditStatus(responseId, tier)
+
+    // If still in progress, return status with progress info
     if (result.status === 'in_progress') {
       return NextResponse.json({
         status: 'in_progress',
         responseId,
         message: 'Audit is still running. Check back in a few seconds.',
+        progress: {
+          pagesScanned: result.pagesScanned || 0,
+          issuesFound: result.groups?.length || 0,
+        },
       })
     }
 
@@ -46,6 +70,7 @@ export async function POST(request: Request) {
       const issuesJson = {
         groups: result.groups,
         auditedUrls: result.auditedUrls || [],
+        tier: result.tier || tier, // Preserve tier for future lookups
       }
 
       const { error: updateErr } = await supabaseAdmin
@@ -73,6 +98,7 @@ export async function POST(request: Request) {
       meta: {
         pagesScanned: result.pagesScanned,
         auditedUrls: result.auditedUrls || [],
+        tier: result.tier,
       },
     })
   } catch (e) {
@@ -81,3 +107,4 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
+

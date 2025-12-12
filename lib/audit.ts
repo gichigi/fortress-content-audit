@@ -260,8 +260,8 @@ Return your findings as JSON matching this structure:
 // ============================================================================
 // Poll background audit status (for paid/enterprise tiers)
 // ============================================================================
-export async function pollAuditStatus(responseId: string): Promise<AuditResult> {
-  console.log(`[Audit] Polling status for: ${responseId}`)
+export async function pollAuditStatus(responseId: string, tier?: AuditTier): Promise<AuditResult> {
+  console.log(`[Audit] Polling status for: ${responseId}${tier ? ` (tier: ${tier})` : ''}`)
 
   const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
@@ -275,9 +275,21 @@ export async function pollAuditStatus(responseId: string): Promise<AuditResult> 
     const status = response.status as string
     if (status === "queued" || status === "in_progress") {
       console.log(`[Audit] Still running (${status}): ${responseId}`)
+      // Try to extract progress info from partial response if available
+      let pagesScanned = 0
+      if (response.output_text) {
+        try {
+          const partial = JSON.parse(response.output_text)
+          if (typeof partial.pagesScanned === 'number') {
+            pagesScanned = partial.pagesScanned
+          }
+        } catch {
+          // Ignore parse errors for partial responses
+        }
+      }
       return {
         groups: [],
-        pagesScanned: 0,
+        pagesScanned,
         responseId,
         status: "in_progress",
       }
@@ -285,7 +297,7 @@ export async function pollAuditStatus(responseId: string): Promise<AuditResult> 
 
     if (status === "completed") {
       console.log(`[Audit] Completed: ${responseId}`)
-      return parseAuditResponse(response, "PAID")
+      return parseAuditResponse(response, tier || "PAID")
     }
 
     // Failed or cancelled

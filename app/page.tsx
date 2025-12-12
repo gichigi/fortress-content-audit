@@ -90,6 +90,8 @@ export default function Home() {
       // This enables claiming the audit after signup
       if (data.sessionToken) {
         setSessionToken(data.sessionToken)
+        // Store in localStorage for auto-claim on dashboard
+        localStorage.setItem('audit_session_token', data.sessionToken)
         console.log('[Homepage] Received session token for audit:', data.sessionToken)
       }
     } catch (error) {

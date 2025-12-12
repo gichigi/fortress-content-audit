@@ -32,7 +32,7 @@
 | Issue History Tracking | ❌ | ❌ | ✅ | ✅ |
 | **Results & Reporting** |
 | Issues Shown | 3 (preview with fade-out) | All issues from mini audit | All issues | All issues |
-| Export Format | None | JSON only | PDF, JSON, Markdown | PDF, JSON, Markdown |
+| Export Format | None | None | PDF, JSON, Markdown | PDF, JSON, Markdown |
 | Markdown Export | ❌ | ❌ | ✅ (with AI prompt header) | ✅ (with AI prompt header) |
 | Historical Reports | ❌ | ✅ (limited) | ✅ (30/60/90 days) | ✅ (unlimited) |
 | Health Score | ❌ | ❌ | ✅ | ✅ |
@@ -111,21 +111,22 @@ Rationale:
 
 ---
 
-### Phase 2: Progress Tracking + Auto-Claim
+### Phase 2: Progress Tracking + Auto-Claim ✅ COMPLETED
 
-* Resume failed or interrupted audits (for background jobs).
-* Enterprise UX primitives:
+* ✅ Resume failed or interrupted audits (for background jobs).
+* ✅ Enterprise UX primitives:
 
-  * “Audit in progress”
-  * “Page 12 / 57 completed”
-  * “6 issues found so far”
+  * ✅ "Audit in progress" status display
+  * ✅ Progress tracking with pages scanned and issues found
+  * ✅ Real-time polling every 5 seconds for in-progress audits
 
-* Auto-claim unauthenticated audits on signup:
-  * Store `sessionToken` in localStorage when unauthenticated audit completes.
-  * On dashboard load (after auth), check localStorage for `sessionToken`.
-  * If found, automatically call `/api/audit/claim` to transfer ownership.
-  * Clear localStorage after successful claim.
-  * This ensures seamless UX: users see their mini audit in dashboard immediately after signup.
+* ✅ Auto-claim unauthenticated audits on signup:
+  * ✅ Store `sessionToken` in localStorage as `audit_session_token` when unauthenticated audit completes.
+  * ✅ On dashboard load (after auth), check localStorage for `audit_session_token`.
+  * ✅ If found, automatically call `/api/audit/claim` to transfer ownership.
+  * ✅ Clear localStorage after successful claim.
+  * ✅ Fallback to `pendingAudit` for backward compatibility.
+  * ✅ This ensures seamless UX: users see their mini audit in dashboard immediately after signup.
 
 App owns global state. Deep Research does not.
 
@@ -160,24 +161,33 @@ Benefits:
 
 ---
 
-### Phase 3.5: Export & Reporting Formats
+### Phase 3.5: Export & Reporting Formats ✅ COMPLETED
 
-**Export formats for paid users**
+**Export formats for paid users only**
 
-* PDF export - Formatted report suitable for sharing with stakeholders.
-* JSON export - Machine-readable format for integrations and automation.
-* Markdown export - Includes AI prompt header for direct use in AI-assisted IDEs (Cursor, GitHub Copilot, etc.).
-  * Users can drop the entire markdown file into their IDE and use AI to resolve all issues.
-  * Prompt header guides AI to understand issue structure and provide fixes.
+* ✅ Exports are not available for free (authenticated or unauthenticated) users.
+* ✅ PDF export - Formatted report suitable for sharing with stakeholders.
+  * ✅ Uses Puppeteer for HTML to PDF conversion
+  * ✅ Includes cover page, summary, and formatted issue details
+  * ✅ 45-second timeout with proper error handling
+* ✅ JSON export - Machine-readable format for integrations and automation.
+  * ✅ Matches API response schema
+  * ✅ Includes all metadata (domain, tier, dates, etc.)
+* ✅ Markdown export - Includes AI prompt header for direct use in AI-assisted IDEs (Cursor, GitHub Copilot, etc.).
+  * ✅ Users can drop the entire markdown file into their IDE and use AI to resolve all issues.
+  * ✅ Prompt header guides AI to understand issue structure and provide fixes.
 
 **Implementation requirements**
 
-* Generate PDF with proper formatting (tables, issue grouping, severity indicators).
-* JSON export matches API response schema.
-* Markdown export includes:
-  * Header with AI prompt explaining audit structure.
-  * Structured issue list with URLs, snippets, and suggested fixes.
-  * Format optimized for AI consumption (clear instructions, structured data).
+* ✅ Generate PDF with proper formatting (tables, issue grouping, severity indicators).
+* ✅ JSON export matches API response schema.
+* ✅ Markdown export includes:
+  * ✅ Header with AI prompt explaining audit structure.
+  * ✅ Structured issue list with URLs, snippets, and suggested fixes.
+  * ✅ Format optimized for AI consumption (clear instructions, structured data).
+* ✅ Export UI in audit detail page (gated to paid users only).
+* ✅ Monitoring and logging for export failures via PostHog.
+* ✅ Filename format: `{domain}-audit-{date}.{ext}`
 
 ---
 
@@ -279,6 +289,17 @@ If hash changes → page changed.
 ---
 
 ### Phase 7: High-Value Paid Expansions
+
+**Enterprise audit prompt**
+
+* Create separate `ENTERPRISE_AUDIT_PROMPT` that extends base prompt with enterprise-only categories.
+* Include instructions for:
+  * Competitor analysis and comparison
+  * Custom audit request handling
+  * Broken link detection
+  * IA/taxonomy recommendations
+* Maintain same structure as base prompt for consistency.
+* Use conditional prompt selection based on tier in `auditSite()` function.
 
 **Competitor analysis**
 
