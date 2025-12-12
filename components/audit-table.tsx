@@ -25,14 +25,26 @@ export function AuditTable({
 }: AuditTableProps) {
   const router = useRouter()
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [userPlan, setUserPlan] = useState<string | undefined>(undefined)
   const [checking, setChecking] = useState(true)
 
-  // Check authentication status
+  // Check authentication status and user plan
   useEffect(() => {
     const checkAuth = async () => {
       const supabase = createClient()
       const { data: { session } } = await supabase.auth.getSession()
       setIsAuthenticated(!!session)
+      
+      // Fetch user plan if authenticated
+      if (session) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('plan')
+          .eq('user_id', session.user.id)
+          .maybeSingle()
+        setUserPlan(profile?.plan || 'free')
+      }
+      
       setChecking(false)
     }
     checkAuth()
@@ -55,7 +67,11 @@ export function AuditTable({
 
   return (
     <div className="relative">
-      <DataTable data={previewRows} />
+      <DataTable 
+        data={previewRows} 
+        auditId={auditId}
+        userPlan={userPlan}
+      />
       {showPreview && remainingCount > 0 && (
         <div className="relative -mt-24 h-24 bg-gradient-to-t from-background via-background to-transparent pointer-events-none" />
       )}

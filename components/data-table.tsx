@@ -90,94 +90,217 @@ import {
 } from "@/components/ui/tabs"
 import {
   AuditTableRow,
+  AuditIssueGroup,
   getSeverityBadgeVariant,
   filterBySeverity,
 } from "@/lib/audit-table-adapter"
+import { IssueState } from "@/types/fortress"
+import { createClient } from "@/lib/supabase-browser"
+import { generateIssueSignature } from "@/lib/issue-signature"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { RotateCcwIcon } from "lucide-react"
 
-const columns: ColumnDef<AuditTableRow>[] = [
-  {
-    id: "select",
-    header: ({ table }) => (
-      <div className="flex items-center justify-center">
-        <Checkbox
-          checked={
-            table.getIsAllPageRowsSelected() ||
-            (table.getIsSomePageRowsSelected() && "indeterminate")
-          }
-          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-          aria-label="Select all"
-        />
-      </div>
-    ),
-    cell: ({ row }) => (
-      <div className="flex items-center justify-center">
-        <Checkbox
-          checked={row.getIsSelected()}
-          onCheckedChange={(value) => row.toggleSelected(!!value)}
-          aria-label="Select row"
-        />
-      </div>
-    ),
-    enableSorting: false,
-    enableHiding: false,
-  },
-  {
-    accessorKey: "title",
-    header: "Issue",
-    cell: ({ row }) => {
-      return <TableCellViewer item={row.original} />
+// Create columns factory function to accept state update handlers
+function createColumns(
+  onUpdateState?: (signature: string, state: IssueState) => Promise<void>,
+  userPlan?: string,
+  currentStateTab?: 'active' | 'ignored' | 'resolved' | 'all'
+): ColumnDef<AuditTableRow>[] {
+  const isPaidUser = userPlan && userPlan !== 'free'
+  
+  return [
+    {
+      id: "select",
+      header: ({ table }) => (
+        <div className="flex items-center justify-center">
+          <Checkbox
+            checked={
+              table.getIsAllPageRowsSelected() ||
+              (table.getIsSomePageRowsSelected() && "indeterminate")
+            }
+            onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+            aria-label="Select all"
+          />
+        </div>
+      ),
+      cell: ({ row }) => (
+        <div className="flex items-center justify-center">
+          <Checkbox
+            checked={row.getIsSelected()}
+            onCheckedChange={(value) => row.toggleSelected(!!value)}
+            aria-label="Select row"
+          />
+        </div>
+      ),
+      enableSorting: false,
+      enableHiding: false,
     },
-    enableHiding: false,
-  },
-  {
-    accessorKey: "severity",
-    header: "Severity",
-    cell: ({ row }) => (
-      <Badge
-        variant={getSeverityBadgeVariant(row.original.severity)}
-        className="px-2 py-0.5 text-xs font-semibold uppercase"
-      >
-        {row.original.severity}
-      </Badge>
-    ),
-    sortingFn: (rowA, rowB) => {
-      const order = { high: 0, medium: 1, low: 2 }
-      return order[rowA.original.severity] - order[rowB.original.severity]
+    {
+      accessorKey: "title",
+      header: "Issue",
+      cell: ({ row }) => {
+        return <TableCellViewer item={row.original} />
+      },
+      enableHiding: false,
     },
-  },
-  {
-    accessorKey: "impact",
-    header: "Impact",
-    cell: ({ row }) => (
-      <div className="max-w-md truncate text-sm text-muted-foreground">
-        {row.original.impact}
-      </div>
-    ),
-  },
-  {
-    accessorKey: "count",
-    header: () => <div className="w-full text-right">Instances</div>,
-    cell: ({ row }) => (
-      <div className="text-right font-medium">{row.original.count}</div>
-    ),
-  },
-  {
-    id: "actions",
-    // NOTE: Ignore/Resolve actions are placeholders (planned for Phase 4).
-    // These buttons are disabled and show "Coming soon" until backend functionality is implemented.
-    // Users can still view issue details by clicking the issue title, which opens a Sheet sidebar.
-    cell: ({ row }) => (
+    {
+      accessorKey: "severity",
+      header: "Severity",
+      cell: ({ row }) => (
+        <Badge
+          variant={getSeverityBadgeVariant(row.original.severity)}
+          className="px-2 py-0.5 text-xs font-semibold uppercase"
+        >
+          {row.original.severity}
+        </Badge>
+      ),
+      sortingFn: (rowA, rowB) => {
+        const order = { high: 0, medium: 1, low: 2 }
+        return order[rowA.original.severity] - order[rowB.original.severity]
+      },
+    },
+    {
+      accessorKey: "impact",
+      header: "Impact",
+      cell: ({ row }) => (
+        <div className="max-w-md truncate text-sm text-muted-foreground">
+          {row.original.impact}
+        </div>
+      ),
+    },
+    {
+      accessorKey: "count",
+      header: () => <div className="w-full text-right">Instances</div>,
+      cell: ({ row }) => (
+        <div className="text-right font-medium">{row.original.count}</div>
+      ),
+    },
+    {
+      id: "actions",
+      cell: ({ row }) => {
+        const signature = row.original.signature
+        const currentState = row.original.state || 'active'
+        
+        if (!isPaidUser || !onUpdateState || !signature) {
+          return (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  className="flex size-8 text-muted-foreground data-[state=open]:bg-muted"
+                  size="icon"
+                  onClick={(e) => e.stopPropagation()}
+                  aria-label={`Actions for ${row.original.title}`}
+                >
+                  <MoreVerticalIcon />
+                  <span className="sr-only">Open menu</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent 
+                align="end" 
+                className="w-40"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <DropdownMenuItem disabled>
+                  <XIcon className="mr-2 h-4 w-4" />
+                  Ignore Issue
+                  <span className="ml-auto text-xs text-muted-foreground">Paid only</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem disabled>
+                  <CheckCircle2Icon className="mr-2 h-4 w-4" />
+                  Mark Resolved
+                  <span className="ml-auto text-xs text-muted-foreground">Paid only</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )
+        }
+
+        return (
+          <IssueActionsDropdown
+            signature={signature}
+            currentState={currentState}
+            onUpdateState={onUpdateState}
+            currentStateTab={currentStateTab}
+          />
+        )
+      },
+    },
+  ]
+}
+
+// Issue actions dropdown component
+function IssueActionsDropdown({
+  signature,
+  currentState,
+  onUpdateState,
+  currentStateTab,
+}: {
+  signature: string
+  currentState: IssueState
+  onUpdateState: (signature: string, state: IssueState) => Promise<void>
+  currentStateTab?: 'active' | 'ignored' | 'resolved' | 'all'
+}) {
+  const [ignoreDialogOpen, setIgnoreDialogOpen] = React.useState(false)
+  const [isUpdating, setIsUpdating] = React.useState(false)
+
+  const handleIgnore = async () => {
+    setIsUpdating(true)
+    try {
+      await onUpdateState(signature, 'ignored')
+      setIgnoreDialogOpen(false)
+      toast.success('Issue ignored')
+    } catch (error) {
+      toast.error('Failed to ignore issue')
+    } finally {
+      setIsUpdating(false)
+    }
+  }
+
+  const handleResolve = async () => {
+    setIsUpdating(true)
+    try {
+      await onUpdateState(signature, 'resolved')
+      toast.success('Issue marked as resolved')
+    } catch (error) {
+      toast.error('Failed to resolve issue')
+    } finally {
+      setIsUpdating(false)
+    }
+  }
+
+  const handleRestore = async () => {
+    setIsUpdating(true)
+    try {
+      await onUpdateState(signature, 'active')
+      toast.success('Issue restored')
+    } catch (error) {
+      toast.error('Failed to restore issue')
+    } finally {
+      setIsUpdating(false)
+    }
+  }
+
+  return (
+    <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
             className="flex size-8 text-muted-foreground data-[state=open]:bg-muted"
             size="icon"
-            onClick={(e) => {
-              // Prevent row expansion when clicking actions
-              e.stopPropagation()
-            }}
-            aria-label={`Actions for ${row.original.title}`}
+            onClick={(e) => e.stopPropagation()}
+            aria-label={`Actions for issue`}
+            disabled={isUpdating}
           >
             <MoreVerticalIcon />
             <span className="sr-only">Open menu</span>
@@ -186,26 +309,48 @@ const columns: ColumnDef<AuditTableRow>[] = [
         <DropdownMenuContent 
           align="end" 
           className="w-40"
-          onClick={(e) => {
-            // Prevent row expansion when interacting with dropdown
-            e.stopPropagation()
-          }}
+          onClick={(e) => e.stopPropagation()}
         >
-          <DropdownMenuItem disabled>
-            <XIcon className="mr-2 h-4 w-4" />
-            Ignore Issue
-            <span className="ml-auto text-xs text-muted-foreground">Coming soon</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem disabled>
-            <CheckCircle2Icon className="mr-2 h-4 w-4" />
-            Mark Resolved
-            <span className="ml-auto text-xs text-muted-foreground">Coming soon</span>
-          </DropdownMenuItem>
+          {currentState === 'active' && (
+            <>
+              <DropdownMenuItem onClick={() => setIgnoreDialogOpen(true)}>
+                <XIcon className="mr-2 h-4 w-4" />
+                Ignore Issue
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleResolve}>
+                <CheckCircle2Icon className="mr-2 h-4 w-4" />
+                Mark Resolved
+              </DropdownMenuItem>
+            </>
+          )}
+          {(currentState === 'ignored' || currentState === 'resolved') && (
+            <DropdownMenuItem onClick={handleRestore}>
+              <RotateCcwIcon className="mr-2 h-4 w-4" />
+              Restore
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
-    ),
-  },
-]
+
+      <AlertDialog open={ignoreDialogOpen} onOpenChange={setIgnoreDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Ignore Issue</AlertDialogTitle>
+            <AlertDialogDescription>
+              This issue will be hidden from future audits and won't appear in your active issues list. You can restore it later from the Ignored tab.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleIgnore} disabled={isUpdating}>
+              {isUpdating ? 'Ignoring...' : 'Ignore Issue'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  )
+}
 
 // Expandable row component for showing evidence and fix
 function ExpandableRow({ row }: { row: Row<AuditTableRow> }) {
@@ -317,8 +462,12 @@ function ExpandableRow({ row }: { row: Row<AuditTableRow> }) {
 
 export function DataTable({
   data: initialData,
+  auditId,
+  userPlan,
 }: {
   data: AuditTableRow[]
+  auditId?: string
+  userPlan?: string
 }) {
   const [rowSelection, setRowSelection] = React.useState({})
   const [columnVisibility, setColumnVisibility] =
@@ -339,15 +488,164 @@ export function DataTable({
     pageSize: 10,
   })
   const [activeSeverityTab, setActiveSeverityTab] = React.useState<"all" | "high" | "medium" | "low">("all")
+  const [activeStateTab, setActiveStateTab] = React.useState<'all' | 'active' | 'ignored' | 'resolved'>('all')
   const [isFiltering, setIsFiltering] = React.useState(false)
   const [globalFilter, setGlobalFilter] = React.useState("")
+  const [issueStates, setIssueStates] = React.useState<Map<string, IssueState>>(new Map())
+  const [isLoadingStates, setIsLoadingStates] = React.useState(false)
+
+  // Fetch issue states on mount if auditId and user are available
+  React.useEffect(() => {
+    if (!auditId || !userPlan || userPlan === 'free') return
+
+    const fetchIssueStates = async () => {
+      setIsLoadingStates(true)
+      try {
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.access_token) return
+
+        // Fetch audit to get domain
+        const auditResponse = await fetch(`/api/audit/${auditId}`, {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+        })
+
+        if (!auditResponse.ok) return
+        const audit = await auditResponse.json()
+        if (!audit.domain) return
+
+        // Fetch issue states for this audit's domain
+        const { data: states, error } = await supabase
+          .from('audit_issue_states')
+          .select('signature, state')
+          .eq('domain', audit.domain)
+
+        if (error) {
+          console.error('Error fetching issue states:', error)
+          return
+        }
+
+        // Convert to Map
+        const statesMap = new Map<string, IssueState>()
+        states?.forEach((s) => {
+          if (s.signature && s.state) {
+            statesMap.set(s.signature, s.state as IssueState)
+          }
+        })
+        setIssueStates(statesMap)
+      } catch (error) {
+        console.error('Error fetching issue states:', error)
+      } finally {
+        setIsLoadingStates(false)
+      }
+    }
+
+    fetchIssueStates()
+  }, [auditId, userPlan])
+
+  // Update issue state handler
+  // Use functional setState to avoid stale closures - don't include issueStates in dependencies
+  const handleUpdateState = React.useCallback(async (signature: string, newState: IssueState) => {
+    if (!auditId) {
+      throw new Error('Audit ID required')
+    }
+
+    const supabase = createClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.access_token) {
+      throw new Error('Not authenticated')
+    }
+
+    // Capture original state and apply optimistic update in one operation
+    let originalState: IssueState = 'active'
+    setIssueStates((prev) => {
+      originalState = prev.get(signature) || 'active'
+      const next = new Map(prev)
+      next.set(signature, newState)
+      return next
+    })
+
+    try {
+      const response = await fetch(`/api/audit/${auditId}/issues/${signature}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ state: newState }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Failed to update state' }))
+        // Revert optimistic update on error
+        setIssueStates((prev) => {
+          const next = new Map(prev)
+          next.set(signature, originalState)
+          return next
+        })
+        throw new Error(error.error || 'Failed to update state')
+      }
+
+      // Optimistic update already set the state correctly
+    } catch (error) {
+      // Error already handled above with revert
+      throw error
+    }
+  }, [auditId])
+
+  // Merge issue states with row data
+  // Generate signatures if missing (e.g., when initialData comes from transformAuditToTableRows without states)
+  const dataWithStates = React.useMemo(() => {
+    return initialData.map((row) => {
+      // Use existing signature or generate from row data
+      let signature = row.signature
+      if (!signature && row.title && row.examples?.[0]?.url) {
+        // Generate signature if missing
+        try {
+          signature = generateIssueSignature({
+            title: row.title,
+            severity: row.severity,
+            impact: row.impact,
+            fix: row.fix,
+            examples: row.examples,
+            count: row.count,
+          } as AuditIssueGroup)
+        } catch {
+          // Fallback to row.id if generation fails
+          signature = row.id
+        }
+      } else if (!signature) {
+        signature = row.id
+      }
+      
+      const state = issueStates.get(signature) || 'active'
+      return {
+        ...row,
+        state,
+        signature,
+      }
+    })
+  }, [initialData, issueStates])
+
+  // Filter data by state first, then by severity
+  const filteredByState = React.useMemo(() => {
+    if (activeStateTab === 'all') {
+      return dataWithStates
+    }
+    return dataWithStates.filter((row) => {
+      const state = row.state || 'active'
+      return state === activeStateTab
+    })
+  }, [dataWithStates, activeStateTab])
 
   // Filter data by severity
   const filteredData = React.useMemo(() => {
-    return filterBySeverity(initialData, activeSeverityTab)
-  }, [initialData, activeSeverityTab])
+    return filterBySeverity(filteredByState, activeSeverityTab)
+  }, [filteredByState, activeSeverityTab])
 
-  // Reset pagination when severity filter changes
+  // Reset pagination when severity or state filter changes
   React.useEffect(() => {
     setIsFiltering(true)
     const timer = setTimeout(() => {
@@ -355,7 +653,7 @@ export function DataTable({
       setIsFiltering(false)
     }, 100)
     return () => clearTimeout(timer)
-  }, [activeSeverityTab])
+  }, [activeSeverityTab, activeStateTab])
 
   // Apply global filter (search) to filtered data
   const searchFilteredData = React.useMemo(() => {
@@ -401,23 +699,100 @@ export function DataTable({
   // Count issues by severity for tabs
   const severityCounts = React.useMemo(() => {
     const counts = {
-      all: initialData.length,
-      high: initialData.filter((item) => item.severity === "high").length,
-      medium: initialData.filter((item) => item.severity === "medium").length,
-      low: initialData.filter((item) => item.severity === "low").length,
+      all: filteredByState.length,
+      high: filteredByState.filter((item) => item.severity === "high").length,
+      medium: filteredByState.filter((item) => item.severity === "medium").length,
+      low: filteredByState.filter((item) => item.severity === "low").length,
     }
     return counts
-  }, [initialData])
+  }, [filteredByState])
+
+  // Count issues by state for state tabs
+  const stateCounts = React.useMemo(() => {
+    const counts = {
+      all: dataWithStates.length,
+      active: dataWithStates.filter((item) => (item.state || 'active') === 'active').length,
+      ignored: dataWithStates.filter((item) => item.state === 'ignored').length,
+      resolved: dataWithStates.filter((item) => item.state === 'resolved').length,
+    }
+    return counts
+  }, [dataWithStates])
+
+  // Create columns with state handlers
+  const columns = React.useMemo(
+    () => createColumns(handleUpdateState, userPlan, activeStateTab),
+    [handleUpdateState, userPlan, activeStateTab]
+  )
 
   return (
+    <div className="flex w-full flex-col justify-start gap-6">
+      {/* State Tabs (Active/Ignored/Resolved) - shown only for paid users */}
+      {userPlan && userPlan !== 'free' && (
+        <Tabs
+          value={activeStateTab}
+          onValueChange={(value) => {
+            setActiveStateTab(value as 'all' | 'active' | 'ignored' | 'resolved')
+          }}
+          className="w-full"
+        >
+          <TabsList className="w-full justify-start">
+            <TabsTrigger value="all">
+              All Issues
+              {stateCounts.all > 0 && (
+                <Badge
+                  variant="secondary"
+                  className="ml-1 flex h-5 w-5 items-center justify-center bg-muted-foreground/30"
+                >
+                  {stateCounts.all}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="active">
+              Active
+              {stateCounts.active > 0 && (
+                <Badge
+                  variant="secondary"
+                  className="ml-1 flex h-5 w-5 items-center justify-center bg-muted-foreground/30"
+                >
+                  {stateCounts.active}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="ignored">
+              Ignored
+              {stateCounts.ignored > 0 && (
+                <Badge
+                  variant="secondary"
+                  className="ml-1 flex h-5 w-5 items-center justify-center bg-muted-foreground/30"
+                >
+                  {stateCounts.ignored}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="resolved">
+              Resolved
+              {stateCounts.resolved > 0 && (
+                <Badge
+                  variant="secondary"
+                  className="ml-1 flex h-5 w-5 items-center justify-center bg-muted-foreground/30"
+                >
+                  {stateCounts.resolved}
+                </Badge>
+              )}
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+      )}
+
+      {/* Severity Tabs */}
       <Tabs
-      value={activeSeverityTab}
-      onValueChange={(value) => {
-        setActiveSeverityTab(value as "all" | "high" | "medium" | "low")
-        // Pagination reset handled in useEffect above
-      }}
-      className="flex w-full flex-col justify-start gap-6"
-    >
+        value={activeSeverityTab}
+        onValueChange={(value) => {
+          setActiveSeverityTab(value as "all" | "high" | "medium" | "low")
+          // Pagination reset handled in useEffect above
+        }}
+        className="flex w-full flex-col justify-start gap-6"
+      >
       <div className="flex flex-col gap-4 px-4 lg:px-6">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-4 flex-1 min-w-0">
@@ -607,13 +982,18 @@ export function DataTable({
                     <div className="flex flex-col items-center justify-center gap-2">
                       <CheckCircle2Icon className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
                       <p className="text-sm font-medium text-foreground">
-                        {activeSeverityTab === "all" 
-                          ? "No issues found. Great job! ✅"
-                          : `No ${activeSeverityTab} severity issues found. Great job! ✅`
+                        {activeStateTab !== 'all' && activeStateTab !== 'active'
+                          ? `No ${activeStateTab} issues found`
+                          : activeSeverityTab === "all" 
+                            ? "No issues found. Great job! ✅"
+                            : `No ${activeSeverityTab} severity issues found. Great job! ✅`
                         }
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Your content audit found no issues{activeSeverityTab !== "all" && ` with ${activeSeverityTab} severity`}.
+                        {activeStateTab !== 'all' && activeStateTab !== 'active'
+                          ? `Switch to a different tab to see issues.`
+                          : `Your content audit found no issues${activeSeverityTab !== "all" && ` with ${activeSeverityTab} severity`}.`
+                        }
                       </p>
                     </div>
                   </TableCell>
@@ -710,7 +1090,8 @@ export function DataTable({
           </div>
         </div>
       </TabsContent>
-    </Tabs>
+      </Tabs>
+    </div>
   )
 }
 

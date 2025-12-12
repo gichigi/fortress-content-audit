@@ -343,7 +343,7 @@ If hash changes → page changed.
 
 ### Phase 6: Health Score + History (Retention Engine)
 
-**Health score inputs**
+**Live chart inputs**
 
 * Total issues.
 * Severity-weighted unresolved count.

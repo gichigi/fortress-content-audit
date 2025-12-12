@@ -2,6 +2,8 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { pollAuditStatus, AuditTier } from '@/lib/audit'
+import { generateIssueSignature } from '@/lib/issue-signature'
+import { AuditIssueGroup } from '@/lib/audit-table-adapter'
 
 function getBearer(req: Request) {
   const a = req.headers.get('authorization') || req.headers.get('Authorization')
@@ -67,8 +69,40 @@ export async function POST(request: Request) {
 
     // Audit completed - update the database record if we have a runId
     if (runId) {
+      // Get audit domain for filtering ignored issues
+      const { data: auditRun } = await supabaseAdmin
+        .from('brand_audit_runs')
+        .select('domain')
+        .eq('id', runId)
+        .eq('user_id', userId)
+        .maybeSingle()
+
+      // Filter out ignored issues for authenticated users
+      let filteredGroups = result.groups || []
+      if (auditRun?.domain) {
+        // Query ignored issue signatures for this user/domain
+        const { data: ignoredStates } = await supabaseAdmin
+          .from('audit_issue_states')
+          .select('signature')
+          .eq('user_id', userId)
+          .eq('domain', auditRun.domain)
+          .eq('state', 'ignored')
+
+        if (ignoredStates && ignoredStates.length > 0) {
+          const ignoredSignatures = new Set(ignoredStates.map((s) => s.signature))
+          
+          // Filter out groups whose signatures match ignored states
+          filteredGroups = result.groups.filter((group: AuditIssueGroup) => {
+            const signature = generateIssueSignature(group)
+            return !ignoredSignatures.has(signature)
+          })
+
+          console.log(`[Poll] Filtered out ${result.groups.length - filteredGroups.length} ignored issues`)
+        }
+      }
+
       const issuesJson = {
-        groups: result.groups,
+        groups: filteredGroups,
         auditedUrls: result.auditedUrls || [],
         tier: result.tier || tier, // Preserve tier for future lookups
       }
@@ -89,12 +123,28 @@ export async function POST(request: Request) {
       }
     }
 
-    // Return completed results
+    // Get filtered groups (or use result.groups if filtering wasn't done)
+    // Note: Filtering happens above when updating database, but we need to filter here too for the response
+    let responseGroups = result.groups || []
+    if (runId) {
+      const { data: auditRun } = await supabaseAdmin
+        .from('brand_audit_runs')
+        .select('domain, issues_json')
+        .eq('id', runId)
+        .eq('user_id', userId)
+        .maybeSingle()
+      
+      if (auditRun?.issues_json && typeof auditRun.issues_json === 'object' && 'groups' in auditRun.issues_json) {
+        responseGroups = (auditRun.issues_json as any).groups || result.groups || []
+      }
+    }
+
+    // Return completed results (with filtered groups)
     return NextResponse.json({
       status: 'completed',
       runId,
-      groups: result.groups,
-      totalIssues: result.groups.length,
+      groups: responseGroups,
+      totalIssues: responseGroups.length,
       meta: {
         pagesScanned: result.pagesScanned,
         auditedUrls: result.auditedUrls || [],

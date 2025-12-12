@@ -27,6 +27,33 @@ export interface UserProfile extends Database['public']['Tables']['profiles']['R
   plan: PlanType
 }
 
+// Issue State Management (Phase 4)
+export type IssueState = 'active' | 'ignored' | 'resolved'
+
+export interface IssueStateRecord {
+  id: string
+  user_id: string
+  domain: string
+  signature: string
+  state: IssueState
+  audit_run_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface AuditIssuesJson {
+  groups: Array<{
+    title: string
+    severity: 'low' | 'medium' | 'high'
+    impact: string
+    fix: string
+    examples: Array<{ url: string; snippet: string }>
+    count: number
+  }>
+  auditedUrls?: string[]
+  // Note: issueStates now stored in audit_issue_states table, not in JSONB
+}
+
 // Advanced Generators
 export interface GeneratedKeyword {
   keyword: string

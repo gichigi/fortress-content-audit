@@ -4,6 +4,8 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { validateUrl } from '@/lib/url-validation'
 import { auditSite, miniAudit, AuditTier } from '@/lib/audit'
 import PostHogClient from '@/lib/posthog'
+import { generateIssueSignature } from '@/lib/issue-signature'
+import { AuditIssueGroup } from '@/lib/audit-table-adapter'
 
 function getBearer(req: Request) {
   const a = req.headers.get('authorization') || req.headers.get('Authorization')
@@ -119,9 +121,33 @@ export async function POST(request: Request) {
       })
     }
 
+    // Filter out ignored issues for authenticated users
+    let filteredGroups = result.groups || []
+    if (isAuthenticated && userId && normalized) {
+      // Query ignored issue signatures for this user/domain
+      const { data: ignoredStates } = await supabaseAdmin
+        .from('audit_issue_states')
+        .select('signature')
+        .eq('user_id', userId)
+        .eq('domain', normalized)
+        .eq('state', 'ignored')
+
+      if (ignoredStates && ignoredStates.length > 0) {
+        const ignoredSignatures = new Set(ignoredStates.map((s) => s.signature))
+        
+        // Filter out groups whose signatures match ignored states
+        filteredGroups = result.groups.filter((group: AuditIssueGroup) => {
+          const signature = generateIssueSignature(group)
+          return !ignoredSignatures.has(signature)
+        })
+
+        console.log(`[Audit] Filtered out ${result.groups.length - filteredGroups.length} ignored issues`)
+      }
+    }
+
     // Build issues JSON payload
     const issuesJson = {
-      groups: result.groups,
+      groups: filteredGroups,
       auditedUrls: result.auditedUrls || [],
     }
     
@@ -155,6 +181,7 @@ export async function POST(request: Request) {
     }
 
     // Gating: Preview shows ~5-7 issues, authenticated free shows 5, pro shows all
+    // Note: groups are already filtered to exclude ignored issues above
     const groups = Array.isArray(issuesJson.groups) ? issuesJson.groups : []
     let gatedGroups = groups
     let preview = false
