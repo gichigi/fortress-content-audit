@@ -138,16 +138,16 @@ export function AuditResults({
         <div className="mb-8">
           <h2 className="font-serif text-3xl font-medium mb-4">Audit Results</h2>
           
-          {/* Discovered Pages - Collapsible */}
-          {results.meta?.discoveredPages && results.meta.discoveredPages.length > 0 && (
+          {/* Audited Pages - Collapsible */}
+          {results.meta?.auditedUrls && results.meta.auditedUrls.length > 0 && (
             <div className="mb-6">
               <button
                 onClick={() => setShowPages((prev) => !prev)}
                 className="flex items-center justify-between w-full text-left p-4 border border-border bg-muted/30 hover:bg-muted/50 transition-colors"
               >
                 <div>
-                  <p className="text-sm font-semibold text-foreground mb-1">Pages we found on your site</p>
-                  <p className="text-xs text-muted-foreground">{results.meta.discoveredPages.length} URLs discovered</p>
+                  <p className="text-sm font-semibold text-foreground mb-1">Pages we audited</p>
+                  <p className="text-xs text-muted-foreground">{results.meta.auditedUrls.length} URLs audited</p>
                 </div>
                 {showPages ? (
                   <ChevronUp className="h-4 w-4 text-muted-foreground" />
@@ -159,13 +159,13 @@ export function AuditResults({
               {showPages && (
                 <div className="border-l border-r border-b border-border bg-background p-4">
                   <div className="space-y-2">
-                    {results.meta.discoveredPages.slice(0, INITIAL_PAGES_SHOWN).map((page: any, idx: number) => {
-                      let display = page.title || ""
+                    {results.meta.auditedUrls.slice(0, INITIAL_PAGES_SHOWN).map((url: string, idx: number) => {
+                      let display = url
                       try {
-                        const u = new URL(page.url)
-                        display = display || u.pathname || u.href
+                        const u = new URL(url)
+                        display = u.pathname || u.href
                       } catch {
-                        display = display || page.url
+                        display = url
                       }
                       return (
                         <div key={idx} className="text-sm text-muted-foreground truncate">
@@ -173,9 +173,9 @@ export function AuditResults({
                         </div>
                       )
                     })}
-                    {results.meta.discoveredPages.length > INITIAL_PAGES_SHOWN && (
+                    {results.meta.auditedUrls.length > INITIAL_PAGES_SHOWN && (
                       <p className="text-xs text-muted-foreground pt-2 border-t border-border">
-                        +{results.meta.discoveredPages.length - INITIAL_PAGES_SHOWN} more
+                        +{results.meta.auditedUrls.length - INITIAL_PAGES_SHOWN} more
                       </p>
                     )}
                   </div>

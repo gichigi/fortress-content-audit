@@ -22,3 +22,5 @@ DROP INDEX IF EXISTS idx_brand_onboarding_created_at;
 -- Drop table
 DROP TABLE IF EXISTS public.brand_onboarding;
 
+
+

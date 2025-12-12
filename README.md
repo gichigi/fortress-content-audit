@@ -4,14 +4,14 @@ A powerful web application that automatically audits websites for content incons
 
 ## Features
 
-- **AI-Powered Content Auditing**: Default scan of up to 3 key pages (search-first, then map/select/scrape, with crawl/homepage fallback)
-- **Focused Issue Detection**:
-  - Spelling/grammar/typos
-  - Naming, terminology, factual conflicts
-  - Contradictory claims
-  - (Ignores spacing/formatting/layout noise like nav/footers/consent UI)
-- **Transparent Results**: Response includes audited URLs (`meta.auditedUrls`) and map info when used
-- **Detailed Reports**: Prioritized recommendations with concrete snippets and URLs
+- **AI-Powered Content Auditing**: Automatically scan up to 10 pages of any website
+- **Comprehensive Issue Detection**: Find 4 core issue types:
+  - Terminology conflicts - Same concept called different names
+  - Contradictory claims - Facts/numbers that don't match across pages
+  - Voice inconsistencies - Formal vs casual tone switching
+  - Naming conflicts - Product/brand names spelled differently
+- **Free 10-Page Scans**: No signup required for initial audits
+- **Detailed Reports**: Get prioritized recommendations with specific examples and URLs
 - **Dashboard**: Save and track your audit results over time
 
 ## Technologies
@@ -21,8 +21,7 @@ A powerful web application that automatically audits websites for content incons
 - TypeScript
 - Tailwind CSS
 - Radix UI Components
-- OpenAI API (GPT-5.1)
-- Firecrawl for website crawling
+- OpenAI API (Deep Research models: o3-deep-research, o4-mini-deep-research)
 - Supabase for authentication and data storage
 - PostHog for analytics
 
@@ -32,7 +31,6 @@ A powerful web application that automatically audits websites for content incons
 
 - Node.js 18+ and pnpm
 - OpenAI API key
-- Firecrawl API key
 - Supabase project (for authentication and database)
 
 ### Installation
@@ -52,7 +50,6 @@ A powerful web application that automatically audits websites for content incons
    Create a `.env.local` file with:
    ```
    OPENAI_API_KEY=your_openai_api_key
-   FIRECRAWL_API_KEY=your_firecrawl_api_key
    NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
    NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
    SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
@@ -71,13 +68,9 @@ A powerful web application that automatically audits websites for content incons
 ## Usage
 
 1. Enter a website URL on the homepage
-2. Backend flow:
-   - Firecrawl `searchBrief site:<domain>` to pick top pages
-   - If needed, Firecrawl `map` + GPT-4.1 selector + `scrape` to fetch markdown
-   - Fallback to `crawl` or direct homepage fetch
-   - Pages/URLs are deduped and returned in `meta.auditedUrls`
-3. AI (GPT-5.1) analyzes collected page copy for the focused issue set
-4. View prioritized issues with examples and URLs
+2. The system automatically crawls up to 10 pages
+3. AI analyzes content for inconsistencies
+4. View detailed audit results with prioritized issues
 5. Save audits to your dashboard (sign up required)
 
 ## Project Structure
@@ -94,7 +87,6 @@ MIT
 
 ## Acknowledgements
 
-- OpenAI for AI capabilities
-- Firecrawl for website crawling
+- OpenAI for AI capabilities (Deep Research)
 - Vercel for hosting and deployment
 - Supabase for backend infrastructure

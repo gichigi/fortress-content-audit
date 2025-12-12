@@ -25,11 +25,6 @@ export function validateUrl(input: string): UrlValidationResult {
       throw new Error("Missing hostname")
     }
 
-    // Require a dot to avoid obvious invalid domains (e.g., "not-a-url")
-    if (!url.hostname.includes(".")) {
-      throw new Error("Domain must include a dot")
-    }
-
     // Check for common issues
     if (url.hostname === 'localhost') {
       throw new Error("localhost URLs not allowed")

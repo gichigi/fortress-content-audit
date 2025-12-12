@@ -17,6 +17,7 @@ const PUBLIC_ROUTES = [
   '/api/scrape',
   '/api/preview',
   '/api/generate-styleguide',
+  '/api/analyze-brand',
   '/api/clarifying-questions',
   '/api/ab-comparison',
   '/api/ab-comparisons',
@@ -39,26 +40,13 @@ function isPublicRoute(pathname: string): boolean {
 }
 
 export async function updateSession(request: NextRequest) {
-  // Check for required environment variables
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    console.error(
-      'Missing Supabase environment variables. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in your .env.local file'
-    )
-    // Return a response without Supabase auth for now
-    // This allows the app to run, but auth won't work until env vars are set
-    return NextResponse.next({ request })
-  }
-
   let supabaseResponse = NextResponse.next({
     request,
   })
 
   const supabase = createServerClient(
-    supabaseUrl,
-    supabaseAnonKey,
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
         getAll() {

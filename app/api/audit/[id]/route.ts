@@ -47,10 +47,11 @@ export async function GET(
       preview: plan === 'free',
       domain: run.domain,
       groups: gatedGroups,
+      totalIssues: groups.length,
       meta: { 
         pagesScanned: run.pages_scanned, 
         createdAt: run.created_at,
-        discoveredPages: run.issues_json?.discoveredPages || [],
+        auditedUrls: run.issues_json?.auditedUrls || [],
       },
     })
   } catch (e) {
