@@ -14,6 +14,7 @@
     "test:db": "jest __tests__/database-storage.test.ts",
     "test:api": "jest __tests__/api-endpoints.test.ts",
     "test:api:server": "jest __tests__/api-endpoints-server.test.ts",
+    "test:auth": "jest __tests__/auth-user-flow.test.ts",
     "generate-logos": "node scripts/generate-logo-svgs.js",
     "generate-favicons": "node scripts/generate-favicons.js",
     "generate-icons": "pnpm generate-logos && pnpm generate-favicons"

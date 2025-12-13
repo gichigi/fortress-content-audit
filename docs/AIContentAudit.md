@@ -221,12 +221,15 @@ Benefits:
 - ✅ All 6 tests passing in `__tests__/api-endpoints-server.test.ts` (dev server integration testing)
 - ✅ Fixed URL normalization to use `url.origin` for consistent domain format across audits
 
-**Auth & User Flow Testing:**
-- Test signup flow (email → magic link → dashboard)
-- Test auto-claim on dashboard load (localStorage → API call → DB update)
-- Test unauthenticated → authenticated flow (mock audit → signup → auto-claim)
-- Test authenticated free tier (mock audit with account storage)
-- Test user plan verification and gating
+**Auth & User Flow Testing:** ✅ COMPLETE
+- ✅ Test signup flow (email → magic link → dashboard)
+- ✅ Test auto-claim on dashboard load (localStorage → API call → DB update)
+- ✅ Test unauthenticated → authenticated flow (mock audit → signup → auto-claim)
+- ✅ Test authenticated free tier (mock audit with account storage)
+- ✅ Test user plan verification and gating
+- ✅ Test concurrent claims (multiple users, same token edge cases)
+- ✅ All 12 tests passing in `__tests__/auth-user-flow.test.ts`
+- ⚠️ **Note:** RLS policy issue discovered and resolved - see `docs/RLS_POLICY_ISSUE.md` for details. Adopted permissive RLS policy with application-level security.
 
 **Stripe Payment Testing:**
 - Test checkout flow (button click → Stripe session → redirect)

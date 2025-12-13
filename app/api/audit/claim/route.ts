@@ -63,7 +63,10 @@ export async function POST(request: Request) {
 
     if (updateErr) {
       console.error('[Audit Claim] Error claiming audit:', updateErr)
-      return NextResponse.json({ error: 'Failed to claim audit' }, { status: 500 })
+      return NextResponse.json({ 
+        error: 'Failed to claim audit',
+        details: updateErr.message || String(updateErr)
+      }, { status: 500 })
     }
 
     console.log(`[Audit Claim] Successfully claimed audit ${audit.id} for user ${userId}`)
