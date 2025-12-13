@@ -6,7 +6,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin"
 
 // Pick the right Stripe secret key and webhook secret based on STRIPE_MODE
 type StripeMode = 'test' | 'live';
-const mode = (process.env.STRIPE_MODE as StripeMode) || 'live';
+const mode = (process.env.STRIPE_MODE as StripeMode) || 'test';
 const STRIPE_SECRET_KEY =
   mode === 'test'
     ? process.env.STRIPE_TEST_SECRET_KEY

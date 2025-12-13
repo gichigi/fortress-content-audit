@@ -14,11 +14,14 @@ export default function Header({ rightContent }: HeaderProps) {
         <Link href="/" className="text-2xl font-serif font-semibold tracking-tight hover:opacity-80 transition-opacity">
           Fortress
         </Link>
-        {rightContent && (
-          <div className="flex items-center gap-8">
-            {rightContent}
-          </div>
-        )}
+        <div className="flex items-center gap-8">
+          {!rightContent && (
+            <Link href="/pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+              Pricing
+            </Link>
+          )}
+          {rightContent && rightContent}
+        </div>
       </nav>
     </header>
   )

@@ -231,13 +231,165 @@ Benefits:
 - ✅ All 12 tests passing in `__tests__/auth-user-flow.test.ts`
 - ⚠️ **Note:** RLS policy issue discovered and resolved - see `docs/RLS_POLICY_ISSUE.md` for details. Adopted permissive RLS policy with application-level security.
 
-**Stripe Payment Testing:**
-- Test checkout flow (button click → Stripe session → redirect)
-- Test payment success (webhook → plan update → redirect to success page)
-- Test payment cancel (redirect to cancel page, no plan change)
-- Test webhook reliability (retry logic, idempotency, error handling)
-- Test plan activation (verify profile.plan updates correctly)
-- Test redirects (success_url, cancel_url, return_url)
+**Stripe Payment Testing:** (Use Mock Data + Stripe Test Mode)
+
+**Prerequisites:**
+- ⚠️ **TODO:** Verify Stripe test mode enabled (STRIPE_MODE=test in .env.local)
+- ⚠️ **TODO:** Verify Stripe test secret key configured (STRIPE_TEST_SECRET_KEY)
+- ⚠️ **TODO:** Verify Stripe test publishable key configured (STRIPE_TEST_PUBLISHABLE_KEY)
+- ⚠️ **TODO:** Create Stripe test product matching plan structure (Pro subscription)
+- ⚠️ **TODO:** Get Stripe test webhook secret (STRIPE_TEST_WEBHOOK_SECRET) from Stripe dashboard
+- ⚠️ **TODO:** Configure Stripe test webhook endpoint in Stripe dashboard (localhost:3000/api/webhook for local testing)
+- ⚠️ **TODO:** Verify Stripe MCP server available for test data creation
+
+**Checkout Session Creation (POST /api/create-checkout-session):**
+- ⚠️ **TODO:** Test checkout session creation with valid request (returns Stripe checkout URL)
+- ⚠️ **TODO:** Test checkout session includes correct metadata (email_capture_token, plan, created_at)
+- ⚠️ **TODO:** Test checkout session uses correct price ID (STRIPE_TEST_PRO_PRICE_ID in test mode)
+- ⚠️ **TODO:** Test checkout session has correct success_url with session_id placeholder
+- ⚠️ **TODO:** Test checkout session has correct cancel_url
+- ⚠️ **TODO:** Test checkout session allows promotion codes
+- ⚠️ **TODO:** Test checkout session creation with emailCaptureToken in body
+- ⚠️ **TODO:** Test checkout session creation without emailCaptureToken (optional)
+- ⚠️ **TODO:** Test error handling when STRIPE_TEST_PRO_PRICE_ID is missing (500 error)
+- ⚠️ **TODO:** Test error handling when Stripe API fails (network error, invalid key)
+- ⚠️ **TODO:** Test PostHog error tracking on checkout failures
+
+**Webhook Signature Verification (POST /api/webhook):**
+- ⚠️ **TODO:** Test webhook rejects requests without stripe-signature header (400 error)
+- ⚠️ **TODO:** Test webhook rejects requests with invalid signature (400 error)
+- ⚠️ **TODO:** Test webhook accepts valid signature (200 response)
+- ⚠️ **TODO:** Test webhook signature verification uses correct webhook secret (STRIPE_TEST_WEBHOOK_SECRET)
+- ⚠️ **TODO:** Test webhook uses raw buffer for signature verification (not parsed JSON)
+- ⚠️ **TODO:** Test webhook URL normalization (www to non-www domain handling)
+
+**Webhook Event Processing:**
+- ⚠️ **TODO:** Test checkout.session.completed event (payment success → plan update → email)
+- ⚠️ **TODO:** Test checkout.session.async_payment_succeeded event (delayed payment success)
+- ⚠️ **TODO:** Test checkout.session.expired event (abandoned cart → recovery email)
+- ⚠️ **TODO:** Test customer.subscription.created event (plan activation)
+- ⚠️ **TODO:** Test customer.subscription.updated event (plan reactivation if status=active)
+- ⚠️ **TODO:** Test customer.subscription.deleted event (plan downgrade to free)
+- ⚠️ **TODO:** Test unhandled event types (logged but not processed)
+- ⚠️ **TODO:** Test webhook idempotency (same event processed twice, no duplicate actions)
+- ⚠️ **TODO:** Test webhook error handling (event processing failures logged, 400 response)
+
+**Payment Success Flow:**
+- ⚠️ **TODO:** Test handlePaymentSuccess sends thank you email to customer
+- ⚠️ **TODO:** Test handlePaymentSuccess marks email as sent (prevents duplicates)
+- ⚠️ **TODO:** Test handlePaymentSuccess updates email_capture.payment_completed to true
+- ⚠️ **TODO:** Test handlePaymentSuccess handles missing customer email gracefully
+- ⚠️ **TODO:** Test handlePaymentSuccess extracts customer name and amount correctly
+- ⚠️ **TODO:** Test handlePaymentSuccess uses correct email service (Resend)
+- ⚠️ **TODO:** Test subscription checkout triggers handleSubscriptionActive
+- ⚠️ **TODO:** Test handleSubscriptionActive updates profile.plan to 'pro'
+- ⚠️ **TODO:** Test handleSubscriptionActive sets stripe_customer_id and stripe_subscription_id
+- ⚠️ **TODO:** Test handleSubscriptionActive sets current_period_end from subscription
+- ⚠️ **TODO:** Test handleSubscriptionActive resolves user_id from email via admin API
+- ⚠️ **TODO:** Test handleSubscriptionActive handles missing email gracefully
+- ⚠️ **TODO:** Test handleSubscriptionActive handles user not found gracefully
+
+**Payment Cancel Flow:**
+- ⚠️ **TODO:** Test cancel_url redirects to /preview page
+- ⚠️ **TODO:** Test cancel flow does not update profile.plan (stays 'free')
+- ⚠️ **TODO:** Test cancel flow does not create subscription
+- ⚠️ **TODO:** Test cancel flow does not send emails
+
+**Subscription Lifecycle:**
+- ⚠️ **TODO:** Test subscription.created sets plan to 'pro' with correct period_end
+- ⚠️ **TODO:** Test subscription.updated reactivates plan if status='active'
+- ⚠️ **TODO:** Test subscription.updated does not change plan if status='canceled'
+- ⚠️ **TODO:** Test subscription.deleted downgrades plan to 'free'
+- ⚠️ **TODO:** Test subscription.deleted clears stripe_subscription_id
+- ⚠️ **TODO:** Test subscription.deleted clears current_period_end
+- ⚠️ **TODO:** Test subscription lifecycle with multiple events (created → updated → deleted)
+
+**Abandoned Cart Flow:**
+- ⚠️ **TODO:** Test handleSessionExpired sends abandoned cart email
+- ⚠️ **TODO:** Test handleSessionExpired includes discount code (COMEBACK20)
+- ⚠️ **TODO:** Test handleSessionExpired includes recovery URL
+- ⚠️ **TODO:** Test handleSessionExpired checks promotional consent (only sends if opt_in)
+- ⚠️ **TODO:** Test handleSessionExpired marks email as sent (prevents duplicates)
+- ⚠️ **TODO:** Test handleSessionExpired handles missing email gracefully
+- ⚠️ **TODO:** Test handleSessionExpired handles missing recovery URL gracefully
+
+**Billing Portal (POST /api/portal):**
+- ⚠️ **TODO:** Test portal session creation with explicit customerId
+- ⚠️ **TODO:** Test portal session creation resolves customerId from authenticated user email
+- ⚠️ **TODO:** Test portal session creation searches Stripe customers by email
+- ⚠️ **TODO:** Test portal session has correct return_url (/dashboard)
+- ⚠️ **TODO:** Test portal session creation requires authentication (401 if no token)
+- ⚠️ **TODO:** Test portal session creation handles invalid token (401 error)
+- ⚠️ **TODO:** Test portal session creation handles user not found (401 error)
+- ⚠️ **TODO:** Test portal session creation handles no Stripe customer found (404 error)
+- ⚠️ **TODO:** Test portal session creation error handling (500 on Stripe API failure)
+
+**Plan Activation & Database Updates:**
+- ⚠️ **TODO:** Test profile.plan updates from 'free' to 'pro' on successful payment
+- ⚠️ **TODO:** Test profile.stripe_customer_id is set correctly
+- ⚠️ **TODO:** Test profile.stripe_subscription_id is set correctly
+- ⚠️ **TODO:** Test profile.current_period_end is set from subscription period_end
+- ⚠️ **TODO:** Test profile update uses upsert with onConflict='user_id'
+- ⚠️ **TODO:** Test plan activation works for existing users (update, not insert)
+- ⚠️ **TODO:** Test plan activation works for new users (insert profile if missing)
+- ⚠️ **TODO:** Test plan downgrade clears subscription fields (stripe_subscription_id, current_period_end)
+- ⚠️ **TODO:** Test plan downgrade sets plan to 'free' (not null)
+- ⚠️ **TODO:** Test concurrent webhook events (same subscription, multiple events) handled correctly
+
+**Email Integration:**
+- ⚠️ **TODO:** Test thank you email sent with correct customer details (email, name, amount, currency)
+- ⚠️ **TODO:** Test thank you email includes session ID
+- ⚠️ **TODO:** Test abandoned cart email sent with discount code and recovery URL
+- ⚠️ **TODO:** Test email service error handling (failures logged, don't break webhook)
+- ⚠️ **TODO:** Test email idempotency (same email not sent twice)
+- ⚠️ **TODO:** Test email_captures table updated correctly (payment_completed flag)
+- ⚠️ **TODO:** Test email_captures table tracks abandoned_email_sent flag
+
+**Error Handling & Edge Cases:**
+- ⚠️ **TODO:** Test webhook handles malformed JSON payload gracefully
+- ⚠️ **TODO:** Test webhook handles missing event type gracefully
+- ⚠️ **TODO:** Test webhook handles missing event data gracefully
+- ⚠️ **TODO:** Test handleSubscriptionActive handles Stripe API errors gracefully
+- ⚠️ **TODO:** Test handleSubscriptionActive handles missing subscription gracefully
+- ⚠️ **TODO:** Test handleSubscriptionActive handles deleted customer gracefully
+- ⚠️ **TODO:** Test setPlanFree handles Stripe API errors gracefully
+- ⚠️ **TODO:** Test setPlanFree handles missing customer gracefully
+- ⚠️ **TODO:** Test email service failures don't break webhook processing
+- ⚠️ **TODO:** Test database update failures logged but don't crash webhook
+
+**Redirects & URLs:**
+- ⚠️ **TODO:** Test success_url includes session_id placeholder ({CHECKOUT_SESSION_ID})
+- ⚠️ **TODO:** Test success_url includes plan parameter (plan=pro)
+- ⚠️ **TODO:** Test success_url uses correct APP_URL from environment
+- ⚠️ **TODO:** Test cancel_url redirects to /preview
+- ⚠️ **TODO:** Test return_url in portal redirects to /dashboard
+- ⚠️ **TODO:** Test URL construction handles different environments (dev, staging, prod)
+
+**Integration Tests (Mock Stripe Events):**
+- ⚠️ **TODO:** Test full payment flow: checkout → webhook → plan update → email
+- ⚠️ **TODO:** Test full cancel flow: checkout → cancel → no plan change
+- ⚠️ **TODO:** Test full subscription lifecycle: create → update → delete
+- ⚠️ **TODO:** Test authenticated user checkout flow (user exists, profile updated)
+- ⚠️ **TODO:** Test unauthenticated checkout flow (user created during checkout, profile created)
+- ⚠️ **TODO:** Test email capture token reconciliation (webhook matches email capture)
+
+**Mock Data Strategy:**
+- ⚠️ **TODO:** Use Stripe test mode (STRIPE_MODE=test) for all tests
+- ⚠️ **TODO:** Mock Stripe webhook events with valid signatures (use Stripe test webhook secret)
+- ⚠️ **TODO:** Create test Stripe products and prices matching plan structure
+- ⚠️ **TODO:** Use Stripe test cards for payment simulation (4242 4242 4242 4242)
+- ⚠️ **TODO:** Mock email service to avoid sending real emails during tests
+- ⚠️ **TODO:** Use test database for profile updates (isolated from production)
+- ⚠️ **TODO:** Generate test webhook signatures using Stripe SDK
+- ⚠️ **TODO:** Test with real Stripe test API (not fully mocked) for integration confidence
+
+**Test File Structure:**
+- ⚠️ **TODO:** Create `__tests__/stripe-payment.test.ts` with all test cases
+- ⚠️ **TODO:** Use test helpers for creating mock Stripe events
+- ⚠️ **TODO:** Use test helpers for creating test users and profiles
+- ⚠️ **TODO:** Use test helpers for cleaning up test data (profiles, email_captures)
+- ⚠️ **TODO:** Mock Stripe SDK where appropriate (signature verification, API calls)
+- ⚠️ **TODO:** Use real Stripe test API for critical paths (checkout creation, webhook processing)
 
 **UI & Display Testing (Mock Data):**
 - Test homepage flow with mock audit results (results display, session token storage)

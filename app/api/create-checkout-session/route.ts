@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server"
 import Stripe from "stripe"
 import PostHogClient from "@/lib/posthog"
+import { supabaseAdmin } from "@/lib/supabase-admin"
 
 type StripeMode = 'test' | 'live'
 const mode = (process.env.STRIPE_MODE as StripeMode) || 'test'
@@ -19,10 +20,34 @@ export async function POST(request: Request) {
   try {
     // Optional body for future use (e.g., emailCaptureToken)
     let emailCaptureToken: string | undefined
+    let userEmail: string | undefined
+    let customerId: string | undefined
+    
     try {
       const body = await request.json().catch(() => null)
       emailCaptureToken = body?.emailCaptureToken
     } catch {}
+
+    // Try to get user email and customer ID from auth token
+    const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
+    if (authHeader?.toLowerCase().startsWith('bearer ')) {
+      const token = authHeader.split(' ')[1]
+      const { data: userData, error: userError } = await supabaseAdmin.auth.getUser(token)
+      if (!userError && userData?.user?.email) {
+        userEmail = userData.user.email
+        
+        // Get profile to check for existing Stripe customer
+        const { data: profileData } = await supabaseAdmin
+          .from('profiles')
+          .select('stripe_customer_id')
+          .eq('user_id', userData.user.id)
+          .maybeSingle()
+        
+        if (profileData?.stripe_customer_id) {
+          customerId = profileData.stripe_customer_id
+        }
+      }
+    }
 
     if (!PRO_PRICE_ID) {
       return NextResponse.json(
@@ -31,19 +56,30 @@ export async function POST(request: Request) {
       )
     }
 
-    const session = await stripe.checkout.sessions.create({
+    const sessionConfig: Stripe.Checkout.SessionCreateParams = {
       mode: 'subscription',
       line_items: [{ price: PRO_PRICE_ID, quantity: 1 }],
-      success_url: `${APP_URL}/payment/success?session_id={CHECKOUT_SESSION_ID}&plan=pro`,
-      cancel_url: `${APP_URL}/preview`,
+      success_url: `${APP_URL}/dashboard?payment=success`,
+      cancel_url: `${APP_URL}/account`,
       allow_promotion_codes: true,
-      // Record email capture token for webhook reconciliation if present
       metadata: {
         email_capture_token: emailCaptureToken || '',
         created_at: new Date().toISOString(),
         plan: 'pro',
       },
-    })
+    }
+
+    // Pre-fill email if authenticated
+    if (userEmail) {
+      sessionConfig.customer_email = userEmail
+    }
+
+    // Reuse existing customer if available
+    if (customerId) {
+      sessionConfig.customer = customerId
+    }
+
+    const session = await stripe.checkout.sessions.create(sessionConfig)
 
     console.log(`[Stripe] Subscription checkout session created: ${session.id}`)
     return NextResponse.json({ url: session.url })

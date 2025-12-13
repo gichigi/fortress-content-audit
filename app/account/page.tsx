@@ -57,7 +57,7 @@ export default function AccountPage() {
       // Load profile
       const { data: profileData } = await supabase
         .from('profiles')
-        .select('name, plan')
+        .select('name, plan, stripe_customer_id')
         .eq('user_id', session.user.id)
         .maybeSingle()
 
@@ -135,6 +135,41 @@ export default function AccountPage() {
       })
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleUpgrade = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        router.push(`/sign-up?next=${encodeURIComponent('/account')}`)
+        return
+      }
+
+      const response = await fetch('/api/create-checkout-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({}),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to create checkout session')
+      }
+
+      const { url } = await response.json()
+      if (url) {
+        window.location.href = url
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to start checkout",
+        variant: "destructive"
+      })
     }
   }
 
@@ -319,11 +354,22 @@ export default function AccountPage() {
                 Current plan: <span className="font-medium">{PLAN_NAMES[profile?.plan as keyof typeof PLAN_NAMES] || 'Outpost'}</span>
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <Button onClick={handleManageBilling} variant="outline">
-                <CreditCard className="mr-2 h-4 w-4" />
-                Manage Billing
-              </Button>
+            <CardContent className="space-y-4">
+              {profile?.plan === 'free' ? (
+                <Button onClick={handleUpgrade} className="w-full">
+                  Upgrade to {PLAN_NAMES.pro}
+                </Button>
+              ) : (
+                <>
+                  <Button onClick={handleManageBilling} variant="outline" className="w-full">
+                    <CreditCard className="mr-2 h-4 w-4" />
+                    Manage Billing
+                  </Button>
+                  <p className="text-xs text-muted-foreground text-center">
+                    Cancel your subscription or update payment method in the billing portal
+                  </p>
+                </>
+              )}
             </CardContent>
           </Card>
 

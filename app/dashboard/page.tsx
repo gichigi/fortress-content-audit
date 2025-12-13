@@ -48,6 +48,19 @@ export default function DashboardPage() {
     checkAuthAndLoad()
   }, [])
 
+  useEffect(() => {
+    // Check for payment success query param
+    const urlParams = new URLSearchParams(window.location.search)
+    if (urlParams.get('payment') === 'success') {
+      toast({
+        title: "Payment successful!",
+        description: "Your subscription is now active.",
+      })
+      // Clear query param
+      router.replace('/dashboard', { scroll: false })
+    }
+  }, [router, toast])
+
   // Claim pending audit from localStorage (set during unauthenticated audit + email signup)
   const claimPendingAudit = async (token: string) => {
     try {
@@ -564,8 +577,41 @@ export default function DashboardPage() {
                                         posthog.capture('upgrade_clicked', { location: 'audit-gating' }) 
                                       } catch {}
                                       
-                                      // Redirect to upgrade flow
-                                      router.push('/account')
+                                      // Call checkout API directly
+                                      try {
+                                        const supabase = createClient()
+                                        const { data: { session } } = await supabase.auth.getSession()
+                                        
+                                        if (!session) {
+                                          router.push(`/sign-up?next=${encodeURIComponent('/dashboard')}`)
+                                          return
+                                        }
+
+                                        const response = await fetch('/api/create-checkout-session', {
+                                          method: 'POST',
+                                          headers: {
+                                            'Content-Type': 'application/json',
+                                            'Authorization': `Bearer ${session.access_token}`,
+                                          },
+                                          body: JSON.stringify({}),
+                                        })
+
+                                        if (!response.ok) {
+                                          const error = await response.json()
+                                          throw new Error(error.error || 'Failed to create checkout session')
+                                        }
+
+                                        const { url } = await response.json()
+                                        if (url) {
+                                          window.location.href = url
+                                        }
+                                      } catch (error) {
+                                        toast({
+                                          title: "Error",
+                                          description: error instanceof Error ? error.message : "Failed to start checkout",
+                                          variant: "destructive",
+                                        })
+                                      }
                                     }}
                                   >
                                     Upgrade to {PLAN_NAMES.pro}
