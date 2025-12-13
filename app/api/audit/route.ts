@@ -50,7 +50,16 @@ export async function POST(request: Request) {
     if (!val.isValid) {
       return NextResponse.json({ error: val.error || 'Invalid URL' }, { status: 400 })
     }
-    const normalized = val.url
+    // Normalize to origin (no trailing slash) for consistency with audit functions
+    // This ensures domain format matches what's used in issue state lookups
+    let normalized = val.url
+    try {
+      const url = new URL(val.url)
+      normalized = url.origin // Remove trailing slash, path, query, etc.
+    } catch {
+      // Fallback to validated URL if parsing fails
+      normalized = val.url
+    }
     const finalSessionToken = session_token || sessionToken
 
     // Check plan and determine audit tier

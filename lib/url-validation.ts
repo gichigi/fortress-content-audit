@@ -30,6 +30,20 @@ export function validateUrl(input: string): UrlValidationResult {
       throw new Error("localhost URLs not allowed")
     }
 
+    // Validate hostname has a valid TLD (at least one dot and valid TLD pattern)
+    // Reject hostnames without dots (except localhost which is already rejected)
+    // Reject hostnames that don't look like valid domains
+    const hostname = url.hostname.toLowerCase()
+    const tldPattern = /\.[a-z]{2,}$/i // Must end with dot + 2+ letter TLD
+    if (!hostname.includes('.') || !tldPattern.test(hostname)) {
+      throw new Error("Invalid domain format - must include a valid top-level domain (e.g., .com, .org)")
+    }
+
+    // Reject invalid domain patterns
+    if (hostname.includes('..') || hostname.startsWith('.') || hostname.endsWith('.')) {
+      throw new Error("Invalid domain format")
+    }
+
     Logger.info("URL validation successful", { url: url.toString() })
     return {
       isValid: true,

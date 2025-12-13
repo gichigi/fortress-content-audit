@@ -195,19 +195,38 @@ Benefits:
 
 **Testing Requirements**
 
-**Mini Audit Testing:**
-- Test mini audit via API (curl or Postman - happy path, error cases, timeout)
-- Test mini audit via UI (homepage flow, results display, session token storage)
-- Test unauthenticated → authenticated flow (audit → signup → auto-claim)
-- Test authenticated free tier (mini audit with account storage)
+**Priority: Test non-AI components first using mock data to avoid expensive model calls.**
 
-**Auth & Database Testing:**
+**Non-AI Testing (Use Mock Data):**
+
+**Database & Storage Testing:** ✅ COMPLETE
+- ✅ Test database storage (unauthenticated saves with session_token, authenticated saves with user_id)
+- ✅ Test database retrieval (RLS policies, user isolation, session token lookup)
+- ✅ Test session token expiry (24h window, cleanup of expired tokens)
+- ✅ Test concurrent claims (multiple users, same token edge cases)
+- ✅ Test audit result storage/retrieval with mock audit data (no model calls)
+- ✅ Test issue state persistence (active/ignored/resolved) with mock data
+- ✅ Test audit history retrieval and pagination
+- ✅ All 14 tests passing in `__tests__/database-storage.test.ts`
+
+**API Endpoints Testing (Mock Audit Data):** ✅ COMPLETE
+- ✅ Test `/api/audit` endpoint with mock response (skip actual model calls)
+- ✅ Test `/api/audit/[id]` retrieval with stored mock data
+- ✅ Test `/api/audit/[id]/export` with mock audit results (PDF, JSON, Markdown)
+- ✅ Test `/api/audit/claim` with mock session tokens
+- ✅ Test `/api/audit/poll` with mock in-progress states
+- ✅ Test API error handling (network errors, 500s, malformed responses)
+- ✅ Test malformed domain input validation (invalid URLs, edge cases)
+- ✅ All 22 tests passing in `__tests__/api-endpoints.test.ts` (direct route handler testing)
+- ✅ All 6 tests passing in `__tests__/api-endpoints-server.test.ts` (dev server integration testing)
+- ✅ Fixed URL normalization to use `url.origin` for consistent domain format across audits
+
+**Auth & User Flow Testing:**
 - Test signup flow (email → magic link → dashboard)
 - Test auto-claim on dashboard load (localStorage → API call → DB update)
-- Test database storage (unauthenticated saves with session_token, authenticated saves with user_id)
-- Test database retrieval (RLS policies, user isolation, session token lookup)
-- Test session token expiry (24h window, cleanup of expired tokens)
-- Test concurrent claims (multiple users, same token edge cases)
+- Test unauthenticated → authenticated flow (mock audit → signup → auto-claim)
+- Test authenticated free tier (mock audit with account storage)
+- Test user plan verification and gating
 
 **Stripe Payment Testing:**
 - Test checkout flow (button click → Stripe session → redirect)
@@ -217,24 +236,35 @@ Benefits:
 - Test plan activation (verify profile.plan updates correctly)
 - Test redirects (success_url, cancel_url, return_url)
 
-**Export & Design Testing:**
-- Test PDF export (formatting, layout, file download)
-- Test JSON export (schema validation, all fields present)
-- Test Markdown export (AI prompt header, structure, formatting)
-- Test export gating (free users see upgrade prompt, paid users can export)
+**UI & Display Testing (Mock Data):**
+- Test homepage flow with mock audit results (results display, session token storage)
+- Test dashboard audit list display with mock audits
+- Test audit detail page with mock data (table display, expandable rows)
 - Test export UI (dropdown menu, loading states, error handling)
-- Test export design/presentation (PDF looks professional, markdown is readable)
+- Test export formats with mock data (PDF formatting, JSON schema, Markdown structure)
+- Test export gating (free users see upgrade prompt, paid users can export)
+- Test progress polling UI with mock in-progress states
+- Test empty audit results display
+- Test very large audits display (many issues, pagination)
+- Test severity filtering tabs with mock data
+- Test issue state filtering (active/ignored/resolved) with mock data
 
-**Progress Polling Testing:**
-- Test background audit polling (status updates, progress display)
-- Test timeout handling (long-running audits, connection issues)
-- Test resume functionality (interrupted audits, status recovery)
+**AI Model Testing (Expensive - Do Later):**
+- Test mini audit via API (curl or Postman - happy path, error cases, timeout)
+- Test mini audit via UI (actual model calls)
+- Test full audit with background execution
+- Test model timeout handling
+- Test model error recovery
+- Test different tier configurations (FREE/PAID/ENTERPRISE model selection)
+- Test tool call limits and enforcement
 
-**Error Handling Testing:**
-- Test API failures (network errors, 500s, malformed responses)
-- Test empty audit results (no issues found)
-- Test very large audits (many issues, pagination if needed)
-- Test malformed domain input (invalid URLs, edge cases)
+**Mock Data Strategy:**
+- Generate mock audit results matching API response schema (`groups`, `meta`, `totalIssues`, etc.)
+- Store mock audits in test database with various states (completed, in_progress, failed)
+- Use mock data for all UI, API, and database testing to avoid model costs
+- Create test fixtures for different scenarios (empty results, many issues, various severities)
+- Mock issue states (active/ignored/resolved) for lifecycle testing
+- Only use actual model calls for final integration testing after non-AI components are verified
 
 **Design System Redesign** ✅ COMPLETE
 
@@ -294,23 +324,28 @@ Benefits:
 
 ---
 
-### Phase 4: Issue Suppression + Lifecycle Management
+### Phase 4: Issue Suppression + Lifecycle Management ✅ COMPLETE
 
-**Stable Issue Signature (SIS)**
+**Stable Issue Signature (SIS)** ✅ COMPLETE
 
-* signature = hash(page_url + issue_type + normalized_issue_text).
+* ✅ signature = hash(page_url + issue_type + normalized_issue_text) - Implemented in `lib/issue-signature.ts`
+* ✅ SHA256 hash generation with normalized text
 
-**States**
+**States** ✅ COMPLETE
 
-* Active
-* Ignored (suppressed)
-* Resolved
+* ✅ Active
+* ✅ Ignored (suppressed)
+* ✅ Resolved
+* ✅ Database table `audit_issue_states` with user_id, domain, signature, state
+* ✅ API endpoint `/api/audit/[id]/issues/[signature]` for state updates
+* ✅ UI actions dropdown (Ignore, Resolve, Restore) in table
 
-**Behavior**
+**Behavior** ✅ COMPLETE
 
-* Ignored issues never resurface.
-* Restoring an issue simply removes suppression.
-* Matches enterprise QA tooling expectations.
+* ✅ Ignored issues never resurface - Filtered out in `/api/audit` and `/api/audit/poll` endpoints
+* ✅ Restoring an issue simply removes suppression - Restore action sets state to 'active'
+* ✅ State filtering tabs (All/Active/Ignored/Resolved) in dashboard
+* ✅ Matches enterprise QA tooling expectations
 
 ---
 
@@ -318,26 +353,29 @@ Benefits:
 
 **Shared foundation: Page fingerprinting**
 
-* Store ETag (if available).
-* Store SHA256 hash of sanitized HTML.
-* Store last scanned timestamp.
+* ❌ Store ETag (if available) - Not implemented (no schema columns)
+* ❌ Store SHA256 hash of sanitized HTML - Not implemented (no schema columns)
+* ❌ Store last scanned timestamp - Not implemented (no per-page tracking)
+* ⚠️ Note: `created_at` exists on `brand_audit_runs` but only tracks audit creation time, not per-page scanning
+
+**Schema status:** No database table or columns exist for page fingerprinting. Would need new table (e.g., `page_fingerprints`) with columns: `url`, `domain`, `etag`, `content_hash`, `last_scanned`.
 
 If hash changes → page changed.
 
 **Paid tier: Weekly digest**
 
-* Weekly delta scan of changed + new pages.
-* Summarize:
+* ❌ Weekly delta scan of changed + new pages - Not implemented
+* ❌ Summarize:
 
-  * New issues
-  * Resolved issues
-  * Major changes
+  * ❌ New issues
+  * ❌ Resolved issues
+  * ❌ Major changes
 
 **Enterprise tier: Alert on change**
 
-1. Detect page change.
-2. Run targeted Deep Research diff on that page only.
-3. Alert via Slack / email / webhook.
+* ❌ Detect page change - Not implemented
+* ❌ Run targeted Deep Research diff on that page only - Not implemented
+* ❌ Alert via Slack / email / webhook - Not implemented
 
 ---
 
@@ -345,24 +383,26 @@ If hash changes → page changed.
 
 **Live chart inputs**
 
-* Total issues.
-* Severity-weighted unresolved count.
-* Critical page impact.
-* User actions (ignored / resolved ).
+* ❌ Total issues - Not calculated/displayed
+* ❌ Severity-weighted unresolved count - Not calculated
+* ❌ Critical page impact - Not calculated
+* ✅ User actions (ignored / resolved) - Actions exist but not used in score calculation
 
 **Example formula**
 
-* Start at 100.
-* Subtract: minor×1, medium×3, major×7.
-* Subtract: critical_pages_with_errors×10.
-* Add: resolved_last_7_days×2.
+* ❌ Start at 100 - Not implemented
+* ❌ Subtract: minor×1, medium×3, major×7 - Not implemented
+* ❌ Subtract: critical_pages_with_errors×10 - Not implemented
+* ❌ Add: resolved_last_7_days×2 - Not implemented
 
 **Visuals**
 
-* Score over time (30 / 60 / 90 days).
-* Issue breakdown by severity.
-* Ignored vs active ratio.
-* Pages with highest issue density.
+* ❌ Score over time (30 / 60 / 90 days) - Not implemented
+* ⚠️ Issue breakdown by severity - Shown in dashboard list but not as chart
+* ❌ Ignored vs active ratio - Not implemented
+* ❌ Pages with highest issue density - Not implemented
+
+**Note:** Chart components exist (`components/chart-area-interactive.tsx`) but not used for health score. Notebook mentions health score should not count ignored issues.
 
 ---
 
