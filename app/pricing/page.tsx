@@ -134,6 +134,14 @@ export default function PricingPage() {
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">SEO gaps detection</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">Broken links detection</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">No credit card required</span>
                 </li>
                 <li className="flex items-start gap-3">
@@ -192,6 +200,14 @@ export default function PricingPage() {
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">SEO gaps detection</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">Broken links detection</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">1 audit per day per domain, 5 domains</span>
                 </li>
               </ul>
@@ -242,15 +258,19 @@ export default function PricingPage() {
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">Advanced SEO analysis</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">Broken links detection</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">Competitor analysis</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">Custom audit requests</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Broken links detection</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />

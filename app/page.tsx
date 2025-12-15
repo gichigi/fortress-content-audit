@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Card } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { CheckCircle2, FileText, Search, AlertCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { InterstitialLoader } from "@/components/ui/interstitial-loader"
@@ -215,6 +215,28 @@ export default function Home() {
               auditId={auditResults.runId}
               totalIssues={auditResults.totalIssues || auditResults.groups.length}
             />
+          </div>
+        </section>
+      )}
+
+      {/* No Issues Success State */}
+      {!loading && auditResults && auditResults.groups && auditResults.groups.length === 0 && (
+        <section className="border-t border-border py-24 md:py-32">
+          <div className="container mx-auto px-6 max-w-2xl">
+            <Card className="border-2 border-green-200 bg-green-50/50">
+              <CardContent className="p-12 text-center">
+                <CheckCircle2 className="h-16 w-16 text-green-600 mx-auto mb-4" />
+                <h2 className="font-serif text-3xl md:text-4xl font-light tracking-tight mb-4">
+                  No issues found
+                </h2>
+                <p className="text-lg text-muted-foreground leading-relaxed mb-2">
+                  Your content looks great! We scanned {auditResults.meta?.pagesScanned || auditResults.pagesScanned || 0} pages and found no issues.
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Keep up the good work maintaining high-quality content.
+                </p>
+              </CardContent>
+            </Card>
           </div>
         </section>
       )}

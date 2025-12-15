@@ -30,14 +30,10 @@ Focus ONLY on objective content errors:
 • Inconsistent terminology for the same concept (e.g., "customer" vs "client")
 • Incorrect/inconsistent brand names or product names
 • Duplicate content with conflicting information
-
-Do NOT report:
-• Spacing issues, formatting artifacts, collapsed words
-• UI/layout issues (you cannot see visual rendering)
-• Responsive breakpoint duplicates
-• Navigation/footer/header repetition
-• Style preferences or subjective opinions
-• Missing headings or weak CTAs
+• SEO gaps: missing or duplicate title tags and meta descriptions (check if lengths are appropriate)
+• SEO gaps: missing H1 or multiple H1s on same page, missing image alt text
+• SEO gaps: sitemap coverage issues (pages missing from sitemap or vice versa)
+• Broken links: detect 404s, 500s, and redirect loops (report URL, anchor text, source page, status)
 
 For each issue found, provide:
 1. The page URL where the issue was found
@@ -45,6 +41,7 @@ For each issue found, provide:
 3. A suggested fix
 
 Be thorough but precise. Only report issues you are certain about.
+If you find no issues after a thorough review, return an empty groups array.
 Crawl multiple pages to find cross-site inconsistencies.`
 
 // Zod schemas for structured audit output

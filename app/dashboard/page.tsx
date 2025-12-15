@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ArrowLeft, FileText, Copy, Trash2, ExternalLink, RefreshCw, Loader2, TrendingUp, TrendingDown, Minus } from "lucide-react"
+import { ArrowLeft, FileText, Copy, Trash2, ExternalLink, RefreshCw, Loader2, TrendingUp, TrendingDown, Minus, CheckCircle2 } from "lucide-react"
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import { useToast } from "@/hooks/use-toast"
 import Header from "@/components/Header"
@@ -901,7 +901,13 @@ export default function DashboardPage() {
                       </CardHeader>
                       <CardContent>
                         {gatedIssues.length === 0 ? (
-                          <p className="text-muted-foreground">No issues found</p>
+                          <div className="text-center py-8">
+                            <CheckCircle2 className="h-12 w-12 text-green-600 mx-auto mb-3" />
+                            <h3 className="font-serif text-xl font-semibold mb-2">No issues found</h3>
+                            <p className="text-sm text-muted-foreground">
+                              We scanned {audit.pages_scanned || 0} pages and found no issues. Your content looks great!
+                            </p>
+                          </div>
                         ) : (
                           <div className="space-y-4">
                             {plan === 'free' && issues.length > 5 && (

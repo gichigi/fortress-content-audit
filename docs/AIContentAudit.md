@@ -24,9 +24,10 @@
 | Inconsistent Terminology | ✅ | ✅ | ✅ | ✅ |
 | Brand/Product Name Inconsistencies | ✅ | ✅ | ✅ | ✅ |
 | Duplicate Content Conflicts | ✅ | ✅ | ✅ | ✅ |
+| SEO Gaps | ✅ | ✅ | ✅ | Advanced SEO |
+| Broken Links Detection | ✅ | ✅ | ✅ | ✅ |
 | Competitor Analysis | ❌ | ❌ | ❌ | ✅ |
 | Custom Audit Requests | ❌ | ❌ | ❌ | ✅ |
-| Broken Links Detection | ❌ | ❌ | ❌ | ✅ |
 | IA/Taxonomy Recommendations | ❌ | ❌ | ❌ | ✅ |
 | **Issue Management** |
 | Issue Suppression | ❌ | ❌ | ✅ | ✅ |
@@ -591,7 +592,6 @@ If hash changes → page changed.
 * Include instructions for:
   * Competitor analysis and comparison
   * Custom audit request handling
-  * Broken link detection
   * IA/taxonomy recommendations
 * Maintain same structure as base prompt for consistency.
 * Use conditional prompt selection based on tier in `auditSite()` function.
