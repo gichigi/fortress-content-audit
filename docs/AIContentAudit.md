@@ -30,10 +30,10 @@
 | Custom Audit Requests | ❌ | ❌ | ❌ | ✅ |
 | IA/Taxonomy Recommendations | ❌ | ❌ | ❌ | ✅ |
 | **Issue Management** |
-| Issue Suppression | ❌ | ❌ | ✅ | ✅ |
-| Issue Lifecycle (Active/Ignored/Resolved) | ❌ | ❌ | ✅ | ✅ |
-| Stable Issue Signatures | ❌ | ❌ | ✅ | ✅ |
-| Issue History Tracking | ❌ | ❌ | ✅ | ✅ |
+| Issue Suppression | ❌ | ✅ | ✅ | ✅ |
+| Issue Lifecycle (Active/Ignored/Resolved) | ❌ | ✅ | ✅ | ✅ |
+| Stable Issue Signatures | ❌ | ✅ | ✅ | ✅ |
+| Issue History Tracking | ❌ | ✅ | ✅ | ✅ |
 | **Results & Reporting** |
 | Issues Shown | 3 (preview with fade-out) | All issues from mini audit | All issues | All issues |
 | Export Format | None | None | PDF, JSON, Markdown | PDF, JSON, Markdown |
@@ -400,6 +400,41 @@ Benefits:
 - Test very large audits display (many issues, pagination)
 - Test severity filtering tabs with mock data
 - Test issue state filtering (active/ignored/resolved) with mock data
+
+**Health Score UI Testing (Mock Data):**
+- Test health score calculation display with various issue combinations (low/medium/high severity)
+- Test health score color coding (green 80+, yellow 50-79, red <50)
+- Test trend indicator (up/down arrow vs previous period)
+- Test health score line chart rendering with mock time-series data
+- Test time range selector (30/60/90 days) updates chart data
+- Test chart tooltip showing score + metrics for each point
+- Test supporting metrics cards display (Total Active Issues, Total Critical Issues, Pages with Issues, Critical Pages)
+- Test filtering of ignored issues in health score calculation
+- Test empty states (no audits, no issues) - show appropriate message
+- Test single audit display (score shown but no trend line)
+- Test all issues ignored scenario (score should be 100)
+- Test score clamping (negative scores show as 0, scores >100 show as 100)
+- Test multiple domains scenario (defaults to most recent audit's domain)
+
+**Rate Limiting UI Testing (Mock Data):**
+- Test "Run New Audit" button shows limit status ("X/Y audits today", "X/Y domains")
+- Test button disabled state when daily limit reached
+- Test tooltip display when limit reached (shows upgrade message)
+- Test domain count display for pro users ("3/5 domains")
+- Test usage indicator component showing limits correctly
+- Test upgrade prompt when limit reached
+- Test limit status updates after audit completion
+- Test limit reset display (shows reset time)
+
+**Domain Management UI Testing (Mock Data):**
+- Test domain list display showing all user domains
+- Test domain deletion confirmation dialog appears
+- Test deletion removes domain from list
+- Test domain count updates after deletion
+- Test user can immediately add new domain after deletion (if at limit)
+- Test deletion loading state (button disabled, spinner shown)
+- Test deletion error handling (shows error message, domain remains in list)
+- Test empty domain state (no domains message)
 
 **AI Model Testing (Expensive - Do Later):**
 - Test mini audit via API (curl or Postman - happy path, error cases, timeout)

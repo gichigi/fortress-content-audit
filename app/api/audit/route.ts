@@ -2,11 +2,12 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { validateUrl } from '@/lib/url-validation'
-import { auditSite, miniAudit, AuditTier } from '@/lib/audit'
+import { auditSite, miniAudit, AuditTier, AuditResult } from '@/lib/audit'
 import PostHogClient from '@/lib/posthog'
 import { generateIssueSignature } from '@/lib/issue-signature'
 import { AuditIssueGroup } from '@/lib/audit-table-adapter'
 import { checkDailyLimit, checkDomainLimit, isNewDomain, incrementAuditUsage, getAuditUsage } from '@/lib/audit-rate-limit'
+import { createMockAuditData } from '@/lib/mock-audit-data'
 
 function getBearer(req: Request) {
   const a = req.headers.get('authorization') || req.headers.get('Authorization')
@@ -118,13 +119,38 @@ export async function POST(request: Request) {
       }
     }
 
-    // Run audit based on tier
-    // Free/unauthenticated: mini audit (3 pages, fast)
-    // Paid/Enterprise: full audit (deep crawl)
-    console.log(`[API] Running ${auditTier} audit for ${normalized}`)
-    const result = auditTier === 'FREE' 
-      ? await miniAudit(normalized)
-      : await auditSite(normalized, auditTier)
+    // Check if mock data mode is enabled
+    const useMockData = process.env.USE_MOCK_DATA === 'true'
+    
+    let result: AuditResult
+
+    if (useMockData) {
+      // Mock data mode: generate mock audit results
+      console.log(`[API] Mock data mode enabled - generating mock audit for ${normalized}`)
+      
+      // Simulate audit delay (2-3 seconds)
+      const delay = 2000 + Math.random() * 1000 // 2000-3000ms
+      await new Promise(resolve => setTimeout(resolve, delay))
+      
+      // Generate mock data with 8-10 issues
+      // normalized is already url.origin format (e.g., https://example.com)
+      const mockData = createMockAuditData(normalized, 10)
+      result = {
+        groups: mockData.groups,
+        pagesScanned: mockData.pagesScanned,
+        auditedUrls: mockData.auditedUrls,
+        status: 'completed',
+        tier: auditTier,
+      }
+    } else {
+      // Run audit based on tier
+      // Free/unauthenticated: mini audit (3 pages, fast)
+      // Paid/Enterprise: full audit (deep crawl)
+      console.log(`[API] Running ${auditTier} audit for ${normalized}`)
+      result = auditTier === 'FREE' 
+        ? await miniAudit(normalized)
+        : await auditSite(normalized, auditTier)
+    }
 
     // Extract brand name/title
     // Simple heuristic: extract domain name without TLD

@@ -115,8 +115,6 @@ function createColumns(
   userPlan?: string,
   currentStateTab?: 'active' | 'ignored' | 'resolved' | 'all'
 ): ColumnDef<AuditTableRow>[] {
-  const isPaidUser = userPlan && userPlan !== 'free'
-  
   return [
     {
       id: "select",
@@ -190,39 +188,9 @@ function createColumns(
         const signature = row.original.signature
         const currentState = row.original.state || 'active'
         
-        if (!isPaidUser || !onUpdateState || !signature) {
-          return (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  className="flex size-8 text-muted-foreground data-[state=open]:bg-muted"
-                  size="icon"
-                  onClick={(e) => e.stopPropagation()}
-                  aria-label={`Actions for ${row.original.title}`}
-                >
-                  <MoreVerticalIcon />
-                  <span className="sr-only">Open menu</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent 
-                align="end" 
-                className="w-40"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <DropdownMenuItem disabled>
-                  <XIcon className="mr-2 h-4 w-4" />
-                  Ignore Issue
-                  <span className="ml-auto text-xs text-muted-foreground">Paid only</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem disabled>
-                  <CheckCircle2Icon className="mr-2 h-4 w-4" />
-                  Mark Resolved
-                  <span className="ml-auto text-xs text-muted-foreground">Paid only</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )
+        // Issue state management available to all authenticated users
+        if (!onUpdateState || !signature) {
+          return null
         }
 
         return (
@@ -495,8 +463,9 @@ export function DataTable({
   const [isLoadingStates, setIsLoadingStates] = React.useState(false)
 
   // Fetch issue states on mount if auditId and user are available
+  // Available to all authenticated users (free, paid, enterprise)
   React.useEffect(() => {
-    if (!auditId || !userPlan || userPlan === 'free') return
+    if (!auditId || !userPlan) return
 
     const fetchIssueStates = async () => {
       setIsLoadingStates(true)
@@ -726,8 +695,8 @@ export function DataTable({
 
   return (
     <div className="flex w-full flex-col justify-start gap-6">
-      {/* State Tabs (Active/Ignored/Resolved) - shown only for paid users */}
-      {userPlan && userPlan !== 'free' && (
+      {/* State Tabs (Active/Ignored/Resolved) - available to all authenticated users */}
+      {userPlan && (
         <Tabs
           value={activeStateTab}
           onValueChange={(value) => {

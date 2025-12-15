@@ -24,7 +24,7 @@ export const PLAN_FEATURES = {
     issueCategories: 'High-signal only',
     issuesShown: '3 (preview with fade-out)',
     exportFormat: 'None',
-    issueManagement: false,
+    issueManagement: true,
     historicalReports: false,
     monitoring: false,
     seoGaps: true,

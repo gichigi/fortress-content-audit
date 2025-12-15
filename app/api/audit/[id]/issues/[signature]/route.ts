@@ -1,5 +1,5 @@
 // Update issue state (ignore, resolve, restore)
-// Gated to paid/enterprise users only
+// Available to all authenticated users
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { IssueState } from '@/types/fortress'
@@ -54,24 +54,6 @@ export async function PATCH(
       return NextResponse.json(
         { error: `Invalid signature format: expected 64-character hexadecimal string (SHA256), got ${signature.length} characters` },
         { status: 400 }
-      )
-    }
-
-    // Check user plan - gate to paid/enterprise users only
-    const { data: profile } = await supabaseAdmin
-      .from('profiles')
-      .select('plan')
-      .eq('user_id', userId)
-      .maybeSingle()
-    const plan = profile?.plan || 'free'
-
-    if (plan === 'free') {
-      return NextResponse.json(
-        {
-          error: 'Issue state management requires a paid plan. Please upgrade to manage issue states.',
-          upgradeRequired: true
-        },
-        { status: 403 }
       )
     }
 
