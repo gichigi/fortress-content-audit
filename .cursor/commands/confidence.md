@@ -1,1 +1,1 @@
-How confident are you in your assement? Give a score with rationale.
+How confident are you in your overall assement or plan? Give a score with rationale.

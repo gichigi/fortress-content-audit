@@ -9,12 +9,23 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ArrowLeft, FileText, Copy, Trash2, ExternalLink, RefreshCw, Loader2 } from "lucide-react"
+import { ArrowLeft, FileText, Copy, Trash2, ExternalLink, RefreshCw, Loader2, TrendingUp, TrendingDown, Minus } from "lucide-react"
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import { useToast } from "@/hooks/use-toast"
 import Header from "@/components/Header"
 import { PLAN_NAMES } from "@/lib/plans"
 import posthog from "posthog-js"
+import { HealthScoreChart } from "@/components/health-score-chart"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 interface Guideline {
   id: string
@@ -43,6 +54,13 @@ export default function DashboardPage() {
   const [plan, setPlan] = useState<string>("free")
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [healthScoreData, setHealthScoreData] = useState<any>(null)
+  const [healthScoreLoading, setHealthScoreLoading] = useState(false)
+  const [usageInfo, setUsageInfo] = useState<any>(null)
+  const [domains, setDomains] = useState<string[]>([])
+  const [deletingDomain, setDeletingDomain] = useState<string | null>(null)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [domainToDelete, setDomainToDelete] = useState<string | null>(null)
 
   useEffect(() => {
     checkAuthAndLoad()
@@ -166,6 +184,15 @@ export default function DashboardPage() {
         loadGuidelines(session.access_token),
         loadAudits(session.access_token)
       ])
+      
+      // Load health score after plan is set
+      if (profile && (profile.plan === 'pro' || profile.plan === 'enterprise')) {
+        await loadHealthScore(session.access_token)
+      }
+      
+      // Load usage info and domains
+      await loadUsageInfo(session.access_token)
+      await loadDomains(session.access_token)
     } catch (error) {
       console.error("Error loading dashboard:", error)
       setError("Failed to load dashboard. Please refresh the page.")
@@ -206,6 +233,33 @@ export default function DashboardPage() {
       setAudits(data || [])
     } catch (error) {
       console.error("Error loading audits:", error)
+    }
+  }
+
+  const loadHealthScore = async (token: string) => {
+    // Only load health score for paid users
+    if (plan === 'free') return
+    
+    setHealthScoreLoading(true)
+    try {
+      const response = await fetch('/api/health-score?days=30', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      
+      if (!response.ok) {
+        // Don't show error - health score is optional
+        console.error('[Dashboard] Failed to load health score')
+        return
+      }
+      
+      const data = await response.json()
+      setHealthScoreData(data)
+    } catch (error) {
+      console.error("Error loading health score:", error)
+    } finally {
+      setHealthScoreLoading(false)
     }
   }
 
@@ -303,12 +357,108 @@ export default function DashboardPage() {
       })
 
       await loadAudits(session.access_token)
+      
+      // Reload health score after rerun
+      if (plan === 'pro' || plan === 'enterprise') {
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session) {
+          await loadHealthScore(session.access_token)
+        }
+      }
     } catch (error) {
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to rerun audit",
         variant: "destructive"
       })
+    }
+  }
+
+  const loadUsageInfo = async (token: string) => {
+    try {
+      const response = await fetch('/api/audit/usage', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        setUsageInfo(data)
+      }
+    } catch (error) {
+      console.error("Error loading usage info:", error)
+    }
+  }
+
+  const loadDomains = async (token: string) => {
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      const { data: audits } = await supabase
+        .from('brand_audit_runs')
+        .select('domain')
+        .eq('user_id', user.id)
+        .not('domain', 'is', null)
+
+      if (audits) {
+        const uniqueDomains = Array.from(new Set(
+          audits.map(a => a.domain).filter((d): d is string => d !== null)
+        ))
+        setDomains(uniqueDomains)
+      }
+    } catch (error) {
+      console.error("Error loading domains:", error)
+    }
+  }
+
+  const handleDeleteDomain = async () => {
+    if (!domainToDelete) return
+
+    setDeletingDomain(domainToDelete)
+    try {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+
+      const encodedDomain = encodeURIComponent(domainToDelete)
+      const response = await fetch(`/api/domains/${encodedDomain}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to delete domain')
+      }
+
+      toast({
+        title: "Domain deleted",
+        description: "All audits and data for this domain have been removed. You can now add a new domain.",
+      })
+
+      // Reload data
+      await loadAudits(session.access_token)
+      await loadUsageInfo(session.access_token)
+      await loadDomains(session.access_token)
+      if (plan === 'pro' || plan === 'enterprise') {
+        await loadHealthScore(session.access_token)
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to delete domain",
+        variant: "destructive"
+      })
+    } finally {
+      setDeletingDomain(null)
+      setShowDeleteDialog(false)
+      setDomainToDelete(null)
     }
   }
 
@@ -491,10 +641,199 @@ export default function DashboardPage() {
           <TabsContent value="audit" className="space-y-4">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-serif text-2xl font-semibold">Content Audits</h2>
-              <Button asChild>
-                <Link href="/">Run New Audit</Link>
-              </Button>
+              <div className="flex items-center gap-3">
+                {usageInfo && (
+                  <div className="text-sm text-muted-foreground">
+                    {usageInfo.limit > 0 && (
+                      <span>
+                        {usageInfo.today}/{usageInfo.limit} audit{usageInfo.limit === 1 ? '' : 's'} today
+                      </span>
+                    )}
+                    {usageInfo.domainLimit > 0 && (
+                      <span className="ml-3">
+                        {usageInfo.domains}/{usageInfo.domainLimit} domain{usageInfo.domainLimit === 1 ? '' : 's'}
+                      </span>
+                    )}
+                  </div>
+                )}
+                <Button 
+                  asChild
+                  disabled={usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit}
+                  title={
+                    usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit
+                      ? `Daily limit reached. Try again tomorrow${plan === 'free' ? ' or upgrade to Pro for 5 domains' : ''}.`
+                      : undefined
+                  }
+                >
+                  <Link href="/">Run New Audit</Link>
+                </Button>
+              </div>
             </div>
+
+            {/* Domain Management Section */}
+            {domains.length > 0 && (
+              <Card className="border border-border">
+                <CardHeader>
+                  <CardTitle className="font-serif text-xl font-semibold">Your Domains</CardTitle>
+                  <CardDescription>
+                    Manage your audited domains. Delete a domain to free up a slot for a new one.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {domains.map((domain) => (
+                      <div key={domain} className="flex items-center justify-between py-2 px-3 rounded-md border border-border">
+                        <span className="text-sm font-medium">{domain}</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setDomainToDelete(domain)
+                            setShowDeleteDialog(true)
+                          }}
+                          disabled={deletingDomain === domain}
+                        >
+                          {deletingDomain === domain ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Health Score Section - Only for paid users */}
+            {plan !== 'free' && (
+              <div className="space-y-6 mb-8">
+                {/* Large Health Score Card */}
+                {healthScoreLoading ? (
+                  <Card className="border border-border">
+                    <CardContent className="pt-6">
+                      <div className="flex items-center justify-center py-12">
+                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                ) : healthScoreData?.currentScore ? (
+                  <>
+                    <Card className="border border-border">
+                      <CardContent className="pt-6">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <CardDescription className="mb-2">Current Health Score</CardDescription>
+                            <div className="flex items-baseline gap-3">
+                              <span className={`font-serif text-6xl font-light ${
+                                healthScoreData.currentScore.score >= 80 ? 'text-green-600' :
+                                healthScoreData.currentScore.score >= 50 ? 'text-yellow-600' :
+                                'text-destructive'
+                              }`}>
+                                {Math.round(healthScoreData.currentScore.score)}
+                              </span>
+                              <span className="text-2xl text-muted-foreground">/100</span>
+                              {healthScoreData.data && healthScoreData.data.length > 1 && (
+                                <div className="flex items-center gap-1 ml-4">
+                                  {(() => {
+                                    const current = healthScoreData.currentScore.score
+                                    const previous = healthScoreData.data[healthScoreData.data.length - 2]?.score || current
+                                    const diff = current - previous
+                                    if (diff > 0) {
+                                      return <TrendingUp className="h-5 w-5 text-green-600" />
+                                    } else if (diff < 0) {
+                                      return <TrendingDown className="h-5 w-5 text-destructive" />
+                                    } else {
+                                      return <Minus className="h-5 w-5 text-muted-foreground" />
+                                    }
+                                  })()}
+                                  <span className="text-sm text-muted-foreground">
+                                    {(() => {
+                                      const current = healthScoreData.currentScore.score
+                                      const previous = healthScoreData.data[healthScoreData.data.length - 2]?.score || current
+                                      const diff = current - previous
+                                      if (diff > 0) return `+${diff.toFixed(0)}`
+                                      if (diff < 0) return diff.toFixed(0)
+                                      return '0'
+                                    })()}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                            {healthScoreData.domain && (
+                              <p className="text-sm text-muted-foreground mt-2">
+                                {healthScoreData.domain}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Health Score Chart */}
+                    <HealthScoreChart 
+                      data={healthScoreData.data || []} 
+                      domain={healthScoreData.domain}
+                    />
+
+                    {/* Supporting Metrics Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                      <Card className="border border-border">
+                        <CardHeader className="pb-2">
+                          <CardDescription>Total Active Issues</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="text-3xl font-light">
+                            {healthScoreData.currentScore.metrics?.totalActive || 0}
+                          </div>
+                        </CardContent>
+                      </Card>
+                      <Card className="border border-border">
+                        <CardHeader className="pb-2">
+                          <CardDescription>Total Critical Issues</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="text-3xl font-light text-destructive">
+                            {healthScoreData.currentScore.metrics?.totalCritical || 0}
+                          </div>
+                        </CardContent>
+                      </Card>
+                      <Card className="border border-border">
+                        <CardHeader className="pb-2">
+                          <CardDescription>Pages with Issues</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="text-3xl font-light">
+                            {healthScoreData.currentScore.metrics?.pagesWithIssues || 0}
+                          </div>
+                        </CardContent>
+                      </Card>
+                      <Card className="border border-border">
+                        <CardHeader className="pb-2">
+                          <CardDescription>Critical Pages</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="text-3xl font-light text-destructive">
+                            {healthScoreData.currentScore.metrics?.criticalPages || 0}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  </>
+                ) : (
+                  <Card className="border border-border">
+                    <CardContent className="pt-6">
+                      <div className="text-center py-8">
+                        <p className="text-muted-foreground">
+                          No health score data available. Run an audit to see your content quality score.
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            )}
             
             {audits.length === 0 ? (
               <Card className="border border-border">
@@ -650,6 +989,27 @@ export default function DashboardPage() {
             )}
           </TabsContent>
         </Tabs>
+
+        {/* Domain Deletion Confirmation Dialog */}
+        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Domain</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete all audits and data for <strong>{domainToDelete}</strong>? This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteDomain}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </main>
     </div>
   )

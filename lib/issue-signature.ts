@@ -45,3 +45,4 @@ export function generateIssueSignature(issue: AuditIssueGroup): string {
   return hash.digest("hex")
 }
 
+

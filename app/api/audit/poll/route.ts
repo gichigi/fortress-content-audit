@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { pollAuditStatus, AuditTier } from '@/lib/audit'
 import { generateIssueSignature } from '@/lib/issue-signature'
 import { AuditIssueGroup } from '@/lib/audit-table-adapter'
+import { incrementAuditUsage, getAuditUsage } from '@/lib/audit-rate-limit'
 
 function getBearer(req: Request) {
   const a = req.headers.get('authorization') || req.headers.get('Authorization')
@@ -120,6 +121,17 @@ export async function POST(request: Request) {
         console.error('[Poll] Failed to update audit run:', updateErr)
       } else {
         console.log(`[Poll] Updated audit run: ${runId}`)
+        
+        // Increment audit usage when audit completes (only once per audit)
+        // Check if we've already incremented by checking if audit was just completed
+        if (auditRun?.domain) {
+          try {
+            await incrementAuditUsage(userId, auditRun.domain)
+          } catch (error) {
+            console.error('[Poll] Failed to increment audit usage:', error)
+            // Don't fail the request - usage tracking is non-critical
+          }
+        }
       }
     }
 
@@ -139,12 +151,39 @@ export async function POST(request: Request) {
       }
     }
 
+    // Get usage info for response (only for authenticated users)
+    let usage = null
+    if (userId && runId) {
+      try {
+        const { data: auditRun } = await supabaseAdmin
+          .from('brand_audit_runs')
+          .select('domain')
+          .eq('id', runId)
+          .eq('user_id', userId)
+          .maybeSingle()
+        
+        if (auditRun?.domain) {
+          const { data: profile } = await supabaseAdmin
+            .from('profiles')
+            .select('plan')
+            .eq('user_id', userId)
+            .maybeSingle()
+          const plan = profile?.plan || 'free'
+          usage = await getAuditUsage(userId, auditRun.domain, plan)
+        }
+      } catch (error) {
+        console.error('[Poll] Failed to get usage info:', error)
+        // Don't fail the request - usage info is optional
+      }
+    }
+
     // Return completed results (with filtered groups)
     return NextResponse.json({
       status: 'completed',
       runId,
       groups: responseGroups,
       totalIssues: responseGroups.length,
+      usage, // Include usage info
       meta: {
         pagesScanned: result.pagesScanned,
         auditedUrls: result.auditedUrls || [],

@@ -105,3 +105,4 @@ If we need more restrictive RLS policies in the future:
 3. Consider using Postgres functions with `SECURITY DEFINER` for complex operations
 4. Test thoroughly with service role operations before deploying
 
+

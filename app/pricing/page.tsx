@@ -136,6 +136,10 @@ export default function PricingPage() {
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">No credit card required</span>
                 </li>
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">1 audit per day, 1 domain</span>
+                </li>
               </ul>
               <Button variant="outline" className="w-full" asChild>
                 <Link href="/">Get Started</Link>
@@ -185,6 +189,10 @@ export default function PricingPage() {
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">Background execution</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">1 audit per day per domain, 5 domains</span>
                 </li>
               </ul>
               <Button 
@@ -263,6 +271,10 @@ export default function PricingPage() {
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">Priority + dedicated support</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">Unlimited audits and domains</span>
                 </li>
               </ul>
               <Button 

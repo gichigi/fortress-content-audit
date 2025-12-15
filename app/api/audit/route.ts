@@ -6,6 +6,7 @@ import { auditSite, miniAudit, AuditTier } from '@/lib/audit'
 import PostHogClient from '@/lib/posthog'
 import { generateIssueSignature } from '@/lib/issue-signature'
 import { AuditIssueGroup } from '@/lib/audit-table-adapter'
+import { checkDailyLimit, checkDomainLimit, isNewDomain, incrementAuditUsage, getAuditUsage } from '@/lib/audit-rate-limit'
 
 function getBearer(req: Request) {
   const a = req.headers.get('authorization') || req.headers.get('Authorization')
@@ -76,6 +77,45 @@ export async function POST(request: Request) {
       if (plan === 'enterprise') auditTier = 'ENTERPRISE'
       else if (plan === 'pro' || plan === 'paid') auditTier = 'PAID'
       else auditTier = 'FREE'
+    }
+
+    // Rate limiting checks (only for authenticated users)
+    if (isAuthenticated && userId) {
+      // Check if domain is new
+      const domainIsNew = await isNewDomain(userId, normalized)
+      
+      // Check domain limit (only for new domains)
+      if (domainIsNew) {
+        const domainCheck = await checkDomainLimit(userId, plan)
+        if (!domainCheck.allowed) {
+          return NextResponse.json(
+            {
+              error: 'Domain limit reached',
+              message: `You've reached your limit of ${domainCheck.limit} domain${domainCheck.limit === 1 ? '' : 's'}. Delete a domain to add a new one, or upgrade to Pro for 5 domains.`,
+              limit: domainCheck.limit,
+              used: domainCheck.count,
+              upgradeRequired: true,
+            },
+            { status: 429 }
+          )
+        }
+      }
+
+      // Check daily audit limit for this domain
+      const dailyCheck = await checkDailyLimit(userId, normalized, plan)
+      if (!dailyCheck.allowed) {
+        return NextResponse.json(
+          {
+            error: 'Daily limit reached',
+            message: `You've reached your daily limit of ${dailyCheck.limit} audit${dailyCheck.limit === 1 ? '' : 's'} for this domain. Try again tomorrow or upgrade to Pro for 5 domains.`,
+            limit: dailyCheck.limit,
+            used: dailyCheck.used,
+            resetAt: dailyCheck.resetAt,
+            upgradeRequired: plan === 'free',
+          },
+          { status: 429 }
+        )
+      }
     }
 
     // Run audit based on tier
@@ -187,6 +227,16 @@ export async function POST(request: Request) {
     } else {
       runId = run?.id || null
       console.log(`[Audit] Saved audit run: ${runId}, authenticated: ${isAuthenticated}, tier: ${auditTier}`)
+      
+      // Increment audit usage (only for authenticated users, only on successful save)
+      if (isAuthenticated && userId && runId) {
+        try {
+          await incrementAuditUsage(userId, normalized)
+        } catch (error) {
+          console.error('[Audit] Failed to increment audit usage:', error)
+          // Don't fail the request - usage tracking is non-critical
+        }
+      }
     }
 
     // Gating: Preview shows ~5-7 issues, authenticated free shows 5, pro shows all
@@ -208,6 +258,17 @@ export async function POST(request: Request) {
       preview = false
     }
 
+    // Get usage info for response (only for authenticated users)
+    let usage = null
+    if (isAuthenticated && userId) {
+      try {
+        usage = await getAuditUsage(userId, normalized, plan)
+      } catch (error) {
+        console.error('[Audit] Failed to get usage info:', error)
+        // Don't fail the request - usage info is optional
+      }
+    }
+
     return NextResponse.json({
       runId,
       preview,
@@ -215,6 +276,7 @@ export async function POST(request: Request) {
       groups: gatedGroups,
       totalIssues: groups.length,
       sessionToken: finalSessionToken, // Return for frontend to store
+      usage, // Include usage info
       meta: { 
         pagesScanned: result.pagesScanned,
         auditedUrls: result.auditedUrls || [],

@@ -105,3 +105,4 @@ STRIPE_MODE=test  # or 'live'
 - **Account Page:** `app/account/page.tsx` (missing checkout button)
 - **Dashboard:** `app/dashboard/page.tsx` (has upgrade links)
 
+

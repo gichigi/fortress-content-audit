@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { auditSite } from '@/lib/audit'
+import { checkDailyLimit, incrementAuditUsage, getAuditUsage } from '@/lib/audit-rate-limit'
 
 function getBearer(req: Request) {
   const a = req.headers.get('authorization') || req.headers.get('Authorization')
@@ -44,6 +45,21 @@ export async function POST(
     if (runErr) throw runErr
     if (!run?.domain) return NextResponse.json({ error: 'Run not found' }, { status: 404 })
 
+    // Check daily audit limit for this domain
+    const dailyCheck = await checkDailyLimit(userId, run.domain, plan)
+    if (!dailyCheck.allowed) {
+      return NextResponse.json(
+        {
+          error: 'Daily limit reached',
+          message: `You've reached your daily limit of ${dailyCheck.limit} audit${dailyCheck.limit === 1 ? '' : 's'} for this domain. Try again tomorrow.`,
+          limit: dailyCheck.limit,
+          used: dailyCheck.used,
+          resetAt: dailyCheck.resetAt,
+        },
+        { status: 429 }
+      )
+    }
+
     // Audit site with 20 pages for Pro rerun
     const result = await auditSite(run.domain, 20)
 
@@ -65,9 +81,29 @@ export async function POST(
       .maybeSingle()
     if (insErr) throw insErr
 
+    // Increment audit usage after successful rerun
+    if (inserted?.id) {
+      try {
+        await incrementAuditUsage(userId, run.domain)
+      } catch (error) {
+        console.error('[Rerun] Failed to increment audit usage:', error)
+        // Don't fail the request - usage tracking is non-critical
+      }
+    }
+
+    // Get usage info for response
+    let usage = null
+    try {
+      usage = await getAuditUsage(userId, run.domain, plan)
+    } catch (error) {
+      console.error('[Rerun] Failed to get usage info:', error)
+      // Don't fail the request - usage info is optional
+    }
+
     return NextResponse.json({ 
       runId: inserted?.id, 
       groups: issuesJson.groups || [], 
+      usage, // Include usage info
       meta: { pagesScanned: result.pagesScanned } 
     })
   } catch (e) {
