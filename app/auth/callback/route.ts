@@ -22,9 +22,18 @@ export async function GET(request: NextRequest) {
   const type = searchParams.get('type') as EmailOtpType | null
   
   // Get redirect destination (default to dashboard)
+  // Strict validation: only allow relative paths to prevent open redirects
   let next = searchParams.get('next') || '/dashboard'
-  // Ensure next is a relative path for security
-  if (!next.startsWith('/')) {
+  
+  // Validate redirect URL - must be relative path, no protocol, no host
+  if (!next.startsWith('/') || next.includes('://') || next.includes('//')) {
+    console.warn('[Auth Callback] Invalid redirect URL detected:', next)
+    next = '/dashboard'
+  }
+  
+  // Additional security: prevent redirects to auth pages to avoid loops
+  if (next.startsWith('/auth') || next.startsWith('/sign-up')) {
+    console.warn('[Auth Callback] Redirect to auth page blocked:', next)
     next = '/dashboard'
   }
 
@@ -54,21 +63,35 @@ export async function GET(request: NextRequest) {
   if (code) {
     console.log('[Auth Callback] Exchanging code for session...')
     const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+    
     if (!error && data.session) {
       console.log('[Auth Callback] Code exchange successful, user:', data.session.user.email)
+      
       // Handle forwarded host for production deployments behind load balancers
       const forwardedHost = request.headers.get('x-forwarded-host')
       const isLocalEnv = process.env.NODE_ENV === 'development'
       
+      let redirectUrl: string
       if (isLocalEnv) {
-        return NextResponse.redirect(`${origin}${next}`)
+        redirectUrl = `${origin}${next}`
       } else if (forwardedHost) {
-        return NextResponse.redirect(`https://${forwardedHost}${next}`)
+        redirectUrl = `https://${forwardedHost}${next}`
       } else {
-        return NextResponse.redirect(`${origin}${next}`)
+        redirectUrl = `${origin}${next}`
       }
+      
+      return NextResponse.redirect(redirectUrl)
     }
-    console.error('[Auth Callback] Code exchange error:', error?.message)
+    
+    // Log error details for debugging (but don't expose to user)
+    console.error('[Auth Callback] Code exchange error:', {
+      message: error?.message,
+      status: error?.status,
+      code: code.substring(0, 10) + '...', // Log partial code for debugging
+    })
+    
+    // Redirect to sign-up with error (code may be expired or invalid)
+    return NextResponse.redirect(`${origin}/sign-up?error=auth_failed&reason=code_invalid`)
   }
 
   // Handle Magic Link callback (PKCE flow with token_hash)
@@ -78,29 +101,49 @@ export async function GET(request: NextRequest) {
       token_hash,
       type,
     })
+    
     if (!error && data.session) {
       console.log('[Auth Callback] OTP verification successful, user:', data.session.user.email)
+      
       const forwardedHost = request.headers.get('x-forwarded-host')
       const isLocalEnv = process.env.NODE_ENV === 'development'
       
+      let redirectUrl: string
       if (isLocalEnv) {
-        return NextResponse.redirect(`${origin}${next}`)
+        redirectUrl = `${origin}${next}`
       } else if (forwardedHost) {
-        return NextResponse.redirect(`https://${forwardedHost}${next}`)
+        redirectUrl = `https://${forwardedHost}${next}`
       } else {
-        return NextResponse.redirect(`${origin}${next}`)
+        redirectUrl = `${origin}${next}`
       }
+      
+      return NextResponse.redirect(redirectUrl)
     }
-    console.error('[Auth Callback] OTP verification error:', error?.message)
+    
+    // Log error for debugging
+    console.error('[Auth Callback] OTP verification error:', {
+      message: error?.message,
+      status: error?.status,
+      type,
+    })
+    
+    // Redirect to sign-up with error (token may be expired or invalid)
+    return NextResponse.redirect(`${origin}/sign-up?error=auth_failed&reason=token_invalid`)
   }
 
-  // No valid auth params found - log what we received
+  // No valid auth params found - log what we received for debugging
   if (!code && !token_hash) {
     console.error('[Auth Callback] No code or token_hash provided. Received params:', 
       Object.fromEntries(searchParams.entries()))
+    
+    // This could be a direct visit or a malformed callback
+    // Redirect to sign-up with a generic error
+    return NextResponse.redirect(`${origin}/sign-up?error=auth_failed&reason=missing_params`)
   }
 
-  // Redirect to error page on failure
+  // Fallback: redirect to sign-up with error
+  // This should rarely be reached if code paths above are correct
+  console.error('[Auth Callback] Unexpected state - no valid auth flow detected')
   return NextResponse.redirect(`${origin}/sign-up?error=auth_failed`)
 }
 

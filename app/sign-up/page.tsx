@@ -3,6 +3,7 @@
 import * as React from "react"
 import { useState, Suspense, useEffect } from "react"
 import { Loader2, Eye, EyeOff } from "lucide-react"
+import type { AuthError } from "@supabase/supabase-js"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase-browser"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -29,27 +30,11 @@ function SignUpForm() {
   const next = searchParams.get("next") || "/dashboard"
   const authError = searchParams.get("error")
 
-  // Check if user is already authenticated and redirect
+  // Rely on middleware for auth state management
+  // Remove client-side session check to avoid security issues
   useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const supabase = createClient()
-        const { data: { session } } = await supabase.auth.getSession()
-        
-        if (session) {
-          // User is already authenticated, redirect to dashboard
-          router.push(next)
-          return
-        }
-      } catch (error) {
-        console.error("Error checking auth:", error)
-      } finally {
-        setIsCheckingAuth(false)
-      }
-    }
-    
-    checkAuth()
-  }, [router, next])
+    setIsCheckingAuth(false)
+  }, [])
 
   const validateEmail = (email: string) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
@@ -58,6 +43,26 @@ function SignUpForm() {
   const validatePassword = (password: string) => {
     // Minimum 8 characters, at least one letter and one number
     return password.length >= 8 && /[A-Za-z]/.test(password) && /[0-9]/.test(password)
+  }
+
+  // Centralized error message mapping for better UX
+  const getAuthErrorMessage = (error: AuthError | Error): string => {
+    const message = error.message.toLowerCase()
+    
+    if (message.includes('email_not_confirmed') || message.includes('email not confirmed')) {
+      return "Please check your email and confirm your account."
+    }
+    if (message.includes('invalid_credentials') || message.includes('invalid login credentials')) {
+      return "Invalid email or password."
+    }
+    if (message.includes('user_already_registered') || message.includes('already registered')) {
+      return "An account with this email already exists."
+    }
+    if (message.includes('oauth') || message.includes('provider')) {
+      return "OAuth sign-in was cancelled or failed. Please try again."
+    }
+    
+    return error.message || "Authentication failed. Please try again."
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -96,18 +101,7 @@ function SignUpForm() {
         })
         
         if (signInError) {
-          // Handle specific error cases
-          const errorMessage = signInError.message.toLowerCase()
-          
-          if (errorMessage.includes('email not confirmed') || errorMessage.includes('email_not_confirmed')) {
-            throw new Error("Please check your email and click the confirmation link before signing in.")
-          }
-          
-          if (errorMessage.includes('invalid login credentials') || errorMessage.includes('invalid_credentials')) {
-            throw new Error("Invalid email or password. If you just signed up, make sure you've confirmed your email first. Don't have an account? Click 'Sign up' below.")
-          }
-          
-          throw signInError
+          throw new Error(getAuthErrorMessage(signInError))
         }
         
         if (signInData.session) {
@@ -126,11 +120,7 @@ function SignUpForm() {
         })
         
         if (signUpError) {
-          // If user already exists, suggest sign-in
-          if (signUpError.message.includes('already registered')) {
-            throw new Error("An account with this email already exists. Click 'Sign in' below.")
-          }
-          throw signUpError
+          throw new Error(getAuthErrorMessage(signUpError))
         }
         
         // New user - check if email confirmation is required
@@ -146,14 +136,51 @@ function SignUpForm() {
         }
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Authentication failed.")
+      const errorMessage = e instanceof Error ? getAuthErrorMessage(e) : "Authentication failed."
+      setError(errorMessage)
       toast({
         title: "Error",
-        description: e instanceof Error ? e.message : "Authentication failed.",
+        description: errorMessage,
         variant: "destructive",
       })
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleGoogleSignIn = async () => {
+    setLoading(true)
+    setError("")
+    
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
+        },
+      })
+      
+      if (error) {
+        setError(getAuthErrorMessage(error))
+        setLoading(false)
+        toast({
+          title: "Error",
+          description: getAuthErrorMessage(error),
+          variant: "destructive",
+        })
+      }
+      // User will be redirected to Google, then back to callback
+      // No need to set loading to false as redirect will happen
+    } catch (e) {
+      const errorMessage = e instanceof Error ? getAuthErrorMessage(e) : "OAuth sign-in failed. Please try again."
+      setError(errorMessage)
+      setLoading(false)
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      })
     }
   }
 
@@ -269,6 +296,54 @@ function SignUpForm() {
         </Button>
       </form>
 
+      <div className="relative my-6">
+        <div className="absolute inset-0 flex items-center">
+          <span className="w-full border-t" />
+        </div>
+        <div className="relative flex justify-center text-xs uppercase">
+          <span className="bg-background px-2 text-muted-foreground">
+            or continue with
+          </span>
+        </div>
+      </div>
+
+      <Button
+        type="button"
+        variant="outline"
+        className="w-full"
+        onClick={handleGoogleSignIn}
+        disabled={loading}
+      >
+        {loading ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Connecting...
+          </>
+        ) : (
+          <>
+            <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
+              <path
+                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                fill="#4285F4"
+              />
+              <path
+                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                fill="#34A853"
+              />
+              <path
+                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                fill="#FBBC05"
+              />
+              <path
+                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                fill="#EA4335"
+              />
+            </svg>
+            Continue with Google
+          </>
+        )}
+      </Button>
+
       <p className="text-xs text-muted-foreground text-center mt-6">
         {mode === "sign-in" ? (
           <>
@@ -327,3 +402,4 @@ export default function SignUpPage() {
     </div>
   )
 }
+

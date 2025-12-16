@@ -16,26 +16,34 @@ export interface AuditUsage {
 
 /**
  * Get audit limits for a plan tier
+ * TEMPORARILY DISABLED: All limits set to Infinity for testing
  */
 export function getAuditLimits(plan: string): AuditLimits {
-  switch (plan) {
-    case 'pro':
-      return {
-        maxDomains: 5,
-        maxAuditsPerDay: 1, // per domain
-      }
-    case 'enterprise':
-      return {
-        maxDomains: Infinity,
-        maxAuditsPerDay: Infinity,
-      }
-    case 'free':
-    default:
-      return {
-        maxDomains: 1,
-        maxAuditsPerDay: 1, // per domain
-      }
+  // TEMPORARY: Disable all limits for testing
+  return {
+    maxDomains: Infinity,
+    maxAuditsPerDay: Infinity,
   }
+  
+  // Original limits (commented out temporarily)
+  // switch (plan) {
+  //   case 'pro':
+  //     return {
+  //       maxDomains: 5,
+  //       maxAuditsPerDay: 1, // per domain
+  //     }
+  //   case 'enterprise':
+  //     return {
+  //       maxDomains: Infinity,
+  //       maxAuditsPerDay: Infinity,
+  //     }
+  //   case 'free':
+  //   default:
+  //     return {
+  //       maxDomains: 1,
+  //       maxAuditsPerDay: 1, // per domain
+  //     }
+  // }
 }
 
 /**

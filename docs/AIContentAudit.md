@@ -389,33 +389,50 @@ Benefits:
 - ✅ Use test helpers for creating test users and profiles
 - ✅ Use test helpers for cleaning up test data (profiles, email_captures)
 
-**UI & Display Testing (Mock Data):**
-- Test homepage flow with mock audit results (results display, session token storage)
-- Test dashboard audit list display with mock audits
-- Test audit detail page with mock data (table display, expandable rows)
-- Test export UI (dropdown menu, loading states, error handling)
-- Test export formats with mock data (PDF formatting, JSON schema, Markdown structure)
-- Test export gating (free users see upgrade prompt, paid users can export)
-- Test progress polling UI with mock in-progress states
-- Test empty audit results display
-- Test very large audits display (many issues, pagination)
-- Test severity filtering tabs with mock data
-- Test issue state filtering (active/ignored/resolved) with mock data
+**UI & Display Testing (Mock Data):** ⚠️ IN PROGRESS
+
+**Phase 1: Dashboard UI Fix & Verification (Priority 1)**
+- ✅ Fix sidebar overlapping content (layout structure) - Fixed cookie name mismatch (`sidebar:state` → `sidebar_state`), converted layout to server component, fixed sidebar width CSS variable
+- ⚠️ Fix health score cards not rendering/loading
+- ⚠️ Fix health score chart not displaying
+- ⚠️ Verify dashboard matches shadcn example structure
+- ⚠️ Test with hardcoded mock data first (before DB connection)
+
+**Phase 2: Database Domain Normalization Fix (Priority 2)**
+- ⚠️ **CRITICAL:** Fix domain format mismatch (stored as `https://apple.com`, API queries `apple.com`)
+- ⚠️ Update all existing audit domains to normalized format (remove protocol)
+- ⚠️ Verify health score API can fetch data after normalization
+- ⚠️ Test domain normalization in audit creation (ensure new audits use normalized format)
+
+**Phase 3: Mock Data Pipeline Testing (Priority 3)**
+- ⚠️ Test homepage flow with mock audit results (results display, session token storage)
+- ⚠️ Test dashboard audit list display with mock audits (verify 35+ audits visible)
+- ⚠️ Test health score cards display with mock data (4 cards: Current Score, Trend, Active Issues, Critical Issues)
+- ⚠️ Test health score line chart rendering with 30 days of mock time-series data
+- ⚠️ Test issues table displays most recent audit's 10 issue types
+- ⚠️ Test export UI (dropdown menu, loading states, error handling)
+- ⚠️ Test export formats with mock data (PDF formatting, JSON schema, Markdown structure)
+- ⚠️ Test export gating (free users see upgrade prompt, paid users can export)
+- ⚠️ Test progress polling UI with mock in-progress states
+- ⚠️ Test empty audit results display
+- ⚠️ Test very large audits display (many issues, pagination)
+- ⚠️ Test severity filtering tabs with mock data
+- ⚠️ Test issue state filtering (active/ignored/resolved) with mock data
 
 **Health Score UI Testing (Mock Data):**
-- Test health score calculation display with various issue combinations (low/medium/high severity)
-- Test health score color coding (green 80+, yellow 50-79, red <50)
-- Test trend indicator (up/down arrow vs previous period)
-- Test health score line chart rendering with mock time-series data
-- Test time range selector (30/60/90 days) updates chart data
-- Test chart tooltip showing score + metrics for each point
-- Test supporting metrics cards display (Total Active Issues, Total Critical Issues, Pages with Issues, Critical Pages)
-- Test filtering of ignored issues in health score calculation
-- Test empty states (no audits, no issues) - show appropriate message
-- Test single audit display (score shown but no trend line)
-- Test all issues ignored scenario (score should be 100)
-- Test score clamping (negative scores show as 0, scores >100 show as 100)
-- Test multiple domains scenario (defaults to most recent audit's domain)
+- ⚠️ Test health score calculation display with various issue combinations (low/medium/high severity)
+- ⚠️ Test health score color coding (green 80+, yellow 50-79, red <50)
+- ⚠️ Test trend indicator (up/down arrow vs previous period)
+- ⚠️ Test health score line chart rendering with mock time-series data (30 days wavy pattern)
+- ⚠️ Test time range selector (30/60/90 days) updates chart data
+- ⚠️ Test chart tooltip showing score + metrics for each point
+- ⚠️ Test supporting metrics cards display (Total Active Issues, Total Critical Issues, Pages with Issues, Critical Pages)
+- ⚠️ Test filtering of ignored issues in health score calculation
+- ⚠️ Test empty states (no audits, no issues) - show appropriate message
+- ⚠️ Test single audit display (score shown but no trend line)
+- ⚠️ Test all issues ignored scenario (score should be 100)
+- ⚠️ Test score clamping (negative scores show as 0, scores >100 show as 100)
+- ⚠️ Test multiple domains scenario (defaults to most recent audit's domain)
 
 **Rate Limiting UI Testing (Mock Data):**
 - Test "Run New Audit" button shows limit status ("X/Y audits today", "X/Y domains")
@@ -437,22 +454,66 @@ Benefits:
 - Test deletion error handling (shows error message, domain remains in list)
 - Test empty domain state (no domains message)
 
-**AI Model Testing (Expensive - Do Later):**
-- Test mini audit via API (curl or Postman - happy path, error cases, timeout)
-- Test mini audit via UI (actual model calls)
-- Test full audit with background execution
-- Test model timeout handling
-- Test model error recovery
-- Test different tier configurations (FREE/PAID/ENTERPRISE model selection)
-- Test tool call limits and enforcement
+**AI Model Testing (Expensive - Do After Mock Data Works):**
+- ⚠️ **ONLY AFTER:** All mock data tests pass and dashboard renders correctly
+- ⚠️ Set `USE_MOCK_DATA=false` in `.env.local`
+- ⚠️ Test mini audit via API (curl or Postman - happy path, error cases, timeout)
+- ⚠️ Test mini audit via UI (actual model calls)
+- ⚠️ Test full audit with background execution
+- ⚠️ Test model timeout handling
+- ⚠️ Test model error recovery
+- ⚠️ Test different tier configurations (FREE/PAID/ENTERPRISE model selection)
+- ⚠️ Test tool call limits and enforcement
+- ⚠️ Re-enable rate limits after testing complete (uncomment in `lib/audit-rate-limit.ts`)
 
 **Mock Data Strategy:**
-- Generate mock audit results matching API response schema (`groups`, `meta`, `totalIssues`, etc.)
-- Store mock audits in test database with various states (completed, in_progress, failed)
-- Use mock data for all UI, API, and database testing to avoid model costs
-- Create test fixtures for different scenarios (empty results, many issues, various severities)
-- Mock issue states (active/ignored/resolved) for lifecycle testing
-- Only use actual model calls for final integration testing after non-AI components are verified
+- ✅ Generate mock audit results matching API response schema (`groups`, `meta`, `totalIssues`, etc.)
+- ✅ Store mock audits in test database with various states (completed, in_progress, failed)
+- ⚠️ **CRITICAL:** Ensure domain format consistency (normalized: `apple.com`, not `https://apple.com`)
+- ⚠️ Use dedicated test account: `l.gichigi@gmail.com` (user_id: `a232d31e-59d6-478c-864a-03ce9bebe79f`)
+- ⚠️ Use test domain: `apple.com` (already has 35 historical audits inserted)
+- ⚠️ Use mock data for all UI, API, and database testing to avoid model costs
+- ⚠️ Create test fixtures for different scenarios (empty results, many issues, various severities)
+- ⚠️ Mock issue states (active/ignored/resolved) for lifecycle testing
+- ⚠️ Only use actual model calls for final integration testing after non-AI components are verified
+
+**Step-by-Step Testing Execution Plan:**
+
+**Step 1: Fix Domain Normalization (5 min)**
+```sql
+-- Normalize all existing domains to match API expectations
+UPDATE brand_audit_runs 
+SET domain = REPLACE(REPLACE(REPLACE(domain, 'https://', ''), 'http://', ''), 'www.', '')
+WHERE domain LIKE 'https://%' OR domain LIKE 'http://%';
+```
+
+**Step 2: Verify Dashboard UI Structure (15 min)**
+- Compare dashboard layout to shadcn example (`/design-system`)
+- Fix sidebar overlap (ensure `SidebarInset` has correct flex classes)
+- Fix card rendering (verify container queries working)
+- Fix chart display (verify data prop passed correctly)
+- Test with hardcoded data first (no DB calls)
+
+**Step 3: Test Mock Data Pipeline (10 min)**
+- Refresh dashboard (hard refresh: Cmd+Shift+R)
+- Verify health score cards display (4 cards with scores)
+- Verify health score chart displays (30 days line chart)
+- Verify issues table displays (10 issue types from most recent audit)
+- Check browser console for errors
+
+**Step 4: Test Full E2E with Real AI (30 min)**
+- Set `USE_MOCK_DATA=false` in `.env.local`
+- Run new audit via UI
+- Verify audit completes and saves to DB
+- Verify dashboard updates with new audit
+- Verify health score recalculates
+- Re-enable rate limits when done
+
+**Test Account Configuration:**
+- Email: `l.gichigi@gmail.com`
+- User ID: `a232d31e-59d6-478c-864a-03ce9bebe79f`
+- Plan: `free` (limits temporarily disabled)
+- Test Domain: `apple.com` (35 historical audits)
 
 **Design System Redesign** ✅ COMPLETE
 

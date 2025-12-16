@@ -90,7 +90,8 @@ export function HealthScoreChart({ data, domain }: HealthScoreChartProps) {
     pagesWithIssues: item.metrics?.pagesWithIssues || 0,
   }))
 
-  if (data.length === 0) {
+  // Check if we have data to display (use chartData instead of data)
+  if (chartData.length === 0) {
     return (
       <Card className="border border-border">
         <CardHeader>
@@ -164,7 +165,10 @@ export function HealthScoreChart({ data, domain }: HealthScoreChartProps) {
           config={chartConfig}
           className="aspect-auto h-[250px] w-full"
         >
-          <AreaChart data={chartData}>
+          <AreaChart 
+            data={chartData}
+            margin={{ top: 5, right: 10, left: 10, bottom: 5 }}
+          >
             <defs>
               <linearGradient id="fillScore" x1="0" y1="0" x2="0" y2="1">
                 <stop
@@ -186,6 +190,7 @@ export function HealthScoreChart({ data, domain }: HealthScoreChartProps) {
               axisLine={false}
               tickMargin={8}
               minTickGap={32}
+              domain={chartData.length === 1 ? ['dataMin', 'dataMax'] : undefined}
               tickFormatter={(value) => {
                 const date = new Date(value)
                 return date.toLocaleDateString("en-US", {

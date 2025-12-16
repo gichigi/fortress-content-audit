@@ -25,7 +25,8 @@ interface HealthScoreCardsProps {
 }
 
 export function HealthScoreCards({ currentScore, previousScore, loading }: HealthScoreCardsProps) {
-  if (loading || !currentScore) {
+  // Show loading state only while actively loading
+  if (loading) {
     return (
       <div className="@xl/main:grid-cols-2 @5xl/main:grid-cols-4 grid grid-cols-1 gap-4 px-4 lg:px-6">
         {[1, 2, 3, 4].map((i) => (
@@ -38,6 +39,11 @@ export function HealthScoreCards({ currentScore, previousScore, loading }: Healt
         ))}
       </div>
     )
+  }
+
+  // If no data after loading, show empty state or don't render
+  if (!currentScore) {
+    return null
   }
 
   const score = Math.round(currentScore.score)

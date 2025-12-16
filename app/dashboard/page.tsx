@@ -12,14 +12,10 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ArrowLeft, FileText, Copy, Trash2, ExternalLink, RefreshCw, Loader2, TrendingUp, TrendingDown, Minus, CheckCircle2 } from "lucide-react"
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import { useToast } from "@/hooks/use-toast"
-import Header from "@/components/Header"
 import { PLAN_NAMES } from "@/lib/plans"
 import posthog from "posthog-js"
 import { HealthScoreChart } from "@/components/health-score-chart"
 import { HealthScoreCards } from "@/components/health-score-cards"
-import { AppSidebar } from "@/components/app-sidebar"
-import { SiteHeader } from "@/components/site-header"
-import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { AuditTable } from "@/components/audit-table"
 import { transformAuditToTableRows } from "@/lib/audit-table-adapter"
 import {
@@ -212,11 +208,18 @@ export default function DashboardPage() {
           'Authorization': `Bearer ${token}`
         }
       })
-      if (!response.ok) throw new Error('Failed to load guidelines')
+      if (!response.ok) {
+        // Guidelines API may not exist yet - fail gracefully
+        console.warn('[Dashboard] Guidelines API not available or returned error')
+        setGuidelines([])
+        return
+      }
       const data = await response.json()
       setGuidelines(data.guidelines || [])
     } catch (error) {
-      console.error("Error loading guidelines:", error)
+      // Fail gracefully - guidelines feature is optional
+      console.warn("Error loading guidelines:", error)
+      setGuidelines([])
     }
   }
 
@@ -226,6 +229,7 @@ export default function DashboardPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
+      // Force fresh data fetch
       const { data, error } = await supabase
         .from('brand_audit_runs')
         .select('*')
@@ -252,14 +256,16 @@ export default function DashboardPage() {
       
       if (!response.ok) {
         // Don't show error - health score is optional
-        console.error('[Dashboard] Failed to load health score')
+        console.warn('[Dashboard] Failed to load health score, response not ok')
+        setHealthScoreData(null)
         return
       }
       
       const data = await response.json()
       setHealthScoreData(data)
     } catch (error) {
-      console.error("Error loading health score:", error)
+      console.warn("Error loading health score:", error)
+      setHealthScoreData(null)
     } finally {
       setHealthScoreLoading(false)
     }
@@ -475,16 +481,12 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background">
-        <Header />
-        <div className="container mx-auto px-6 py-16 max-w-5xl">
-          <div className="mb-12">
-            <Skeleton className="h-4 w-16 mb-6" />
-            <Skeleton className="h-16 w-96 mb-4" />
-            <Skeleton className="h-6 w-96 max-w-2xl" />
+      <div className="flex flex-1 flex-col">
+        <div className="@container/main flex flex-1 flex-col gap-2">
+          <div className="px-4 lg:px-6 pt-4">
+            <Skeleton className="h-10 w-48 mb-4" />
           </div>
-          
-          <div className="space-y-8">
+          <div className="px-4 lg:px-6 space-y-8">
             <Tabs defaultValue="audit" className="space-y-8">
               <TabsList>
                 <Skeleton className="h-10 w-24" />
@@ -536,19 +538,8 @@ export default function DashboardPage() {
     : undefined
 
   return (
-    <SidebarProvider
-      style={
-        {
-          "--sidebar-width": "calc(var(--spacing) * 72)",
-          "--header-height": "calc(var(--spacing) * 12)",
-        } as React.CSSProperties
-      }
-    >
-      <AppSidebar variant="inset" />
-      <SidebarInset>
-        <SiteHeader />
-        <div className="flex flex-1 flex-col">
-          <div className="@container/main flex flex-1 flex-col gap-2">
+    <>
+    <div className="@container/main flex flex-1 flex-col gap-2">
             {/* Error Alert */}
             {error && (
               <div className="px-4 lg:px-6 pt-4">
@@ -727,8 +718,8 @@ export default function DashboardPage() {
                   loading={healthScoreLoading}
                 />
 
-                {/* Health Score Chart */}
-                {healthScoreData?.currentScore && (
+                {/* Health Score Chart - Always render if healthScoreData exists */}
+                {healthScoreData && (
                   <div className="px-4 lg:px-6">
                     <HealthScoreChart 
                       data={healthScoreData.data || []} 
@@ -767,8 +758,6 @@ export default function DashboardPage() {
                   </TabsContent>
             </Tabs>
           </div>
-        </div>
-      </SidebarInset>
 
       {/* Domain Deletion Confirmation Dialog */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
@@ -790,7 +779,7 @@ export default function DashboardPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </SidebarProvider>
+    </>
   )
 }
 

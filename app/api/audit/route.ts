@@ -82,8 +82,8 @@ export async function POST(request: Request) {
 
     // Rate limiting checks (only for authenticated users)
     if (isAuthenticated && userId) {
-      // Check if domain is new
-      const domainIsNew = await isNewDomain(userId, normalized)
+      // Check if domain is new (use storageDomain to match database format)
+      const domainIsNew = await isNewDomain(userId, storageDomain)
       
       // Check domain limit (only for new domains)
       if (domainIsNew) {
@@ -152,6 +152,10 @@ export async function POST(request: Request) {
         : await auditSite(normalized, auditTier)
     }
 
+    // Normalize domain for storage (remove protocol to match health score API format)
+    // Health score API queries with normalized domain (no protocol), so we must store it the same way
+    const storageDomain = normalized.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '')
+    
     // Extract brand name/title
     // Simple heuristic: extract domain name without TLD
     let brandName = domain
@@ -177,7 +181,7 @@ export async function POST(request: Request) {
           user_id: userId,
           session_token: isAuthenticated ? null : finalSessionToken,
           guideline_id: guidelineId || null,
-          domain: normalized,
+          domain: storageDomain,
           title,
           brand_name: brandName,
           pages_scanned: 0,
@@ -198,13 +202,13 @@ export async function POST(request: Request) {
 
     // Filter out ignored issues for authenticated users
     let filteredGroups = result.groups || []
-    if (isAuthenticated && userId && normalized) {
+    if (isAuthenticated && userId && storageDomain) {
       // Query ignored issue signatures for this user/domain
       const { data: ignoredStates } = await supabaseAdmin
         .from('audit_issue_states')
         .select('signature')
         .eq('user_id', userId)
-        .eq('domain', normalized)
+        .eq('domain', storageDomain)
         .eq('state', 'ignored')
 
       if (ignoredStates && ignoredStates.length > 0) {
@@ -237,7 +241,7 @@ export async function POST(request: Request) {
         user_id: userId, // null for unauthenticated users
         session_token: isAuthenticated ? null : finalSessionToken, // only for unauthenticated
         guideline_id: guidelineId || null,
-        domain: normalized,
+        domain: storageDomain,
         title,
         brand_name: brandName,
         pages_scanned: result.pagesScanned,
