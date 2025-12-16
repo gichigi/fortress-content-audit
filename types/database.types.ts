@@ -39,6 +39,68 @@ export type Database = {
   }
   public: {
     Tables: {
+      audit_issue_states: {
+        Row: {
+          audit_run_id: string | null
+          created_at: string | null
+          domain: string
+          id: string
+          signature: string
+          state: Database["public"]["Enums"]["issue_state_enum"]
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          audit_run_id?: string | null
+          created_at?: string | null
+          domain: string
+          id?: string
+          signature: string
+          state?: Database["public"]["Enums"]["issue_state_enum"]
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          audit_run_id?: string | null
+          created_at?: string | null
+          domain?: string
+          id?: string
+          signature?: string
+          state?: Database["public"]["Enums"]["issue_state_enum"]
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_issue_states_audit_run_id_fkey"
+            columns: ["audit_run_id"]
+            isOneToOne: false
+            referencedRelation: "brand_audit_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      audit_usage: {
+        Row: {
+          audit_count: number | null
+          date: string
+          domain: string
+          user_id: string
+        }
+        Insert: {
+          audit_count?: number | null
+          date: string
+          domain: string
+          user_id: string
+        }
+        Update: {
+          audit_count?: number | null
+          date?: string
+          domain?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       blog_posts: {
         Row: {
           author_name: string | null
@@ -285,7 +347,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      issue_state_enum: "active" | "ignored" | "resolved"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -415,6 +477,8 @@ export const Constants = {
     Enums: {},
   },
   public: {
-    Enums: {},
+    Enums: {
+      issue_state_enum: ["active", "ignored", "resolved"],
+    },
   },
 } as const

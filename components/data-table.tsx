@@ -35,7 +35,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 
-import { useIsMobile } from "@/hooks/use-mobile"
+import { useMobile } from "@/hooks/use-mobile"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -637,6 +637,12 @@ export function DataTable({
     })
   }, [filteredData, globalFilter])
 
+  // Create columns with state handlers
+  const columns = React.useMemo(
+    () => createColumns(handleUpdateState, userPlan, activeStateTab),
+    [handleUpdateState, userPlan, activeStateTab]
+  )
+
   const table = useReactTable({
     data: searchFilteredData,
     columns,
@@ -686,12 +692,6 @@ export function DataTable({
     }
     return counts
   }, [dataWithStates])
-
-  // Create columns with state handlers
-  const columns = React.useMemo(
-    () => createColumns(handleUpdateState, userPlan, activeStateTab),
-    [handleUpdateState, userPlan, activeStateTab]
-  )
 
   return (
     <div className="flex w-full flex-col justify-start gap-6">
@@ -878,6 +878,7 @@ export function DataTable({
                 })}
             </DropdownMenuContent>
           </DropdownMenu>
+        </div>
         </div>
         </div>
         {/* Clear Selection Button */}
@@ -1085,7 +1086,7 @@ const chartConfig = {
 } satisfies ChartConfig
 
 function TableCellViewer({ item }: { item: AuditTableRow }) {
-  const isMobile = useIsMobile()
+  const isMobile = useMobile()
 
   return (
     <Sheet>
@@ -1097,11 +1098,11 @@ function TableCellViewer({ item }: { item: AuditTableRow }) {
       <SheetContent side="right" className="flex flex-col">
         <SheetHeader className="gap-1">
           <SheetTitle className="font-serif">{item.title}</SheetTitle>
-          <SheetDescription>
-            <Badge variant={getSeverityBadgeVariant(item.severity)} className="mt-1">
+          <div className="mt-1">
+            <Badge variant={getSeverityBadgeVariant(item.severity)}>
               {item.severity.toUpperCase()}
             </Badge>
-          </SheetDescription>
+          </div>
         </SheetHeader>
         <div className="flex flex-1 flex-col gap-6 overflow-y-auto py-4 text-sm">
           {/* Impact Section */}

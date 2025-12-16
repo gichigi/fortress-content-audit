@@ -39,7 +39,8 @@
 | Export Format | None | None | PDF, JSON, Markdown | PDF, JSON, Markdown |
 | Markdown Export | ❌ | ❌ | ✅ (with AI prompt header) | ✅ (with AI prompt header) |
 | Historical Reports | ❌ | ✅ (limited) | ✅ (30/60/90 days) | ✅ (unlimited) |
-| Health Score | ❌ | ❌ | ✅ | ✅ |
+| Health Score | ❌ | ✅ | ✅ | ✅ |
+| Dashboard (Cards, Chart, Table) | ❌ | ✅ | ✅ | ✅ |
 | **Monitoring** |
 | Continuous Monitoring | ❌ | ❌ | ✅ (Weekly digest) | ✅ (Real-time alerts) |
 | Page Change Detection | ❌ | ❌ | ✅ | ✅ |
@@ -581,9 +582,12 @@ If hash changes → page changed.
 * ✅ GET `/api/health-score` endpoint - Returns health score history over time range (30/60/90 days)
 * ✅ Calculates score for each audit date - Groups audits by date, aggregates metrics
 * ✅ Returns current score and historical data - Includes supporting metrics (totalActive, totalCritical, criticalPages, pagesWithIssues)
+* ✅ Available to all authenticated users (free, paid, enterprise) - No plan gating
 
 **Dashboard Display** ✅ COMPLETE
 
+* ✅ Shadcn dashboard block structure - Uses `SectionCards`, `HealthScoreChart`, and `DataTable` components
+* ✅ Available to all authenticated users (free, paid, enterprise) - Full dashboard experience for all plans
 * ✅ Large health score card with color coding (green 80+, yellow 50-79, red <50) - Implemented in dashboard
 * ✅ Trend indicator (up/down arrow vs previous period) - Shows score change
 * ✅ Line chart over time (30/60/90 days) - `HealthScoreChart` component with time range selector
@@ -592,6 +596,8 @@ If hash changes → page changed.
   * ✅ Total Critical Issues - Count of high-severity issues
   * ✅ Pages with Issues - Count of unique pages with active issues
   * ✅ Critical Pages - Count of pages with at least one high-severity issue
+* ✅ DataTable component - Displays audit results in interactive table format (replaces card list view)
+* ✅ Dashboard layout - Sidebar navigation, header, and main content area with cards, chart, and table
 
 **Audit Run Limits & Rate Limiting** ✅ COMPLETE
 
@@ -609,12 +615,15 @@ If hash changes → page changed.
 **Implementation Files:**
 
 * ✅ `lib/health-score.ts` - Health score calculation logic
-* ✅ `app/api/health-score/route.ts` - Health score API endpoint
+* ✅ `app/api/health-score/route.ts` - Health score API endpoint (available to all authenticated users)
 * ✅ `lib/audit-rate-limit.ts` - Rate limiting utilities
 * ✅ `app/api/domains/[domain]/route.ts` - Domain deletion endpoint
 * ✅ `app/api/audit/usage/route.ts` - Usage info API endpoint
 * ✅ `components/health-score-chart.tsx` - Health score line chart component
-* ✅ `app/dashboard/page.tsx` - Health score display and domain management UI
+* ✅ `components/section-cards.tsx` - Metric cards component (shadcn dashboard block)
+* ✅ `components/chart-area-interactive.tsx` - Chart component (shadcn dashboard block)
+* ✅ `components/data-table.tsx` - Data table component (shadcn dashboard block)
+* ✅ `app/dashboard/page.tsx` - Dashboard page with shadcn block structure (cards, chart, table)
 * ✅ `app/pricing/page.tsx` - Audit limits displayed on pricing cards
 
 ---

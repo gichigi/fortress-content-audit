@@ -3,7 +3,7 @@
 import * as React from "react"
 import { Area, AreaChart, CartesianGrid, XAxis } from "recharts"
 
-import { useIsMobile } from "@/hooks/use-mobile"
+import { useMobile } from "@/hooks/use-mobile"
 import {
   Card,
   CardContent,
@@ -56,7 +56,7 @@ const chartConfig = {
 const chartColor = "hsl(var(--chart-1))"
 
 export function HealthScoreChart({ data, domain }: HealthScoreChartProps) {
-  const isMobile = useIsMobile()
+  const isMobile = useMobile()
   const [timeRange, setTimeRange] = React.useState("30")
 
   React.useEffect(() => {

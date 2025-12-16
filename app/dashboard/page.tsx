@@ -16,6 +16,12 @@ import Header from "@/components/Header"
 import { PLAN_NAMES } from "@/lib/plans"
 import posthog from "posthog-js"
 import { HealthScoreChart } from "@/components/health-score-chart"
+import { HealthScoreCards } from "@/components/health-score-cards"
+import { AppSidebar } from "@/components/app-sidebar"
+import { SiteHeader } from "@/components/site-header"
+import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
+import { AuditTable } from "@/components/audit-table"
+import { transformAuditToTableRows } from "@/lib/audit-table-adapter"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -185,10 +191,8 @@ export default function DashboardPage() {
         loadAudits(session.access_token)
       ])
       
-      // Load health score after plan is set
-      if (profile && (profile.plan === 'pro' || profile.plan === 'enterprise')) {
-        await loadHealthScore(session.access_token)
-      }
+      // Load health score for all authenticated users
+      await loadHealthScore(session.access_token)
       
       // Load usage info and domains
       await loadUsageInfo(session.access_token)
@@ -237,9 +241,7 @@ export default function DashboardPage() {
   }
 
   const loadHealthScore = async (token: string) => {
-    // Only load health score for paid users
-    if (plan === 'free') return
-    
+    // Load health score for all authenticated users
     setHealthScoreLoading(true)
     try {
       const response = await fetch('/api/health-score?days=30', {
@@ -525,46 +527,56 @@ export default function DashboardPage() {
     )
   }
 
+  // Get most recent audit for table display
+  const mostRecentAudit = audits.length > 0 ? audits[0] : null
+  const allIssues = mostRecentAudit?.issues_json?.groups || []
+  const tableRows = transformAuditToTableRows(allIssues)
+  const previousScore = healthScoreData?.data && healthScoreData.data.length > 1 
+    ? healthScoreData.data[healthScoreData.data.length - 2]?.score 
+    : undefined
+
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <main className="container mx-auto px-6 py-16 max-w-5xl">
-        <div className="mb-12">
-          <Link href="/" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6">
-            <ArrowLeft className="h-4 w-4 mr-1" /> Back
-          </Link>
-          <h1 className="font-serif text-5xl md:text-6xl font-light tracking-tight mb-4">
-            Dashboard
-          </h1>
-          <p className="text-xl text-muted-foreground leading-relaxed max-w-2xl">
-            Audit your website content and manage your guidelines
-          </p>
-        </div>
+    <SidebarProvider
+      style={
+        {
+          "--sidebar-width": "calc(var(--spacing) * 72)",
+          "--header-height": "calc(var(--spacing) * 12)",
+        } as React.CSSProperties
+      }
+    >
+      <AppSidebar variant="inset" />
+      <SidebarInset>
+        <SiteHeader />
+        <div className="flex flex-1 flex-col">
+          <div className="@container/main flex flex-1 flex-col gap-2">
+            {/* Error Alert */}
+            {error && (
+              <div className="px-4 lg:px-6 pt-4">
+                <Alert variant="destructive">
+                  <AlertTitle>Error</AlertTitle>
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              </div>
+            )}
 
-        <Tabs defaultValue="audit" className="space-y-8" onValueChange={(value) => {
-          if (value === 'audit') {
-            try {
-              posthog.capture('audit_viewed', {
-                audit_count: audits.length,
-                plan: plan
-              })
-            } catch {}
-          }
-        }}>
-          <TabsList>
-            <TabsTrigger value="audit">Audit</TabsTrigger>
-            <TabsTrigger value="guidelines">Guidelines</TabsTrigger>
-          </TabsList>
+            <Tabs defaultValue="audit" className="flex flex-1 flex-col" onValueChange={(value) => {
+              if (value === 'audit') {
+                try {
+                  posthog.capture('audit_viewed', {
+                    audit_count: audits.length,
+                    plan: plan
+                  })
+                } catch {}
+              }
+            }}>
+              <div className="px-4 lg:px-6 pt-4">
+                <TabsList>
+                  <TabsTrigger value="audit">Audit</TabsTrigger>
+                  <TabsTrigger value="guidelines">Guidelines</TabsTrigger>
+                </TabsList>
+              </div>
 
-          {/* Error Alert */}
-          {error && (
-            <Alert variant="destructive">
-              <AlertTitle>Error</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
-          <TabsContent value="guidelines" className="space-y-4">
+              <TabsContent value="guidelines" className="flex flex-1 flex-col gap-4 py-4 md:gap-6 md:py-6 px-4 lg:px-6">
             {guidelines.length === 0 ? (
               <Card className="border border-border">
                 <CardContent className="pt-6">
@@ -638,386 +650,147 @@ export default function DashboardPage() {
             )}
           </TabsContent>
 
-          <TabsContent value="audit" className="space-y-4">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-serif text-2xl font-semibold">Content Audits</h2>
-              <div className="flex items-center gap-3">
-                {usageInfo && (
-                  <div className="text-sm text-muted-foreground">
-                    {usageInfo.limit > 0 && (
-                      <span>
-                        {usageInfo.today}/{usageInfo.limit} audit{usageInfo.limit === 1 ? '' : 's'} today
-                      </span>
-                    )}
-                    {usageInfo.domainLimit > 0 && (
-                      <span className="ml-3">
-                        {usageInfo.domains}/{usageInfo.domainLimit} domain{usageInfo.domainLimit === 1 ? '' : 's'}
-                      </span>
-                    )}
-                  </div>
-                )}
-                <Button 
-                  asChild
-                  disabled={usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit}
-                  title={
-                    usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit
-                      ? `Daily limit reached. Try again tomorrow${plan === 'free' ? ' or upgrade to Pro for 5 domains' : ''}.`
-                      : undefined
-                  }
-                >
-                  <Link href="/">Run New Audit</Link>
-                </Button>
-              </div>
-            </div>
-
-            {/* Domain Management Section */}
-            {domains.length > 0 && (
-              <Card className="border border-border">
-                <CardHeader>
-                  <CardTitle className="font-serif text-xl font-semibold">Your Domains</CardTitle>
-                  <CardDescription>
-                    Manage your audited domains. Delete a domain to free up a slot for a new one.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    {domains.map((domain) => (
-                      <div key={domain} className="flex items-center justify-between py-2 px-3 rounded-md border border-border">
-                        <span className="text-sm font-medium">{domain}</span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setDomainToDelete(domain)
-                            setShowDeleteDialog(true)
-                          }}
-                          disabled={deletingDomain === domain}
-                        >
-                          {deletingDomain === domain ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4" />
-                          )}
-                        </Button>
+              <TabsContent value="audit" className="flex flex-1 flex-col gap-4 py-4 md:gap-6 md:py-6">
+                <div className="flex items-center justify-between px-4 lg:px-6">
+                  <h2 className="font-serif text-2xl font-semibold">Content Audits</h2>
+                  <div className="flex items-center gap-3">
+                    {usageInfo && (
+                      <div className="text-sm text-muted-foreground">
+                        {usageInfo.limit > 0 && (
+                          <span>
+                            {usageInfo.today}/{usageInfo.limit} audit{usageInfo.limit === 1 ? '' : 's'} today
+                          </span>
+                        )}
+                        {usageInfo.domainLimit > 0 && (
+                          <span className="ml-3">
+                            {usageInfo.domains}/{usageInfo.domainLimit} domain{usageInfo.domainLimit === 1 ? '' : 's'}
+                          </span>
+                        )}
                       </div>
-                    ))}
+                    )}
+                    <Button 
+                      asChild
+                      disabled={usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit}
+                      title={
+                        usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit
+                          ? `Daily limit reached. Try again tomorrow${plan === 'free' ? ' or upgrade to Pro for 5 domains' : ''}.`
+                          : undefined
+                      }
+                    >
+                      <Link href="/">Run New Audit</Link>
+                    </Button>
                   </div>
-                </CardContent>
-              </Card>
-            )}
+                </div>
 
-            {/* Health Score Section - Only for paid users */}
-            {plan !== 'free' && (
-              <div className="space-y-6 mb-8">
-                {/* Large Health Score Card */}
-                {healthScoreLoading ? (
-                  <Card className="border border-border">
-                    <CardContent className="pt-6">
-                      <div className="flex items-center justify-center py-12">
-                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                      </div>
-                    </CardContent>
-                  </Card>
-                ) : healthScoreData?.currentScore ? (
-                  <>
+                {/* Domain Management Section */}
+                {domains.length > 0 && (
+                  <div className="px-4 lg:px-6">
                     <Card className="border border-border">
-                      <CardContent className="pt-6">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <CardDescription className="mb-2">Current Health Score</CardDescription>
-                            <div className="flex items-baseline gap-3">
-                              <span className={`font-serif text-6xl font-light ${
-                                healthScoreData.currentScore.score >= 80 ? 'text-green-600' :
-                                healthScoreData.currentScore.score >= 50 ? 'text-yellow-600' :
-                                'text-destructive'
-                              }`}>
-                                {Math.round(healthScoreData.currentScore.score)}
-                              </span>
-                              <span className="text-2xl text-muted-foreground">/100</span>
-                              {healthScoreData.data && healthScoreData.data.length > 1 && (
-                                <div className="flex items-center gap-1 ml-4">
-                                  {(() => {
-                                    const current = healthScoreData.currentScore.score
-                                    const previous = healthScoreData.data[healthScoreData.data.length - 2]?.score || current
-                                    const diff = current - previous
-                                    if (diff > 0) {
-                                      return <TrendingUp className="h-5 w-5 text-green-600" />
-                                    } else if (diff < 0) {
-                                      return <TrendingDown className="h-5 w-5 text-destructive" />
-                                    } else {
-                                      return <Minus className="h-5 w-5 text-muted-foreground" />
-                                    }
-                                  })()}
-                                  <span className="text-sm text-muted-foreground">
-                                    {(() => {
-                                      const current = healthScoreData.currentScore.score
-                                      const previous = healthScoreData.data[healthScoreData.data.length - 2]?.score || current
-                                      const diff = current - previous
-                                      if (diff > 0) return `+${diff.toFixed(0)}`
-                                      if (diff < 0) return diff.toFixed(0)
-                                      return '0'
-                                    })()}
-                                  </span>
-                                </div>
-                              )}
+                      <CardHeader>
+                        <CardTitle className="font-serif text-xl font-semibold">Your Domains</CardTitle>
+                        <CardDescription>
+                          Manage your audited domains. Delete a domain to free up a slot for a new one.
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-2">
+                          {domains.map((domain) => (
+                            <div key={domain} className="flex items-center justify-between py-2 px-3 rounded-md border border-border">
+                              <span className="text-sm font-medium">{domain}</span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setDomainToDelete(domain)
+                                  setShowDeleteDialog(true)
+                                }}
+                                disabled={deletingDomain === domain}
+                              >
+                                {deletingDomain === domain ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+                              </Button>
                             </div>
-                            {healthScoreData.domain && (
-                              <p className="text-sm text-muted-foreground mt-2">
-                                {healthScoreData.domain}
-                              </p>
-                            )}
-                          </div>
+                          ))}
                         </div>
                       </CardContent>
                     </Card>
+                  </div>
+                )}
 
-                    {/* Health Score Chart */}
+                {/* Health Score Section - Available to all authenticated users */}
+                <HealthScoreCards
+                  currentScore={healthScoreData?.currentScore}
+                  previousScore={previousScore}
+                  loading={healthScoreLoading}
+                />
+
+                {/* Health Score Chart */}
+                {healthScoreData?.currentScore && (
+                  <div className="px-4 lg:px-6">
                     <HealthScoreChart 
                       data={healthScoreData.data || []} 
                       domain={healthScoreData.domain}
                     />
-
-                    {/* Supporting Metrics Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                      <Card className="border border-border">
-                        <CardHeader className="pb-2">
-                          <CardDescription>Total Active Issues</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="text-3xl font-light">
-                            {healthScoreData.currentScore.metrics?.totalActive || 0}
-                          </div>
-                        </CardContent>
-                      </Card>
-                      <Card className="border border-border">
-                        <CardHeader className="pb-2">
-                          <CardDescription>Total Critical Issues</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="text-3xl font-light text-destructive">
-                            {healthScoreData.currentScore.metrics?.totalCritical || 0}
-                          </div>
-                        </CardContent>
-                      </Card>
-                      <Card className="border border-border">
-                        <CardHeader className="pb-2">
-                          <CardDescription>Pages with Issues</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="text-3xl font-light">
-                            {healthScoreData.currentScore.metrics?.pagesWithIssues || 0}
-                          </div>
-                        </CardContent>
-                      </Card>
-                      <Card className="border border-border">
-                        <CardHeader className="pb-2">
-                          <CardDescription>Critical Pages</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="text-3xl font-light text-destructive">
-                            {healthScoreData.currentScore.metrics?.criticalPages || 0}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </div>
-                  </>
-                ) : (
-                  <Card className="border border-border">
-                    <CardContent className="pt-6">
-                      <div className="text-center py-8">
-                        <p className="text-muted-foreground">
-                          No health score data available. Run an audit to see your content quality score.
-                        </p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-              </div>
-            )}
-            
-            {audits.length === 0 ? (
-              <Card className="border border-border">
-                <CardContent className="pt-6">
-                  <div className="text-center py-12">
-                    <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                    <h3 className="font-serif text-2xl font-semibold mb-2">No audits yet</h3>
-                    <p className="text-muted-foreground mb-6">
-                      Run your first content audit to get started
-                    </p>
-                    <Button asChild>
-                      <Link href="/">Run Audit</Link>
-                    </Button>
                   </div>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid gap-4">
-                {audits.map((audit) => {
-                  const issues = audit.issues_json?.groups || []
-                  const gatedIssues = plan === 'free' ? issues.slice(0, 5) : issues
-                  const highIssues = issues.filter((i: any) => i.severity === 'high').length
-                  const mediumIssues = issues.filter((i: any) => i.severity === 'medium').length
-                  const lowIssues = issues.filter((i: any) => i.severity === 'low').length
-                  
-                  return (
-                    <Card key={audit.id} className="border border-border">
-                      <CardHeader>
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <CardTitle className="font-serif text-2xl font-semibold mb-2">
-                              {audit.title || audit.brand_name || audit.domain || "Audit"}
-                            </CardTitle>
-                            <CardDescription className="flex items-center gap-4">
-                              <span>{audit.domain}</span>
-                              <span>•</span>
-                              <span>{audit.pages_scanned} pages scanned</span>
-                              <span>•</span>
-                              <span className="font-medium">{issues.length} issues found</span>
-                              {(highIssues > 0 || mediumIssues > 0 || lowIssues > 0) && (
-                                <>
-                                  <span>•</span>
-                                  <span className="flex items-center gap-2">
-                                    {highIssues > 0 && <span className="text-destructive">{highIssues} high</span>}
-                                    {mediumIssues > 0 && <span className="text-yellow-600">{mediumIssues} medium</span>}
-                                    {lowIssues > 0 && <span className="text-muted-foreground">{lowIssues} low</span>}
-                                  </span>
-                                </>
-                              )}
-                              <span>•</span>
-                              <span>{formatDate(audit.created_at)}</span>
-                            </CardDescription>
-                          </div>
-                          {plan === 'pro' && audit.domain && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleRerunAudit(audit.id, audit.domain!)}
-                            >
-                              <RefreshCw className="h-4 w-4 mr-2" />
-                              Re-run
-                            </Button>
-                          )}
+                )}
+
+                {/* Audit Issues Table - Show most recent audit's issues */}
+                {audits.length === 0 ? (
+                  <div className="px-4 lg:px-6">
+                    <Card className="border border-border">
+                      <CardContent className="pt-6">
+                        <div className="text-center py-12">
+                          <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                          <h3 className="font-serif text-2xl font-semibold mb-2">No audits yet</h3>
+                          <p className="text-muted-foreground mb-6">
+                            Run your first content audit to get started
+                          </p>
+                          <Button asChild>
+                            <Link href="/">Run Audit</Link>
+                          </Button>
                         </div>
-                      </CardHeader>
-                      <CardContent>
-                        {gatedIssues.length === 0 ? (
-                          <div className="text-center py-8">
-                            <CheckCircle2 className="h-12 w-12 text-green-600 mx-auto mb-3" />
-                            <h3 className="font-serif text-xl font-semibold mb-2">No issues found</h3>
-                            <p className="text-sm text-muted-foreground">
-                              We scanned {audit.pages_scanned || 0} pages and found no issues. Your content looks great!
-                            </p>
-                          </div>
-                        ) : (
-                          <div className="space-y-4">
-                            {plan === 'free' && issues.length > 5 && (
-                              <div className="border border-border p-4 bg-muted/50 mb-4">
-                                <p className="text-sm text-muted-foreground">
-                                  Showing 5 of {issues.length} issues.{' '}
-                                  <Button 
-                                    variant="link" 
-                                    className="p-0 h-auto text-sm font-medium"
-                                    onClick={async () => {
-                                      try { 
-                                        posthog.capture('upgrade_clicked', { location: 'audit-gating' }) 
-                                      } catch {}
-                                      
-                                      // Call checkout API directly
-                                      try {
-                                        const supabase = createClient()
-                                        const { data: { session } } = await supabase.auth.getSession()
-                                        
-                                        if (!session) {
-                                          router.push(`/sign-up?next=${encodeURIComponent('/dashboard')}`)
-                                          return
-                                        }
-
-                                        const response = await fetch('/api/create-checkout-session', {
-                                          method: 'POST',
-                                          headers: {
-                                            'Content-Type': 'application/json',
-                                            'Authorization': `Bearer ${session.access_token}`,
-                                          },
-                                          body: JSON.stringify({}),
-                                        })
-
-                                        if (!response.ok) {
-                                          const error = await response.json()
-                                          throw new Error(error.error || 'Failed to create checkout session')
-                                        }
-
-                                        const { url } = await response.json()
-                                        if (url) {
-                                          window.location.href = url
-                                        }
-                                      } catch (error) {
-                                        toast({
-                                          title: "Error",
-                                          description: error instanceof Error ? error.message : "Failed to start checkout",
-                                          variant: "destructive",
-                                        })
-                                      }
-                                    }}
-                                  >
-                                    Upgrade to {PLAN_NAMES.pro}
-                                  </Button>{' '}
-                                  to see all issues and unlock unlimited audits.
-                                </p>
-                              </div>
-                            )}
-                            
-                            {/* Summary view: just show top 3 issues as a teaser */}
-                            {gatedIssues.slice(0, 3).map((issue: any, idx: number) => (
-                              <div key={idx} className="border-l-2 border-border pl-4 py-2 opacity-80">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className={`h-2 w-2 rounded-full ${
-                                    issue.severity === 'high' ? 'bg-destructive' :
-                                    issue.severity === 'medium' ? 'bg-yellow-500' :
-                                    'bg-muted'
-                                  }`} />
-                                  <h4 className="font-medium text-sm truncate">{issue.title || `Issue ${idx + 1}`}</h4>
-                                </div>
-                              </div>
-                            ))}
-                            
-                            {gatedIssues.length > 3 && (
-                              <p className="text-xs text-muted-foreground pl-6">
-                                + {gatedIssues.length - 3} more issues...
-                              </p>
-                            )}
-                          </div>
-                        )}
                       </CardContent>
                     </Card>
-                  )
-                })}
-              </div>
-            )}
-          </TabsContent>
-        </Tabs>
+                  </div>
+                ) : (
+                  <div className="px-4 lg:px-6">
+                    <AuditTable
+                      data={tableRows}
+                      auditId={mostRecentAudit?.id}
+                      totalIssues={allIssues.length}
+                    />
+                  </div>
+                )}
+                  </TabsContent>
+            </Tabs>
+          </div>
+        </div>
+      </SidebarInset>
 
-        {/* Domain Deletion Confirmation Dialog */}
-        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Delete Domain</AlertDialogTitle>
-              <AlertDialogDescription>
-                Are you sure you want to delete all audits and data for <strong>{domainToDelete}</strong>? This action cannot be undone.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={handleDeleteDomain}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              >
-                Delete
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </main>
-    </div>
+      {/* Domain Deletion Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Domain</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete all audits and data for <strong>{domainToDelete}</strong>? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteDomain}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </SidebarProvider>
   )
 }
 
