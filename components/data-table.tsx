@@ -90,13 +90,11 @@ import {
 } from "@/components/ui/tabs"
 import {
   AuditTableRow,
-  AuditIssueGroup,
   getSeverityBadgeVariant,
   filterBySeverity,
 } from "@/lib/audit-table-adapter"
-import { IssueState } from "@/types/fortress"
+import { IssueStatus } from "@/types/fortress"
 import { createClient } from "@/lib/supabase-browser"
-import { generateIssueSignature } from "@/lib/issue-signature"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -111,7 +109,7 @@ import { RotateCcwIcon } from "lucide-react"
 
 // Create columns factory function to accept state update handlers
 function createColumns(
-  onUpdateState?: (signature: string, state: IssueState) => Promise<void>,
+  onUpdateStatus?: (issueId: string, status: IssueStatus) => Promise<void>,
   userPlan?: string,
   currentStateTab?: 'active' | 'ignored' | 'resolved' | 'all'
 ): ColumnDef<AuditTableRow>[] {
@@ -193,28 +191,33 @@ function createColumns(
       ),
     },
     {
-      accessorKey: "count",
-      header: () => <div className="w-full text-right">Instances</div>,
-      cell: ({ row }) => (
-        <div className="text-right font-medium">{row.original.count}</div>
-      ),
+      accessorKey: "locations",
+      header: () => <div className="w-full text-right">Locations</div>,
+      cell: ({ row }) => {
+        const locationCount = row.original.locations?.length || 0
+        return (
+          <div className="text-right font-medium">
+            {locationCount > 1 ? `${locationCount} pages` : '1 page'}
+          </div>
+        )
+      },
     },
     {
       id: "actions",
       cell: ({ row }) => {
-        const signature = row.original.signature
-        const currentState = row.original.state || 'active'
+        const issueId = row.original.id
+        const currentStatus = row.original.status || 'active'
         
-        // Issue state management available to all authenticated users
-        if (!onUpdateState || !signature) {
+        // Issue status management available to all authenticated users
+        if (!onUpdateStatus || !issueId) {
           return null
         }
 
         return (
           <IssueActionsDropdown
-            signature={signature}
-            currentState={currentState}
-            onUpdateState={onUpdateState}
+            issueId={issueId}
+            currentStatus={currentStatus}
+            onUpdateStatus={onUpdateStatus}
             currentStateTab={currentStateTab}
           />
         )
@@ -296,7 +299,7 @@ function IssueActionsDropdown({
           className="w-40"
           onClick={(e) => e.stopPropagation()}
         >
-          {currentState === 'active' && (
+          {currentStatus === 'active' && (
             <>
               <DropdownMenuItem onClick={() => setIgnoreDialogOpen(true)}>
                 <XIcon className="mr-2 h-4 w-4" />
@@ -308,7 +311,7 @@ function IssueActionsDropdown({
               </DropdownMenuItem>
             </>
           )}
-          {(currentState === 'ignored' || currentState === 'resolved') && (
+          {(currentStatus === 'ignored' || currentStatus === 'resolved') && (
             <DropdownMenuItem onClick={handleRestore}>
               <RotateCcwIcon className="mr-2 h-4 w-4" />
               Restore
@@ -337,9 +340,11 @@ function IssueActionsDropdown({
   )
 }
 
-// Expandable row component for showing evidence and fix
+// Expandable row component for showing locations and details
 function ExpandableRow({ row }: { row: Row<AuditTableRow> }) {
   const [isOpen, setIsOpen] = React.useState(false)
+  const locationCount = row.original.locations?.length || 0
+  const isMultiLocation = locationCount > 1
 
   const handleToggle = (e: React.MouseEvent | React.KeyboardEvent) => {
     // Don't toggle if clicking on interactive elements
@@ -363,173 +368,44 @@ function ExpandableRow({ row }: { row: Row<AuditTableRow> }) {
       <TableRow
         data-state={row.getIsSelected() && "selected"}
         data-expanded={isOpen}
-        className="cursor-pointer hover:bg-muted/50 focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
-        onClick={handleToggle}
-        onKeyDown={handleToggle}
-        aria-expanded={isOpen}
-        aria-controls={`expanded-${row.id}`}
-        tabIndex={0}
-        role="button"
+        className={isMultiLocation ? "cursor-pointer hover:bg-muted/50 focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2" : ""}
+        onClick={isMultiLocation ? handleToggle : undefined}
+        onKeyDown={isMultiLocation ? handleToggle : undefined}
+        aria-expanded={isMultiLocation ? isOpen : undefined}
+        aria-controls={isMultiLocation ? `expanded-${row.id}` : undefined}
+        tabIndex={isMultiLocation ? 0 : undefined}
+        role={isMultiLocation ? "button" : undefined}
       >
-        {row.getVisibleCells().map((cell) => (
-          <TableCell key={cell.id}>
-            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-          </TableCell>
-        ))}
-      </TableRow>
-      {isOpen && row.original.instances && row.original.instances.length > 0 && (
-        <>
-          {/* Render instances as nested table rows */}
-          {row.original.instances.map((instance, idx) => {
-            const visibleCells = row.getVisibleCells()
+        {row.getVisibleCells().map((cell) => {
+          // In the Issue/Title column, show location count badge for multi-location issues
+          if (cell.column.id === 'title' && isMultiLocation) {
             return (
-              <TableRow 
-                key={`instance-${row.id}-${idx}`} 
-                className="bg-muted/20 hover:bg-muted/30"
-                data-nested="true"
-              >
-                {/* Match exact column structure from parent row */}
-                {visibleCells.map((cell, cellIdx) => {
-                  // First column: select checkbox with indent
-                  if (cellIdx === 0) {
-                    return (
-                      <TableCell key={cell.id} className="w-12 pl-8">
-                        <div className="flex items-center gap-2">
-                          <div className="w-4 h-px bg-border"></div>
-                          <Checkbox disabled aria-label="Select instance" />
-                        </div>
-                      </TableCell>
-                    )
-                  }
-                  // Second column: snippet (Issue column)
-                  if (cellIdx === 1) {
-                    return (
-                      <TableCell key={cell.id}>
-                        <p className="text-sm text-foreground/80 italic leading-relaxed pl-4">
-                          "{instance.snippet}"
-                        </p>
-                      </TableCell>
-                    )
-                  }
-                  // Third column: category
-                  if (cellIdx === 2) {
-                    return (
-                      <TableCell key={cell.id}>
-                        <Badge variant="outline" className="text-xs">
-                          {instance.category}
-                        </Badge>
-                      </TableCell>
-                    )
-                  }
-                  // Fourth column: severity
-                  if (cellIdx === 3) {
-                    return (
-                      <TableCell key={cell.id}>
-                        <Badge
-                          variant={getSeverityBadgeVariant(instance.severity)}
-                          className="px-2 py-0.5 text-xs font-semibold uppercase"
-                        >
-                          {instance.severity}
-                        </Badge>
-                      </TableCell>
-                    )
-                  }
-                  // Fifth column: impact (show URL for instances)
-                  if (cellIdx === 4) {
-                    return (
-                      <TableCell key={cell.id}>
-                        <a
-                          href={instance.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-muted-foreground font-mono hover:text-foreground transition-colors break-all max-w-md truncate block"
-                        >
-                          {instance.url}
-                        </a>
-                      </TableCell>
-                    )
-                  }
-                  // Sixth column: count (empty for instances)
-                  if (cellIdx === 5) {
-                    return (
-                      <TableCell key={cell.id} className="text-right">
-                        —
-                      </TableCell>
-                    )
-                  }
-                  // Last column: actions (empty for instances)
-                  return (
-                    <TableCell key={cell.id}>
-                      {/* Instance-level actions could go here */}
-                    </TableCell>
-                  )
-                })}
-              </TableRow>
-            )
-          })}
-        </>
-      )}
-      {isOpen && (!row.original.instances || row.original.instances.length === 0) && (
-        <TableRow aria-labelledby={`row-${row.id}`}>
-          <TableCell colSpan={row.getVisibleCells().length} className="p-0 bg-muted/30">
-            <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-              <CollapsibleContent 
-                id={`expanded-${row.id}`}
-                className="bg-muted/30"
-              >
-                <div className="p-6 space-y-6">
-                  {/* Impact Section */}
-                  <div>
-                    <div className="flex items-start gap-4 mb-4">
-                      <AlertCircleIcon className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" aria-hidden="true" />
-                      <div>
-                        <h4 className="text-sm font-serif font-semibold mb-2">Business Impact</h4>
-                        <p className="text-sm text-muted-foreground">{row.original.impact}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Examples fallback */}
-                  {row.original.examples && row.original.examples.length > 0 && (
-                    <div>
-                      <h4 className="text-sm font-serif font-semibold mb-4">Evidence Found</h4>
-                      <div className="space-y-4">
-                        {row.original.examples.map((example, idx) => (
-                          <Card key={idx} className="border">
-                            <CardContent className="p-4">
-                              <p className="text-sm text-foreground/80 italic mb-2 leading-relaxed">
-                                "{example.snippet}"
-                              </p>
-                              <a
-                                href={example.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs text-muted-foreground font-mono hover:text-foreground transition-colors"
-                              >
-                                {example.url}
-                              </a>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Fix/Recommendation Section */}
-                  {row.original.fix && (
-                    <div>
-                      <div className="flex items-start gap-4">
-                        <SparklesIcon className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" aria-hidden="true" />
-                        <div>
-                          <h4 className="text-sm font-serif font-semibold mb-2">Recommendation</h4>
-                          <p className="text-sm text-foreground">{row.original.fix}</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+              <TableCell key={cell.id}>
+                <div className="flex items-center gap-2">
+                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  <Badge variant="secondary" className="text-xs">
+                    {locationCount} pages
+                  </Badge>
+                  <ChevronDownIcon className={`h-3 w-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
                 </div>
-              </CollapsibleContent>
-            </Collapsible>
+              </TableCell>
+            )
+          }
+          return <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
+        })}
+      </TableRow>
+      {/* Only multi-location issues expand to show locations list */}
+      {isOpen && isMultiLocation && (
+        <TableRow>
+          <TableCell colSpan={row.getVisibleCells().length} className="bg-muted/30 pl-8">
+            <ul className="space-y-2 py-2">
+              {row.original.locations.map((loc, i) => (
+                <li key={i} className="text-sm">
+                  <span className="font-mono text-muted-foreground">{loc.url}</span>
+                  <span className="ml-2 italic text-foreground/80">"{loc.snippet}"</span>
+                </li>
+              ))}
+            </ul>
           </TableCell>
         </TableRow>
       )}
@@ -568,64 +444,15 @@ export function DataTable({
   const [activeStateTab, setActiveStateTab] = React.useState<'all' | 'active' | 'ignored' | 'resolved'>('all')
   const [isFiltering, setIsFiltering] = React.useState(false)
   const [globalFilter, setGlobalFilter] = React.useState("")
-  const [issueStates, setIssueStates] = React.useState<Map<string, IssueState>>(new Map())
-  const [isLoadingStates, setIsLoadingStates] = React.useState(false)
+  const [data, setData] = React.useState(initialData)
 
-  // Fetch issue states on mount if auditId and user are available
-  // Available to all authenticated users (free, paid, enterprise)
+  // Update data when initialData changes
   React.useEffect(() => {
-    if (!auditId || !userPlan) return
+    setData(initialData)
+  }, [initialData])
 
-    const fetchIssueStates = async () => {
-      setIsLoadingStates(true)
-      try {
-        const supabase = createClient()
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session?.access_token) return
-
-        // Fetch audit to get domain
-        const auditResponse = await fetch(`/api/audit/${auditId}`, {
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-          },
-        })
-
-        if (!auditResponse.ok) return
-        const audit = await auditResponse.json()
-        if (!audit.domain) return
-
-        // Fetch issue states for this audit's domain
-        const { data: states, error } = await supabase
-          .from('audit_issue_states')
-          .select('signature, state')
-          .eq('domain', audit.domain)
-
-        if (error) {
-          console.error('Error fetching issue states:', error)
-          return
-        }
-
-        // Convert to Map
-        const statesMap = new Map<string, IssueState>()
-        states?.forEach((s) => {
-          if (s.signature && s.state) {
-            statesMap.set(s.signature, s.state as IssueState)
-          }
-        })
-        setIssueStates(statesMap)
-      } catch (error) {
-        console.error('Error fetching issue states:', error)
-      } finally {
-        setIsLoadingStates(false)
-      }
-    }
-
-    fetchIssueStates()
-  }, [auditId, userPlan])
-
-  // Update issue state handler
-  // Use functional setState to avoid stale closures - don't include issueStates in dependencies
-  const handleUpdateState = React.useCallback(async (signature: string, newState: IssueState) => {
+  // Update issue status handler with optimistic updates
+  const handleUpdateStatus = React.useCallback(async (issueId: string, newStatus: IssueStatus) => {
     if (!auditId) {
       throw new Error('Audit ID required')
     }
@@ -636,90 +463,46 @@ export function DataTable({
       throw new Error('Not authenticated')
     }
 
-    // Capture original state and apply optimistic update in one operation
-    let originalState: IssueState = 'active'
-    setIssueStates((prev) => {
-      originalState = prev.get(signature) || 'active'
-      const next = new Map(prev)
-      next.set(signature, newState)
-      return next
-    })
+    // Optimistic update
+    setData(prevData => 
+      prevData.map(item => 
+        item.id === issueId ? { ...item, status: newStatus } : item
+      )
+    )
 
     try {
-      const response = await fetch(`/api/audit/${auditId}/issues/${signature}`, {
+      const response = await fetch(`/api/audit/${auditId}/issues/${issueId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({ state: newState }),
+        body: JSON.stringify({ status: newStatus }),
       })
 
       if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: 'Failed to update state' }))
         // Revert optimistic update on error
-        setIssueStates((prev) => {
-          const next = new Map(prev)
-          next.set(signature, originalState)
-          return next
-        })
-        throw new Error(error.error || 'Failed to update state')
+        setData(initialData)
+        const error = await response.json().catch(() => ({ error: 'Failed to update status' }))
+        throw new Error(error.error || 'Failed to update status')
       }
-
-      // Optimistic update already set the state correctly
     } catch (error) {
-      // Error already handled above with revert
+      // Revert optimistic update on error
+      setData(initialData)
       throw error
     }
-  }, [auditId])
+  }, [auditId, initialData])
 
-  // Merge issue states with row data
-  // Generate signatures if missing (e.g., when initialData comes from transformAuditToTableRows without states)
-  const dataWithStates = React.useMemo(() => {
-    return initialData.map((row) => {
-      // Use existing signature or generate from row data
-      let signature = row.signature
-      if (!signature && row.title && row.examples?.[0]?.url) {
-        // Generate signature if missing
-        try {
-          signature = generateIssueSignature({
-            title: row.title,
-            severity: row.severity,
-            impact: row.impact,
-            fix: row.fix,
-            examples: row.examples,
-            count: row.count,
-          } as AuditIssueGroup)
-        } catch {
-          // Fallback to row.id if generation fails
-          signature = row.id
-        }
-      } else if (!signature) {
-        signature = row.id
-      }
-      
-      const state = issueStates.get(signature) || 'active'
-      return {
-        ...row,
-        state,
-        signature,
-        // Explicitly preserve instances for nested row display
-        instances: row.instances,
-        category: row.category,
-      }
-    })
-  }, [initialData, issueStates])
-
-  // Filter data by state first, then by severity
+  // Filter data by status first, then by severity
   const filteredByState = React.useMemo(() => {
     if (activeStateTab === 'all') {
-      return dataWithStates
+      return data
     }
-    return dataWithStates.filter((row) => {
-      const state = row.state || 'active'
-      return state === activeStateTab
+    return data.filter((row) => {
+      const status = row.status || 'active'
+      return status === activeStateTab
     })
-  }, [dataWithStates, activeStateTab])
+  }, [data, activeStateTab])
 
   // Filter data by severity
   const filteredData = React.useMemo(() => {
@@ -741,18 +524,24 @@ export function DataTable({
     if (!globalFilter.trim()) return filteredData
     const searchLower = globalFilter.toLowerCase()
     return filteredData.filter((row) => {
-      return (
-        row.title.toLowerCase().includes(searchLower) ||
-        row.impact.toLowerCase().includes(searchLower) ||
-        (row.fix && row.fix.toLowerCase().includes(searchLower))
-      )
+      const matchesTitle = row.title.toLowerCase().includes(searchLower)
+      const matchesImpact = row.impact?.toLowerCase().includes(searchLower) || false
+      const matchesFix = row.fix?.toLowerCase().includes(searchLower) || false
+      
+      // Search locations array
+      const matchesLocations = row.locations?.some(loc => 
+        loc.url.toLowerCase().includes(searchLower) ||
+        loc.snippet.toLowerCase().includes(searchLower)
+      ) || false
+      
+      return matchesTitle || matchesImpact || matchesFix || matchesLocations
     })
   }, [filteredData, globalFilter])
 
-  // Create columns with state handlers
+  // Create columns with status handlers
   const columns = React.useMemo(
-    () => createColumns(handleUpdateState, userPlan, activeStateTab),
-    [handleUpdateState, userPlan, activeStateTab]
+    () => createColumns(handleUpdateStatus, userPlan, activeStateTab),
+    [handleUpdateStatus, userPlan, activeStateTab]
   )
 
   const table = useReactTable({
@@ -797,13 +586,13 @@ export function DataTable({
   // Count issues by state for state tabs
   const stateCounts = React.useMemo(() => {
     const counts = {
-      all: dataWithStates.length,
-      active: dataWithStates.filter((item) => (item.state || 'active') === 'active').length,
-      ignored: dataWithStates.filter((item) => item.state === 'ignored').length,
-      resolved: dataWithStates.filter((item) => item.state === 'resolved').length,
+      all: data.length,
+      active: data.filter((item) => (item.status || 'active') === 'active').length,
+      ignored: data.filter((item) => item.status === 'ignored').length,
+      resolved: data.filter((item) => item.status === 'resolved').length,
     }
     return counts
-  }, [dataWithStates])
+  }, [data])
 
   return (
     <div className="flex w-full flex-col justify-start gap-6">
@@ -1024,7 +813,7 @@ export function DataTable({
                   {headerGroup.headers.map((header) => {
                     // Mobile-friendly headers: abbreviate long labels
                     const headerId = header.id || ''
-                    const mobileHeader = headerId === 'count' ? 'Inst.' : 
+                    const mobileHeader = headerId === 'locations' ? 'Loc.' : 
                                         headerId === 'severity' ? 'Sev.' :
                                         headerId
                     return (
@@ -1094,7 +883,7 @@ export function DataTable({
               </>
             ) : (
               <>
-                Showing {table.getFilteredRowModel().rows.length} of {initialData.length} issue{table.getFilteredRowModel().rows.length !== 1 ? "s" : ""}
+                Showing {table.getFilteredRowModel().rows.length} of {data.length} issue{table.getFilteredRowModel().rows.length !== 1 ? "s" : ""}
                 {activeSeverityTab !== "all" && ` (filtered by ${activeSeverityTab} severity)`}
               </>
             )}
@@ -1218,31 +1007,33 @@ function TableCellViewer({ item }: { item: AuditTableRow }) {
         </SheetHeader>
         <div className="flex flex-1 flex-col gap-6 overflow-y-auto py-4 text-sm">
           {/* Impact Section */}
-          <div>
-            <h4 className="text-sm font-serif font-semibold mb-2">Business Impact</h4>
-            <p className="text-sm text-muted-foreground">{item.impact}</p>
-          </div>
-
-          <Separator />
-
-          {/* Evidence Section */}
-          {item.examples && item.examples.length > 0 && (
+          {item.impact && (
             <div>
-              <h4 className="text-sm font-serif font-semibold mb-4">Evidence Found</h4>
+              <h4 className="text-sm font-serif font-semibold mb-2">Business Impact</h4>
+              <p className="text-sm text-muted-foreground">{item.impact}</p>
+            </div>
+          )}
+
+          {item.impact && <Separator />}
+
+          {/* Locations Section */}
+          {item.locations && item.locations.length > 0 && (
+            <div>
+              <h4 className="text-sm font-serif font-semibold mb-4">Locations Found</h4>
               <div className="space-y-4">
-                {item.examples.map((example, idx) => (
+                {item.locations.map((location, idx) => (
                   <Card key={idx} className="border">
                     <CardContent className="p-4">
                       <p className="text-sm text-foreground/80 italic mb-2 leading-relaxed">
-                        "{example.snippet}"
+                        "{location.snippet}"
                       </p>
                       <a
-                        href={example.url}
+                        href={location.url}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-xs text-muted-foreground font-mono hover:text-foreground transition-colors break-all"
                       >
-                        {example.url}
+                        {location.url}
                       </a>
                     </CardContent>
                   </Card>
@@ -1251,7 +1042,7 @@ function TableCellViewer({ item }: { item: AuditTableRow }) {
             </div>
           )}
 
-          <Separator />
+          {item.fix && <Separator />}
 
           {/* Fix/Recommendation Section */}
           {item.fix && (
@@ -1263,15 +1054,6 @@ function TableCellViewer({ item }: { item: AuditTableRow }) {
               <p className="text-sm text-foreground">{item.fix}</p>
             </div>
           )}
-
-          <Separator />
-
-          {/* Instance Count */}
-          <div>
-            <p className="text-xs text-muted-foreground">
-              Found {item.count} instance{item.count !== 1 ? "s" : ""} across scanned pages
-            </p>
-          </div>
         </div>
         <SheetFooter className="mt-auto flex gap-2 sm:flex-col sm:space-x-0">
           <SheetClose asChild>

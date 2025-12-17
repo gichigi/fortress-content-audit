@@ -17,13 +17,13 @@ const STRIPE_WEBHOOK_SECRET =
     : process.env.STRIPE_WEBHOOK_SECRET;
 
 const stripe = new Stripe(STRIPE_SECRET_KEY!, {
-  apiVersion: "2023-10-16",
+  apiVersion: "2025-03-31.basil",
 })
 
 // Helper function to check if email has been sent (using database)
 async function hasEmailBeenSent(emailKey: string): Promise<boolean> {
   try {
-    const { data } = await supabaseAdmin
+    const { data } = await (supabaseAdmin as any)
       .from('email_captures')
       .select('id')
       .eq('session_token', emailKey)
@@ -38,7 +38,7 @@ async function hasEmailBeenSent(emailKey: string): Promise<boolean> {
 // Helper function to mark email as sent
 async function markEmailAsSent(emailKey: string, email: string): Promise<void> {
   try {
-    await supabaseAdmin
+    await (supabaseAdmin as any)
       .from('email_captures')
       .upsert({
         session_token: emailKey,
@@ -320,11 +320,11 @@ export async function POST(request: Request) {
 async function handleSubscriptionActive(subscriptionId: string, customerId: string) {
   const stripeLocal = new Stripe(
     (process.env.STRIPE_TEST_SECRET_KEY || process.env.STRIPE_SECRET_KEY)!,
-    { apiVersion: "2023-10-16" }
+    { apiVersion: "2025-03-31.basil" }
   )
   const sub = await stripeLocal.subscriptions.retrieve(subscriptionId)
   const periodEnd =
-    sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null
+    (sub as any).current_period_end ? new Date((sub as any).current_period_end * 1000).toISOString() : null
 
   // Try to get email from invoice first (more reliable)
   let email: string | null = null
@@ -388,7 +388,7 @@ async function setPlanFree(customerId: string) {
   try {
     const stripeLocal = new Stripe(
       (process.env.STRIPE_TEST_SECRET_KEY || process.env.STRIPE_SECRET_KEY)!,
-      { apiVersion: "2023-10-16" }
+      { apiVersion: "2025-03-31.basil" }
     )
     const customer = await stripeLocal.customers.retrieve(customerId)
     if (!('deleted' in customer) && customer.email) {

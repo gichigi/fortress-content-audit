@@ -39,27 +39,28 @@ export async function GET(
       .maybeSingle()
     const plan = profile?.plan || 'free'
 
-    // Query instances from audit_issues table (single source of truth)
-    const { data: instances, error: instancesErr } = await (supabaseAdmin as any)
-      .from('audit_issues')
+    // Query issues from issues table (single source of truth)
+    const { data: issues, error: issuesErr } = await (supabaseAdmin as any)
+      .from('issues')
       .select('*')
       .eq('audit_id', id)
+      .eq('status', 'active') // Only show active issues by default
       .order('severity', { ascending: false }) // High severity first
       .order('created_at', { ascending: true })
 
-    if (instancesErr) {
-      console.error('[Audit] Error fetching instances:', instancesErr)
+    if (issuesErr) {
+      console.error('[Audit] Error fetching issues:', issuesErr)
       console.error('[Audit] Audit ID:', id)
-      throw instancesErr
+      throw issuesErr
     }
 
-    // If no instances found, return empty array (no fallback to issues_json)
-    if (!instances || instances.length === 0) {
+    // If no issues found, return empty array (no fallback to issues_json)
+    if (!issues || issues.length === 0) {
       return NextResponse.json({
         runId: run.id,
         preview: plan === 'free',
         domain: run.domain,
-        instances: [],
+        issues: [],
         totalIssues: 0,
         meta: { 
           pagesScanned: run.pages_scanned, 
@@ -69,40 +70,26 @@ export async function GET(
       })
     }
 
-    // Get issue states for filtering
-    const { data: issueStates } = await supabaseAdmin
-      .from('audit_issue_states')
-      .select('signature, state')
-      .eq('user_id', userId)
-      .eq('domain', run.domain || '')
-
-    const statesMap = new Map<string, string>()
-    issueStates?.forEach((s) => {
-      if (s.signature && s.state) {
-        statesMap.set(s.signature, s.state)
-      }
-    })
-
-    // Filter out ignored instances
-    const activeInstances = (instances || []).filter((instance) => {
-      const state = statesMap.get(instance.signature)
-      return state !== 'ignored'
-    })
-
     // Apply gating for free plan
-    const gatedInstances = plan === 'free' ? activeInstances.slice(0, 5) : activeInstances
+    const gatedIssues = plan === 'free' ? issues.slice(0, 5) : issues
 
-    // Return instances from database (single source of truth)
+    // Return issues from database (single source of truth)
     return NextResponse.json({
       runId: run.id,
       preview: plan === 'free',
       domain: run.domain,
-      instances: gatedInstances,
-      totalIssues: activeInstances.length,
+      issues: gatedIssues,
+      totalIssues: issues.length,
       meta: { 
         pagesScanned: run.pages_scanned, 
         createdAt: run.created_at,
         auditedUrls: run.issues_json?.auditedUrls || [],
+      },
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
       },
     })
   } catch (e) {

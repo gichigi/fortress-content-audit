@@ -76,33 +76,17 @@ export async function POST(
         message: 'Audit is running. Poll for status updates.',
         progress: {
           pagesScanned: result.pagesScanned || 0,
-          issuesFound: result.groups?.length || 0,
+          issuesFound: result.issues?.length || 0,
         },
       })
     }
 
     // If completed, update the database
     if (result.status === 'completed') {
-      // Filter out ignored instances if domain exists
-      let filteredInstances = result.instances || []
-      if (auditRun?.domain) {
-        const { data: ignoredStates } = await supabaseAdmin
-          .from('audit_issue_states')
-          .select('signature')
-          .eq('user_id', userId)
-          .eq('domain', auditRun.domain)
-          .eq('state', 'ignored')
-
-        if (ignoredStates && ignoredStates.length > 0) {
-          const ignoredSignatures = new Set(ignoredStates.map((s) => s.signature))
-          filteredInstances = (result.instances || []).filter((instance) => {
-            return !ignoredSignatures.has(instance.signature)
-          })
-        }
-      }
+      const filteredIssues = result.issues || []
 
       const updatedIssuesJson = {
-        groups: result.groups,
+        issues: filteredIssues,
         auditedUrls: result.auditedUrls || [],
         tier: result.tier || tier || 'PAID', // Preserve tier for future lookups
       }
@@ -121,33 +105,32 @@ export async function POST(
         return NextResponse.json({ error: 'Failed to update audit' }, { status: 500 })
       }
 
-      // Save instances to audit_issues table
-      if (filteredInstances.length > 0) {
+      // Save issues to issues table
+      if (filteredIssues.length > 0) {
         try {
-          const instancesToInsert = filteredInstances.map((instance) => ({
+          const issuesToInsert = filteredIssues.map((issue) => ({
             audit_id: id,
-            category: instance.category,
-            severity: instance.severity,
-            title: instance.title,
-            url: instance.url,
-            snippet: instance.snippet,
-            impact: instance.impact || null,
-            fix: instance.fix || null,
-            signature: instance.signature,
+            title: issue.title,
+            category: issue.category || null,
+            severity: issue.severity,
+            impact: issue.impact || null,
+            fix: issue.fix || null,
+            locations: issue.locations || [],
+            status: 'active', // All new issues start as active
           }))
 
-          const { error: instancesErr } = await (supabaseAdmin as any)
-            .from('audit_issues')
-            .insert(instancesToInsert)
+          const { error: issuesErr } = await (supabaseAdmin as any)
+            .from('issues')
+            .insert(issuesToInsert)
 
-          if (instancesErr) {
-            console.error('[Resume] Failed to save instances:', instancesErr)
-            // Don't fail the request - instances are non-critical for backward compatibility
+          if (issuesErr) {
+            console.error('[Resume] Failed to save issues:', issuesErr)
+            // Don't fail the request - issues are critical but we have issues_json as backup
           } else {
-            console.log(`[Resume] Saved ${instancesToInsert.length} instances to audit_issues table`)
+            console.log(`[Resume] Saved ${issuesToInsert.length} issues to issues table`)
           }
         } catch (error) {
-          console.error('[Resume] Error saving instances:', error)
+          console.error('[Resume] Error saving issues:', error)
           // Don't fail the request
         }
       }
@@ -155,8 +138,8 @@ export async function POST(
       return NextResponse.json({
         status: 'completed',
         message: 'Audit completed successfully.',
-        groups: result.groups,
-        totalIssues: result.groups.length,
+        issues: filteredIssues,
+        totalIssues: filteredIssues.length,
         meta: {
           pagesScanned: result.pagesScanned,
           auditedUrls: result.auditedUrls || [],

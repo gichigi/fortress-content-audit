@@ -3,8 +3,6 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { AuditRun } from '@/types/fortress'
 import { calculateHealthScore, calculateAggregatedHealthScore } from '@/lib/health-score'
-import { generateIssueSignature } from '@/lib/issue-signature'
-import { AuditIssueGroup } from '@/lib/audit-table-adapter'
 
 function getBearer(req: Request) {
   const a = req.headers.get('authorization') || req.headers.get('Authorization')
@@ -105,28 +103,6 @@ export async function GET(request: Request) {
       })
     }
 
-    // Fetch ignored issue signatures for this user/domain
-    const { data: issueStates, error: statesError } = await supabaseAdmin
-      .from('audit_issue_states')
-      .select('signature, state')
-      .eq('user_id', userId)
-      .eq('domain', normalizedDomain)
-
-    if (statesError) {
-      console.error('[HealthScore] Error fetching issue states:', statesError)
-      // Continue without filtering - better to show score than fail
-    }
-
-    // Build set of ignored signatures
-    const ignoredSignatures = new Set<string>()
-    if (issueStates) {
-      issueStates
-        .filter((s) => s.state === 'ignored')
-        .forEach((s) => {
-          if (s.signature) ignoredSignatures.add(s.signature)
-        })
-    }
-
     // Calculate health score for each audit date
     // Group audits by date (same day audits use aggregated score)
     const scoresByDate = new Map<string, { date: string; score: number; metrics: any }>()
@@ -147,7 +123,8 @@ export async function GET(request: Request) {
     // Calculate score for each date
     for (const [dateKey, dateAudits] of auditsByDate.entries()) {
       // Use aggregated calculation for multiple audits on same day
-      const result = await calculateAggregatedHealthScore(dateAudits, ignoredSignatures)
+      // Note: calculateAggregatedHealthScore now uses issues table directly, no ignoredSignatures needed
+      const result = await calculateAggregatedHealthScore(dateAudits)
       
       scoresByDate.set(dateKey, {
         date: dateKey,

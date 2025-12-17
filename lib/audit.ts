@@ -1,8 +1,5 @@
 import OpenAI from "openai"
 import { z } from "zod"
-import { deriveCategory } from "./audit-table-adapter"
-import { generateInstanceSignature } from "./issue-signature"
-import { AuditIssueInstance } from "@/types/fortress"
 
 // ============================================================================
 // Deep Research Content Audit
@@ -38,35 +35,50 @@ Focus ONLY on objective content errors:
 • SEO gaps: sitemap coverage issues (pages missing from sitemap or vice versa)
 • Broken links: detect 404s, 500s, and redirect loops (report URL, anchor text, source page, status)
 
-For each issue found, provide:
-1. A specific, descriptive title that identifies the exact issue (e.g., "Support misspelt on contact page" or "Pricing inconsistency: $29 vs $39" rather than generic titles like "Typos and Spelling Errors" or "Factual Contradictions")
-2. The page URL where the issue was found
-3. A short snippet showing the exact error
-4. A suggested fix
+CRITICAL FORMATTING RULES:
 
-Important: Group similar issues together. For example, if you find the same typo ("support" misspelt as "suport") on multiple pages, group them under one title like "Support misspelt on multiple pages". If you find different typos, create separate groups with specific titles like "Company name typo: 'accomodate'" and "Product name typo: 'seperate'".
+For POINT issues (typos, grammar, punctuation, broken links, missing SEO elements):
+- Create ONE issue per occurrence
+- Title must be specific and actionable (e.g., "Fix typo: 'suport' → 'support'")
+- Include single location
+
+For RELATIONAL issues (factual contradictions, terminology inconsistencies, duplicate content):
+- Create ONE issue that describes the conflict
+- Title must describe the relationship (e.g., "Pricing conflict: $29 vs $39")
+- Include ALL conflicting locations
+
+Each issue should be something a person can check off a to-do list.
+
+For each issue found, provide:
+1. A specific, actionable title (e.g., "Fix typo: 'suport' → 'support'" or "Pricing conflict: $29 vs $39")
+2. The page URL(s) where the issue was found (one location for point issues, multiple for relational issues)
+3. A short snippet showing the exact error for each location
+4. A suggested fix
+5. Optional category: 'typos', 'grammar', 'seo', 'factual', 'links', 'terminology'
 
 Be thorough but precise. Only report issues you are certain about.
-If you find no issues after a thorough review, return an empty groups array.
+If you find no issues after a thorough review, return an empty issues array.
 Crawl multiple pages to find cross-site inconsistencies.`
 
 // Zod schemas for structured audit output
-const AuditIssueExampleSchema = z.object({
+const AuditIssueLocationSchema = z.object({
   url: z.string(),
   snippet: z.string(),
 })
 
-const AuditIssueGroupSchema = z.object({
+const AuditIssueSchema = z.object({
   title: z.string(),
+  category: z.string().optional(), // Optional: 'typos', 'grammar', 'seo', 'factual', 'links', 'terminology'
   severity: z.enum(["low", "medium", "high"]),
-  impact: z.string(),
-  fix: z.string(),
-  examples: z.array(AuditIssueExampleSchema),
-  count: z.number(),
+  impact: z.string().optional(),
+  fix: z.string().optional(),
+  locations: z.array(AuditIssueLocationSchema).min(1), // At least one location required
 })
 
 const AuditResultSchema = z.object({
-  groups: z.array(AuditIssueGroupSchema),
+  issues: z.array(AuditIssueSchema),
+  pagesScanned: z.number(),
+  auditedUrls: z.array(z.string()),
 })
 
 // Full audit result type (includes metadata)
@@ -76,45 +88,42 @@ export type AuditResult = z.infer<typeof AuditResultSchema> & {
   responseId?: string
   status?: "completed" | "in_progress" | "failed"
   tier?: AuditTier
-  instances?: AuditIssueInstance[] // Extracted instances from groups
 }
 
 // JSON schema for OpenAI structured output
 const AUDIT_JSON_SCHEMA = {
   type: "object",
   properties: {
-    groups: {
+    issues: {
       type: "array",
       items: {
         type: "object",
         properties: {
-          title: { type: "string" },
+          title: { type: "string" },      // Specific, actionable
+          category: { type: "string" },   // Optional: typos, grammar, seo, etc.
           severity: { type: "string", enum: ["low", "medium", "high"] },
           impact: { type: "string" },
           fix: { type: "string" },
-          examples: {
+          locations: {
             type: "array",
             items: {
               type: "object",
               properties: {
                 url: { type: "string" },
-                snippet: { type: "string" },
+                snippet: { type: "string" }
               },
-              required: ["url", "snippet"],
-              additionalProperties: false,
+              required: ["url", "snippet"]
             },
-          },
-          count: { type: "number" },
+            minItems: 1
+          }
         },
-        required: ["title", "severity", "impact", "fix", "examples", "count"],
-        additionalProperties: false,
-      },
+        required: ["title", "severity", "locations"]  // category optional
+      }
     },
-    pagesScanned: { type: "number" },
-    auditedUrls: { type: "array", items: { type: "string" } },
+    pagesScanned: { type: "integer" },
+    auditedUrls: { type: "array", items: { type: "string" } }
   },
-  required: ["groups", "pagesScanned", "auditedUrls"],
-  additionalProperties: false,
+  required: ["issues", "pagesScanned", "auditedUrls"]
 }
 
 // ============================================================================
@@ -143,7 +152,7 @@ Return high-signal issues only.
 
 Return your findings as JSON matching this structure:
 {
-  "groups": [{ "title": "...", "severity": "low|medium|high", "impact": "...", "fix": "...", "examples": [{"url": "...", "snippet": "..."}], "count": N }],
+  "issues": [{ "title": "...", "category": "typos|grammar|seo|factual|links|terminology" (optional), "severity": "low|medium|high", "impact": "...", "fix": "...", "locations": [{"url": "...", "snippet": "..."}] }],
   "pagesScanned": N,
   "auditedUrls": ["url1", "url2", ...]
 }`
@@ -209,7 +218,7 @@ Look for:
 
 Return your findings as JSON matching this structure:
 {
-  "groups": [{ "title": "...", "severity": "low|medium|high", "impact": "...", "fix": "...", "examples": [{"url": "...", "snippet": "..."}], "count": N }],
+  "issues": [{ "title": "...", "category": "typos|grammar|seo|factual|links|terminology" (optional), "severity": "low|medium|high", "impact": "...", "fix": "...", "locations": [{"url": "...", "snippet": "..."}] }],
   "pagesScanned": N,
   "auditedUrls": ["url1", "url2", ...]
 }`
@@ -242,8 +251,9 @@ Return your findings as JSON matching this structure:
     if (tierConfig.background && (status === "queued" || status === "in_progress")) {
       console.log(`[Audit] Background job started, ID: ${response.id}, status: ${response.status}`)
       return {
-        groups: [],
+        issues: [],
         pagesScanned: 0,
+        auditedUrls: [],
         responseId: response.id,
         status: "in_progress",
         tier,
@@ -289,8 +299,9 @@ export async function pollAuditStatus(responseId: string, tier?: AuditTier): Pro
         }
       }
       return {
-        groups: [],
+        issues: [],
         pagesScanned,
+        auditedUrls: [],
         responseId,
         status: "in_progress",
       }
@@ -328,40 +339,13 @@ function normalizeDomain(domain: string): string {
   }
 }
 
-/**
- * Extract instances from issue groups
- * Expands each group's examples into individual instances
- */
-function extractInstancesFromGroups(
-  groups: z.infer<typeof AuditResultSchema>['groups'],
-  auditId?: string
-): Array<Omit<AuditIssueInstance, 'id' | 'audit_id' | 'created_at'>> {
-  const instances: Omit<AuditIssueInstance, 'id' | 'audit_id' | 'created_at'>[] = []
-
-  for (const group of groups) {
-    const category = deriveCategory(group.title)
-
-    for (const example of group.examples || []) {
-      const signature = generateInstanceSignature({
-        url: example.url,
-        title: group.title,
-        snippet: example.snippet,
-      })
-
-      instances.push({
-        category,
-        severity: group.severity,
-        title: group.title,
-        url: example.url,
-        snippet: example.snippet,
-        impact: group.impact,
-        fix: group.fix,
-        signature,
-      })
+// Validation helper for issues
+function validateIssues(issues: any[]): void {
+  issues.forEach((issue, idx) => {
+    if (!Array.isArray(issue.locations) || issue.locations.length === 0) {
+      console.warn(`[Audit] Issue ${idx} missing locations:`, issue.title)
     }
-  }
-
-  return instances
+  })
 }
 
 // Parse and validate audit response from OpenAI
@@ -390,22 +374,21 @@ function parseAuditResponse(response: any, tier: AuditTier): AuditResult {
     throw new Error("AI model returned data in unexpected format. Please try again.")
   }
 
-  const pagesScanned = typeof parsed.pagesScanned === "number" ? parsed.pagesScanned : 0
-  const auditedUrls = Array.isArray(parsed.auditedUrls) ? parsed.auditedUrls : []
+  const pagesScanned = typeof validated.pagesScanned === "number" ? validated.pagesScanned : 0
+  const auditedUrls = Array.isArray(validated.auditedUrls) ? validated.auditedUrls : []
 
-  // Extract instances from groups
-  const instances = extractInstancesFromGroups(validated.groups)
+  // Validate issues have locations
+  validateIssues(validated.issues)
 
-  console.log(`[Audit] Parsed ${validated.groups.length} issue groups (${instances.length} instances) from ${pagesScanned} pages`)
+  console.log(`[Audit] Parsed ${validated.issues.length} issues from ${pagesScanned} pages`)
 
   return {
-    groups: validated.groups,
+    issues: validated.issues,
     pagesScanned,
     auditedUrls,
     responseId: response.id,
     status: "completed",
     tier,
-    instances: instances as any, // Type assertion - instances will have full structure when saved to DB
   }
 }
 

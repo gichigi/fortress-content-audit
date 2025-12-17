@@ -16,19 +16,21 @@ export interface AuditIssue {
   snippet?: string
 }
 
-// New instance-based AuditIssue matching audit_issues table
-export interface AuditIssueInstance {
+// New simplified Issue matching issues table
+export type IssueStatus = 'active' | 'ignored' | 'resolved'
+
+export interface Issue {
   id: string
   audit_id: string
-  category: 'typos' | 'grammar' | 'punctuation' | 'seo' | 'links' | 'terminology' | 'factual' | 'other'
-  severity: 'low' | 'medium' | 'high'
   title: string
-  url: string
-  snippet: string
+  category?: string  // Optional: 'typos', 'grammar', 'seo', 'factual', 'links', 'terminology'
+  severity: 'low' | 'medium' | 'high'
   impact: string | null
   fix: string | null
-  signature: string
+  locations: Array<{ url: string; snippet: string }>
+  status: IssueStatus
   created_at: string
+  updated_at: string
 }
 
 export interface AuditResult {
@@ -43,22 +45,20 @@ export interface UserProfile extends Database['public']['Tables']['profiles']['R
   plan: PlanType
 }
 
-// Issue State Management (Phase 4)
-export type IssueState = 'active' | 'ignored' | 'resolved'
-
-export interface IssueStateRecord {
-  id: string
-  user_id: string
-  domain: string
-  signature: string
-  state: IssueState
-  audit_run_id: string | null
-  created_at: string
-  updated_at: string
-}
+// Issue State Management - now handled by status column on issues table
+// Legacy: IssueState kept for backward compatibility during migration
+export type IssueState = 'active' | 'ignored' | 'resolved' // Deprecated, use IssueStatus
 
 export interface AuditIssuesJson {
-  groups: Array<{
+  issues?: Array<{
+    title: string
+    category?: string
+    severity: 'low' | 'medium' | 'high'
+    impact?: string
+    fix?: string
+    locations: Array<{ url: string; snippet: string }>
+  }>
+  groups?: Array<{  // Legacy format, kept for backward compatibility
     title: string
     severity: 'low' | 'medium' | 'high'
     impact: string
@@ -67,8 +67,7 @@ export interface AuditIssuesJson {
     count: number
   }>
   auditedUrls?: string[]
-  // Note: issueStates now stored in audit_issue_states table, not in JSONB
-  // Note: instances now stored in audit_issues table, groups kept for backward compatibility
+  // Note: issues now stored in issues table, issues_json kept as backup/legacy
 }
 
 // Advanced Generators

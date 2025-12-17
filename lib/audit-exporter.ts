@@ -1,19 +1,18 @@
 // Audit export utilities for PDF, JSON, and Markdown formats
-import { AuditRun } from '@/types/fortress'
+import { AuditRun, Issue } from '@/types/fortress'
 import puppeteer from 'puppeteer'
 
 /**
  * Generate Markdown export with AI prompt header
  * Format optimized for AI consumption - users can drop into their IDE
  */
-export function generateAuditMarkdown(audit: AuditRun): string {
+export function generateAuditMarkdown(audit: AuditRun, issues: Issue[]): string {
   const issuesJson = audit.issues_json as any
-  const groups = Array.isArray(issuesJson?.groups) ? issuesJson.groups : []
   const auditedUrls = Array.isArray(issuesJson?.auditedUrls) ? issuesJson.auditedUrls : []
   const domain = audit.domain || 'Unknown domain'
   const pagesScanned = audit.pages_scanned || 0
   const createdAt = audit.created_at ? new Date(audit.created_at).toLocaleDateString() : 'Unknown date'
-  const totalIssues = groups.length
+  const totalIssues = issues.length
 
   let markdown = `# Content Audit Issues - Fix Required
 
@@ -38,27 +37,27 @@ When fixing issues:
 
 `
 
-  groups.forEach((group: any, index: number) => {
-    const severity = group.severity || 'low'
+  issues.forEach((issue: Issue, index: number) => {
+    const severity = issue.severity || 'low'
     const severityEmoji = severity === 'high' ? '🔴' : severity === 'medium' ? '🟡' : '🟢'
     
-    markdown += `### ${index + 1}. ${group.title || `Issue ${index + 1}`} ${severityEmoji}
+    markdown += `### ${index + 1}. ${issue.title || `Issue ${index + 1}`} ${severityEmoji}
 
 **Severity**: ${severity.toUpperCase()}
-**Impact**: ${group.impact || 'Not specified'}
+**Impact**: ${issue.impact || 'Not specified'}
 
-**Suggested Fix**: ${group.fix || 'No fix provided'}
+**Suggested Fix**: ${issue.fix || 'No fix provided'}
 
-**Examples Found**:
+**Locations Found**:
 `
 
-    if (group.examples && Array.isArray(group.examples) && group.examples.length > 0) {
-      group.examples.forEach((example: any, exIndex: number) => {
-        markdown += `${exIndex + 1}. **URL**: ${example.url || 'Unknown URL'}\n`
-        markdown += `   **Snippet**: "${example.snippet || 'No snippet provided'}"\n\n`
+    if (issue.locations && Array.isArray(issue.locations) && issue.locations.length > 0) {
+      issue.locations.forEach((location: any, locIndex: number) => {
+        markdown += `${locIndex + 1}. **URL**: ${location.url || 'Unknown URL'}\n`
+        markdown += `   **Snippet**: "${location.snippet || 'No snippet provided'}"\n\n`
       })
     } else {
-      markdown += `   No specific examples captured.\n\n`
+      markdown += `   No specific locations captured.\n\n`
     }
 
     markdown += `---\n\n`
@@ -78,9 +77,8 @@ When fixing issues:
  * Generate JSON export
  * Straightforward implementation using JSON.stringify
  */
-export function generateAuditJSON(audit: AuditRun): string {
+export function generateAuditJSON(audit: AuditRun, issues: Issue[]): string {
   const issuesJson = audit.issues_json as any
-  const groups = Array.isArray(issuesJson?.groups) ? issuesJson.groups : []
   const auditedUrls = Array.isArray(issuesJson?.auditedUrls) ? issuesJson.auditedUrls : []
   const tier = issuesJson?.tier || null
 
@@ -89,10 +87,10 @@ export function generateAuditJSON(audit: AuditRun): string {
     title: audit.title || audit.brand_name || 'Audit',
     brandName: audit.brand_name,
     pagesScanned: audit.pages_scanned || 0,
-    totalIssues: groups.length,
+    totalIssues: issues.length,
     createdAt: audit.created_at,
     tier,
-    groups,
+    issues,
     auditedUrls,
   }
 
@@ -103,18 +101,17 @@ export function generateAuditJSON(audit: AuditRun): string {
  * Generate PDF export using Puppeteer
  * Converts HTML to PDF via headless Chrome
  */
-export async function generateAuditPDF(audit: AuditRun): Promise<Blob> {
+export async function generateAuditPDF(audit: AuditRun, issues: Issue[]): Promise<Blob> {
   const issuesJson = audit.issues_json as any
-  const groups = Array.isArray(issuesJson?.groups) ? issuesJson.groups : []
   const auditedUrls = Array.isArray(issuesJson?.auditedUrls) ? issuesJson.auditedUrls : []
   const domain = audit.domain || 'Unknown domain'
   const pagesScanned = audit.pages_scanned || 0
   const createdAt = audit.created_at ? new Date(audit.created_at).toLocaleDateString() : 'Unknown date'
-  const totalIssues = groups.length
+  const totalIssues = issues.length
   const title = audit.title || audit.brand_name || 'Content Audit'
 
   // Generate HTML content
-  const html = generateAuditHTML(title, domain, pagesScanned, totalIssues, createdAt, groups, auditedUrls)
+  const html = generateAuditHTML(title, domain, pagesScanned, totalIssues, createdAt, issues, auditedUrls)
 
   // Launch Puppeteer with timeout handling
   // Note: In serverless environments (Vercel), you may need to use @sparticuz/chromium
@@ -205,35 +202,35 @@ function generateAuditHTML(
   pagesScanned: number,
   totalIssues: number,
   createdAt: string,
-  groups: any[],
+  issues: Issue[],
   auditedUrls: string[]
 ): string {
   let issuesHTML = ''
 
-  groups.forEach((group: any, index: number) => {
-    const severity = group.severity || 'low'
+  issues.forEach((issue: Issue, index: number) => {
+    const severity = issue.severity || 'low'
     const severityClass = severity === 'high' ? 'high' : severity === 'medium' ? 'medium' : 'low'
     const severityColor = severity === 'high' ? '#dc2626' : severity === 'medium' ? '#f59e0b' : '#3b82f6'
 
     issuesHTML += `
       <div class="issue-card">
         <div class="issue-header">
-          <h3>${index + 1}. ${escapeHtml(group.title || `Issue ${index + 1}`)}</h3>
+          <h3>${index + 1}. ${escapeHtml(issue.title || `Issue ${index + 1}`)}</h3>
           <span class="severity-badge ${severityClass}" style="background-color: ${severityColor}20; color: ${severityColor};">
             ${severity.toUpperCase()}
           </span>
         </div>
         <div class="issue-content">
-          <p><strong>Impact:</strong> ${escapeHtml(group.impact || 'Not specified')}</p>
-          <p><strong>Suggested Fix:</strong> ${escapeHtml(group.fix || 'No fix provided')}</p>
-          ${group.examples && Array.isArray(group.examples) && group.examples.length > 0 ? `
+          <p><strong>Impact:</strong> ${escapeHtml(issue.impact || 'Not specified')}</p>
+          <p><strong>Suggested Fix:</strong> ${escapeHtml(issue.fix || 'No fix provided')}</p>
+          ${issue.locations && Array.isArray(issue.locations) && issue.locations.length > 0 ? `
             <div class="examples">
-              <strong>Examples Found:</strong>
+              <strong>Locations Found:</strong>
               <ul>
-                ${group.examples.map((ex: any) => `
+                ${issue.locations.map((loc: any) => `
                   <li>
-                    <strong>URL:</strong> <a href="${escapeHtml(ex.url || '')}">${escapeHtml(ex.url || 'Unknown URL')}</a><br>
-                    <strong>Snippet:</strong> "${escapeHtml(ex.snippet || 'No snippet')}"
+                    <strong>URL:</strong> <a href="${escapeHtml(loc.url || '')}">${escapeHtml(loc.url || 'Unknown URL')}</a><br>
+                    <strong>Snippet:</strong> "${escapeHtml(loc.snippet || 'No snippet')}"
                   </li>
                 `).join('')}
               </ul>

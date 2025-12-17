@@ -4,8 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { validateUrl } from '@/lib/url-validation'
 import { auditSite, miniAudit, AuditTier, AuditResult } from '@/lib/audit'
 import PostHogClient from '@/lib/posthog'
-import { generateIssueSignature, generateInstanceSignature } from '@/lib/issue-signature'
-import { AuditIssueGroup, deriveCategory } from '@/lib/audit-table-adapter'
+// Removed: issue-signature imports (no longer needed)
 import { checkDailyLimit, checkDomainLimit, isNewDomain, incrementAuditUsage, getAuditUsage } from '@/lib/audit-rate-limit'
 import { createMockAuditData } from '@/lib/mock-audit-data'
 
@@ -140,36 +139,12 @@ export async function POST(request: Request) {
       // normalized is already url.origin format (e.g., https://example.com)
       const mockData = createMockAuditData(normalized, 10)
       
-      // Extract instances from groups (same logic as real audits)
-      const instances = []
-      for (const group of mockData.groups) {
-        const category = deriveCategory(group.title)
-        for (const example of group.examples || []) {
-          const signature = generateInstanceSignature({
-            url: example.url,
-            title: group.title,
-            snippet: example.snippet,
-          })
-          instances.push({
-            category,
-            severity: group.severity,
-            title: group.title,
-            url: example.url,
-            snippet: example.snippet,
-            impact: group.impact,
-            fix: group.fix,
-            signature,
-          })
-        }
-      }
-      
       result = {
-        groups: mockData.groups,
+        issues: mockData.issues,
         pagesScanned: mockData.pagesScanned,
         auditedUrls: mockData.auditedUrls,
         status: 'completed',
         tier: auditTier,
-        instances: instances as any,
       }
     } else {
       // Run audit based on tier
@@ -210,7 +185,7 @@ export async function POST(request: Request) {
           title,
           brand_name: brandName,
           pages_scanned: 0,
-          issues_json: { groups: [], auditedUrls: [], responseId: result.responseId, tier: auditTier },
+          issues_json: { issues: [], auditedUrls: [], responseId: result.responseId, tier: auditTier },
           is_preview: false,
         })
         .select('id')
@@ -225,40 +200,15 @@ export async function POST(request: Request) {
       })
     }
 
-    // Filter out ignored issues for authenticated users
-    let filteredGroups = result.groups || []
-    let filteredInstances = result.instances || []
+    // Filter out ignored issues for authenticated users (by checking existing issues with ignored status)
+    let filteredIssues = result.issues || []
     
-    if (isAuthenticated && userId && storageDomain) {
-      // Query ignored issue signatures for this user/domain
-      const { data: ignoredStates } = await supabaseAdmin
-        .from('audit_issue_states')
-        .select('signature')
-        .eq('user_id', userId)
-        .eq('domain', storageDomain)
-        .eq('state', 'ignored')
-
-      if (ignoredStates && ignoredStates.length > 0) {
-        const ignoredSignatures = new Set(ignoredStates.map((s) => s.signature))
-        
-        // Filter out groups whose signatures match ignored states (legacy)
-        filteredGroups = result.groups.filter((group: AuditIssueGroup) => {
-          const signature = generateIssueSignature(group)
-          return !ignoredSignatures.has(signature)
-        })
-
-        // Filter out instances whose signatures match ignored states
-        filteredInstances = (result.instances || []).filter((instance) => {
-          return !ignoredSignatures.has(instance.signature)
-        })
-
-        console.log(`[Audit] Filtered out ${result.groups.length - filteredGroups.length} ignored issue groups, ${(result.instances?.length || 0) - filteredInstances.length} ignored instances`)
-      }
-    }
-
-    // Build issues JSON payload
+    // Note: For new audits, we don't filter by status yet - issues start as 'active'
+    // Status filtering happens when fetching issues from the database
+    
+    // Build issues JSON payload (backup/legacy)
     const issuesJson = {
-      groups: filteredGroups,
+      issues: filteredIssues,
       auditedUrls: result.auditedUrls || [],
     }
     
@@ -290,33 +240,32 @@ export async function POST(request: Request) {
       runId = run?.id || null
       console.log(`[Audit] Saved audit run: ${runId}, authenticated: ${isAuthenticated}, tier: ${auditTier}`)
       
-      // Save instances to audit_issues table
-      if (runId && filteredInstances.length > 0) {
+      // Save issues to issues table
+      if (runId && filteredIssues.length > 0) {
         try {
-          const instancesToInsert = filteredInstances.map((instance) => ({
+          const issuesToInsert = filteredIssues.map((issue) => ({
             audit_id: runId,
-            category: instance.category,
-            severity: instance.severity,
-            title: instance.title,
-            url: instance.url,
-            snippet: instance.snippet,
-            impact: instance.impact || null,
-            fix: instance.fix || null,
-            signature: instance.signature,
+            title: issue.title,
+            category: issue.category || null,
+            severity: issue.severity,
+            impact: issue.impact || null,
+            fix: issue.fix || null,
+            locations: issue.locations || [],
+            status: 'active', // All new issues start as active
           }))
 
-          const { error: instancesErr } = await (supabaseAdmin as any)
-            .from('audit_issues')
-            .insert(instancesToInsert)
+          const { error: issuesErr } = await (supabaseAdmin as any)
+            .from('issues')
+            .insert(issuesToInsert)
 
-          if (instancesErr) {
-            console.error('[Audit] Failed to save instances:', instancesErr)
-            // Don't fail the request - instances are non-critical for backward compatibility
+          if (issuesErr) {
+            console.error('[Audit] Failed to save issues:', issuesErr)
+            // Don't fail the request - issues are critical but we have issues_json as backup
           } else {
-            console.log(`[Audit] Saved ${instancesToInsert.length} instances to audit_issues table`)
+            console.log(`[Audit] Saved ${issuesToInsert.length} issues to issues table`)
           }
         } catch (error) {
-          console.error('[Audit] Error saving instances:', error)
+          console.error('[Audit] Error saving issues:', error)
           // Don't fail the request
         }
       }
@@ -333,18 +282,17 @@ export async function POST(request: Request) {
     }
 
     // Gating: Preview shows ~5-7 issues, authenticated free shows 5, pro shows all
-    // Note: groups are already filtered to exclude ignored issues above
-    const groups = Array.isArray(issuesJson.groups) ? issuesJson.groups : []
-    let gatedGroups = groups
+    const issues = Array.isArray(filteredIssues) ? filteredIssues : []
+    let gatedIssues = issues
     let preview = false
     
     if (!isAuthenticated) {
       // Unauthenticated preview: show 5-7 issues with fade-out
-      gatedGroups = groups.slice(0, 7)
+      gatedIssues = issues.slice(0, 7)
       preview = true
     } else if (plan === 'free') {
       // Authenticated free: show 5 issues
-      gatedGroups = groups.slice(0, 5)
+      gatedIssues = issues.slice(0, 5)
       preview = true
     } else {
       // Pro/Enterprise: show all issues
@@ -366,8 +314,8 @@ export async function POST(request: Request) {
       runId,
       preview,
       status: 'completed',
-      groups: gatedGroups,
-      totalIssues: groups.length,
+      issues: gatedIssues,
+      totalIssues: issues.length,
       sessionToken: finalSessionToken, // Return for frontend to store
       usage, // Include usage info
       meta: { 

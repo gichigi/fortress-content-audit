@@ -2,8 +2,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { pollAuditStatus, AuditTier } from '@/lib/audit'
-import { generateIssueSignature, generateInstanceSignature } from '@/lib/issue-signature'
-import { AuditIssueGroup } from '@/lib/audit-table-adapter'
+// Removed: issue-signature imports (no longer needed)
 import { incrementAuditUsage, getAuditUsage } from '@/lib/audit-rate-limit'
 
 function getBearer(req: Request) {
@@ -63,7 +62,7 @@ export async function POST(request: Request) {
         message: 'Audit is still running. Check back in a few seconds.',
         progress: {
           pagesScanned: result.pagesScanned || 0,
-          issuesFound: result.groups?.length || 0,
+          issuesFound: result.issues?.length || 0,
         },
       })
     }
@@ -78,39 +77,12 @@ export async function POST(request: Request) {
         .eq('user_id', userId)
         .maybeSingle()
 
-      // Filter out ignored issues for authenticated users
-      let filteredGroups = result.groups || []
-      let filteredInstances = result.instances || []
-      
-      if (auditRun?.domain) {
-        // Query ignored issue signatures for this user/domain
-        const { data: ignoredStates } = await supabaseAdmin
-          .from('audit_issue_states')
-          .select('signature')
-          .eq('user_id', userId)
-          .eq('domain', auditRun.domain)
-          .eq('state', 'ignored')
-
-        if (ignoredStates && ignoredStates.length > 0) {
-          const ignoredSignatures = new Set(ignoredStates.map((s) => s.signature))
-          
-          // Filter out groups whose signatures match ignored states (legacy)
-          filteredGroups = result.groups.filter((group: AuditIssueGroup) => {
-            const signature = generateIssueSignature(group)
-            return !ignoredSignatures.has(signature)
-          })
-
-          // Filter out instances whose signatures match ignored states
-          filteredInstances = (result.instances || []).filter((instance) => {
-            return !ignoredSignatures.has(instance.signature)
-          })
-
-          console.log(`[Poll] Filtered out ${result.groups.length - filteredGroups.length} ignored issue groups, ${(result.instances?.length || 0) - filteredInstances.length} ignored instances`)
-        }
-      }
+      // Note: For new audits, we don't filter by status yet - issues start as 'active'
+      // Status filtering happens when fetching issues from the database
+      const filteredIssues = result.issues || []
 
       const issuesJson = {
-        groups: filteredGroups,
+        issues: filteredIssues,
         auditedUrls: result.auditedUrls || [],
         tier: result.tier || tier, // Preserve tier for future lookups
       }
@@ -129,33 +101,32 @@ export async function POST(request: Request) {
       } else {
         console.log(`[Poll] Updated audit run: ${runId}`)
         
-        // Save instances to audit_issues table
-        if (filteredInstances.length > 0) {
+        // Save issues to issues table
+        if (filteredIssues.length > 0) {
           try {
-            const instancesToInsert = filteredInstances.map((instance) => ({
+            const issuesToInsert = filteredIssues.map((issue) => ({
               audit_id: runId,
-              category: instance.category,
-              severity: instance.severity,
-              title: instance.title,
-              url: instance.url,
-              snippet: instance.snippet,
-              impact: instance.impact || null,
-              fix: instance.fix || null,
-              signature: instance.signature,
+              title: issue.title,
+              category: issue.category || null,
+              severity: issue.severity,
+              impact: issue.impact || null,
+              fix: issue.fix || null,
+              locations: issue.locations || [],
+              status: 'active', // All new issues start as active
             }))
 
-            const { error: instancesErr } = await (supabaseAdmin as any)
-              .from('audit_issues')
-              .insert(instancesToInsert)
+            const { error: issuesErr } = await (supabaseAdmin as any)
+              .from('issues')
+              .insert(issuesToInsert)
 
-            if (instancesErr) {
-              console.error('[Poll] Failed to save instances:', instancesErr)
-              // Don't fail the request - instances are non-critical for backward compatibility
+            if (issuesErr) {
+              console.error('[Poll] Failed to save issues:', issuesErr)
+              // Don't fail the request - issues are critical but we have issues_json as backup
             } else {
-              console.log(`[Poll] Saved ${instancesToInsert.length} instances to audit_issues table`)
+              console.log(`[Poll] Saved ${issuesToInsert.length} issues to issues table`)
             }
           } catch (error) {
-            console.error('[Poll] Error saving instances:', error)
+            console.error('[Poll] Error saving issues:', error)
             // Don't fail the request
           }
         }
@@ -173,9 +144,8 @@ export async function POST(request: Request) {
       }
     }
 
-    // Get filtered groups (or use result.groups if filtering wasn't done)
-    // Note: Filtering happens above when updating database, but we need to filter here too for the response
-    let responseGroups = result.groups || []
+    // Get filtered issues (or use result.issues if filtering wasn't done)
+    let responseIssues = result.issues || []
     if (runId) {
       const { data: auditRun } = await supabaseAdmin
         .from('brand_audit_runs')
@@ -184,8 +154,8 @@ export async function POST(request: Request) {
         .eq('user_id', userId)
         .maybeSingle()
       
-      if (auditRun?.issues_json && typeof auditRun.issues_json === 'object' && 'groups' in auditRun.issues_json) {
-        responseGroups = (auditRun.issues_json as any).groups || result.groups || []
+      if (auditRun?.issues_json && typeof auditRun.issues_json === 'object' && 'issues' in auditRun.issues_json) {
+        responseIssues = (auditRun.issues_json as any).issues || result.issues || []
       }
     }
 
@@ -215,12 +185,12 @@ export async function POST(request: Request) {
       }
     }
 
-    // Return completed results (with filtered groups)
+    // Return completed results (with filtered issues)
     return NextResponse.json({
       status: 'completed',
       runId,
-      groups: responseGroups,
-      totalIssues: responseGroups.length,
+      issues: responseIssues,
+      totalIssues: responseIssues.length,
       usage, // Include usage info
       meta: {
         pagesScanned: result.pagesScanned,

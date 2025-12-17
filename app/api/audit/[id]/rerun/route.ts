@@ -60,11 +60,12 @@ export async function POST(
       )
     }
 
-    // Audit site with 20 pages for Pro rerun
-    const result = await auditSite(run.domain, 20)
+    // Audit site for Pro rerun
+    const result = await auditSite(run.domain, 'PAID')
 
     const issuesJson = {
-      groups: result.groups,
+      issues: result.issues || [],
+      auditedUrls: result.auditedUrls || [],
     }
 
     const { data: inserted, error: insErr } = await supabaseAdmin
@@ -80,6 +81,36 @@ export async function POST(
       .select('id')
       .maybeSingle()
     if (insErr) throw insErr
+
+    // Save issues to issues table
+    if (inserted?.id && result.issues && result.issues.length > 0) {
+      try {
+        const issuesToInsert = result.issues.map((issue) => ({
+          audit_id: inserted.id,
+          title: issue.title,
+          category: issue.category || null,
+          severity: issue.severity,
+          impact: issue.impact || null,
+          fix: issue.fix || null,
+          locations: issue.locations || [],
+          status: 'active', // All new issues start as active
+        }))
+
+        const { error: issuesErr } = await (supabaseAdmin as any)
+          .from('issues')
+          .insert(issuesToInsert)
+
+        if (issuesErr) {
+          console.error('[Rerun] Failed to save issues:', issuesErr)
+          // Don't fail the request - issues are critical but we have issues_json as backup
+        } else {
+          console.log(`[Rerun] Saved ${issuesToInsert.length} issues to issues table`)
+        }
+      } catch (error) {
+        console.error('[Rerun] Error saving issues:', error)
+        // Don't fail the request
+      }
+    }
 
     // Increment audit usage after successful rerun
     if (inserted?.id) {
@@ -102,7 +133,7 @@ export async function POST(
 
     return NextResponse.json({ 
       runId: inserted?.id, 
-      groups: issuesJson.groups || [], 
+      issues: issuesJson.issues || [], 
       usage, // Include usage info
       meta: { pagesScanned: result.pagesScanned } 
     })

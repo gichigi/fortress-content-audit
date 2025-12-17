@@ -1,9 +1,6 @@
 import { AuditRun } from "@/types/fortress"
-import { AuditIssueGroup } from "./audit-table-adapter"
-import { generateIssueSignature } from "./issue-signature"
-import { IssueState } from "@/types/fortress"
 import { supabaseAdmin } from "./supabase-admin"
-import { AuditIssueInstance } from "@/types/fortress"
+import { Issue } from "@/types/fortress"
 
 /**
  * Health score calculation result
@@ -27,32 +24,33 @@ export interface HealthScoreResult {
  * Calculate health score for a single audit
  * 
  * Formula: 100 - (low×1 + medium×3 + high×7) - (criticalPages×10)
- * - Excludes ignored issues
+ * - Excludes ignored/resolved issues (only counts active)
  * - Critical pages = pages with at least one high-severity issue
  * - Score clamped to 0-100
- * - Counts instances, not groups
+ * - Counts issues, not instances
  * 
- * @param audit - Audit run (instances queried from audit_issues table)
- * @param ignoredSignatures - Set of ignored issue signatures
+ * @param audit - Audit run (issues queried from issues table)
  * @returns Health score result with metrics
  */
 export async function calculateHealthScore(
-  audit: AuditRun,
-  ignoredSignatures: Set<string>
+  audit: AuditRun
 ): Promise<HealthScoreResult> {
-  // Query instances from audit_issues table
-  const { data: instances, error } = await (supabaseAdmin as any)
-    .from('audit_issues')
-    .select('*')
+  // Query issues from issues table (only active issues)
+  const { data: issuesData, error } = await (supabaseAdmin as any)
+    .from('issues')
+    .select('severity, status, locations')
     .eq('audit_id', audit.id)
+    .eq('status', 'active')  // Only active issues
 
   if (error) {
-    console.error('[HealthScore] Error fetching instances:', error)
+    console.error('[HealthScore] Error fetching issues:', error)
     throw error
   }
 
-  // If no instances found, return empty score
-  if (!instances || instances.length === 0) {
+  const issues: Issue[] = (issuesData || []) as Issue[]
+
+  // If no issues found, return empty score
+  if (!issues || issues.length === 0) {
     return {
       score: 100,
       metrics: {
@@ -65,90 +63,6 @@ export async function calculateHealthScore(
     }
   }
 
-  // Filter out ignored instances
-  const activeInstances = (instances || []).filter((instance: AuditIssueInstance) => {
-    return !ignoredSignatures.has(instance.signature)
-  })
-  
-  // Count instances by severity
-  const bySeverity = {
-    low: 0,
-    medium: 0,
-    high: 0,
-  }
-  
-  // Track unique pages with issues
-  const pagesWithIssuesSet = new Set<string>()
-  
-  // Track unique critical pages (pages with high-severity issues)
-  const criticalPagesSet = new Set<string>()
-  
-  activeInstances.forEach((instance: AuditIssueInstance) => {
-    // Count by severity
-    if (instance.severity === 'low') bySeverity.low++
-    else if (instance.severity === 'medium') bySeverity.medium++
-    else if (instance.severity === 'high') bySeverity.high++
-    
-    // Extract page path from URL
-    try {
-      const url = new URL(instance.url)
-      const pagePath = url.pathname || '/'
-      pagesWithIssuesSet.add(pagePath)
-      
-      // If this is a high-severity issue, mark page as critical
-      if (instance.severity === 'high') {
-        criticalPagesSet.add(pagePath)
-      }
-    } catch (e) {
-      // Invalid URL, skip
-      console.warn('[HealthScore] Invalid URL in instance:', instance.url)
-    }
-  })
-  
-  const totalActive = activeInstances.length
-  const totalCritical = bySeverity.high
-  const criticalPages = criticalPagesSet.size
-  const pagesWithIssues = pagesWithIssuesSet.size
-  
-  // Apply formula: 100 - (low×1 + medium×3 + high×7) - (criticalPages×10)
-  let score = 100
-  score -= bySeverity.low * 1
-  score -= bySeverity.medium * 3
-  score -= bySeverity.high * 7
-  score -= criticalPages * 10
-  
-  // Clamp to 0-100
-  score = Math.max(0, Math.min(100, score))
-  
-  return {
-    score,
-    metrics: {
-      totalActive,
-      totalCritical,
-      bySeverity,
-      criticalPages,
-      pagesWithIssues,
-    },
-  }
-}
-
-/**
- * Fallback: Calculate health score from groups (backward compatibility)
- */
-function calculateHealthScoreFromGroups(
-  audit: AuditRun,
-  ignoredSignatures: Set<string>
-): HealthScoreResult {
-  // Extract issues from audit
-  const issuesJson = audit.issues_json as any
-  const groups = Array.isArray(issuesJson?.groups) ? issuesJson.groups : []
-  
-  // Filter out ignored issues
-  const activeGroups = groups.filter((group: AuditIssueGroup) => {
-    const signature = generateIssueSignature(group)
-    return !ignoredSignatures.has(signature)
-  })
-  
   // Count issues by severity
   const bySeverity = {
     low: 0,
@@ -162,36 +76,30 @@ function calculateHealthScoreFromGroups(
   // Track unique critical pages (pages with high-severity issues)
   const criticalPagesSet = new Set<string>()
   
-  activeGroups.forEach((group: AuditIssueGroup) => {
+  issues.forEach((issue: Issue) => {
     // Count by severity
-    if (group.severity === 'low') bySeverity.low++
-    else if (group.severity === 'medium') bySeverity.medium++
-    else if (group.severity === 'high') bySeverity.high++
+    bySeverity[issue.severity]++
     
-    // Extract unique page URLs from examples
-    if (group.examples && Array.isArray(group.examples)) {
-      group.examples.forEach((example) => {
-        if (example.url) {
-          try {
-            // Extract page path from URL for consistency
-            const url = new URL(example.url)
-            const pagePath = url.pathname || '/'
-            pagesWithIssuesSet.add(pagePath)
-            
-            // If this is a high-severity issue, mark page as critical
-            if (group.severity === 'high') {
-              criticalPagesSet.add(pagePath)
-            }
-          } catch (e) {
-            // Invalid URL, skip
-            console.warn('[HealthScore] Invalid URL in example:', example.url)
+    // Extract unique pages from locations array
+    if (issue.locations && Array.isArray(issue.locations)) {
+      issue.locations.forEach((loc: { url: string }) => {
+        try {
+          const url = new URL(loc.url)
+          const pagePath = url.pathname || '/'
+          pagesWithIssuesSet.add(pagePath)
+          
+          // If high severity, mark page as critical
+          if (issue.severity === 'high') {
+            criticalPagesSet.add(pagePath)
           }
+        } catch (e) {
+          console.warn('[HealthScore] Invalid URL in locations:', loc.url)
         }
       })
     }
   })
   
-  const totalActive = activeGroups.length
+  const totalActive = issues.length
   const totalCritical = bySeverity.high
   const criticalPages = criticalPagesSet.size
   const pagesWithIssues = pagesWithIssuesSet.size
@@ -218,20 +126,20 @@ function calculateHealthScoreFromGroups(
   }
 }
 
+// Removed: calculateHealthScoreFromGroups - no longer needed with simplified model
+
 /**
  * Calculate health score for multiple audits (aggregated)
  * 
  * This aggregates metrics across multiple audits for a domain.
  * Useful for calculating overall health score across audit history.
- * Counts instances, not groups.
+ * Counts issues, not instances.
  * 
  * @param audits - Array of audit runs
- * @param ignoredSignatures - Set of ignored issue signatures
  * @returns Aggregated health score result
  */
 export async function calculateAggregatedHealthScore(
-  audits: AuditRun[],
-  ignoredSignatures: Set<string>
+  audits: AuditRun[]
 ): Promise<HealthScoreResult> {
   // Aggregate metrics across all audits
   const bySeverity = {
@@ -242,23 +150,23 @@ export async function calculateAggregatedHealthScore(
   
   const pagesWithIssuesSet = new Set<string>()
   const criticalPagesSet = new Set<string>()
-  const processedSignatures = new Set<string>() // Track unique instances across audits
   
-  // Query all instances for all audits
+  // Query all issues for all audits (only active)
   const auditIds = audits.map(a => a.id)
   
-  const { data: allInstances, error } = await (supabaseAdmin as any)
-    .from('audit_issues')
-    .select('*')
+  const { data: allIssues, error } = await (supabaseAdmin as any)
+    .from('issues')
+    .select('severity, status, locations')
     .in('audit_id', auditIds)
+    .eq('status', 'active')
 
   if (error) {
-    console.error('[HealthScore] Error fetching instances:', error)
+    console.error('[HealthScore] Error fetching issues:', error)
     throw error
   }
 
-  // If no instances found, return empty score
-  if (!allInstances || allInstances.length === 0) {
+  // If no issues found, return empty score
+  if (!allIssues || allIssues.length === 0) {
     return {
       score: 100,
       metrics: {
@@ -271,35 +179,30 @@ export async function calculateAggregatedHealthScore(
     }
   }
 
-  // Process instances
-  (allInstances || []).forEach((instance: AuditIssueInstance) => {
-    // Skip ignored instances
-    if (ignoredSignatures.has(instance.signature)) return
-    
-    // Skip if we've already counted this instance (same signature across audits)
-    if (processedSignatures.has(instance.signature)) return
-    processedSignatures.add(instance.signature)
-    
+  // Process issues
+  (allIssues || []).forEach((issue: Issue) => {
     // Count by severity
-    if (instance.severity === 'low') bySeverity.low++
-    else if (instance.severity === 'medium') bySeverity.medium++
-    else if (instance.severity === 'high') bySeverity.high++
+    bySeverity[issue.severity]++
     
-    // Extract page path from URL
-    try {
-      const url = new URL(instance.url)
-      const pagePath = url.pathname || '/'
-      pagesWithIssuesSet.add(pagePath)
-      
-      if (instance.severity === 'high') {
-        criticalPagesSet.add(pagePath)
-      }
-    } catch (e) {
-      console.warn('[HealthScore] Invalid URL in instance:', instance.url)
+    // Extract unique pages from locations array
+    if (issue.locations && Array.isArray(issue.locations)) {
+      issue.locations.forEach((loc: { url: string }) => {
+        try {
+          const url = new URL(loc.url)
+          const pagePath = url.pathname || '/'
+          pagesWithIssuesSet.add(pagePath)
+          
+          if (issue.severity === 'high') {
+            criticalPagesSet.add(pagePath)
+          }
+        } catch (e) {
+          console.warn('[HealthScore] Invalid URL in locations:', loc.url)
+        }
+      })
     }
   })
   
-  const totalActive = processedSignatures.size
+  const totalActive = allIssues.length
   const totalCritical = bySeverity.high
   const criticalPages = criticalPagesSet.size
   const pagesWithIssues = pagesWithIssuesSet.size
@@ -326,88 +229,5 @@ export async function calculateAggregatedHealthScore(
   }
 }
 
-/**
- * Fallback: Calculate aggregated health score from groups (backward compatibility)
- */
-function calculateAggregatedHealthScoreFromGroups(
-  audits: AuditRun[],
-  ignoredSignatures: Set<string>
-): HealthScoreResult {
-  // Aggregate metrics across all audits
-  const bySeverity = {
-    low: 0,
-    medium: 0,
-    high: 0,
-  }
-  
-  const pagesWithIssuesSet = new Set<string>()
-  const criticalPagesSet = new Set<string>()
-  const processedSignatures = new Set<string>() // Track unique issues across audits
-  
-  audits.forEach((audit) => {
-    const issuesJson = audit.issues_json as any
-    const groups = Array.isArray(issuesJson?.groups) ? issuesJson.groups : []
-    
-    groups.forEach((group: AuditIssueGroup) => {
-      const signature = generateIssueSignature(group)
-      
-      // Skip ignored issues
-      if (ignoredSignatures.has(signature)) return
-      
-      // Skip if we've already counted this issue (same signature across audits)
-      if (processedSignatures.has(signature)) return
-      processedSignatures.add(signature)
-      
-      // Count by severity
-      if (group.severity === 'low') bySeverity.low++
-      else if (group.severity === 'medium') bySeverity.medium++
-      else if (group.severity === 'high') bySeverity.high++
-      
-      // Extract unique page URLs from examples
-      if (group.examples && Array.isArray(group.examples)) {
-        group.examples.forEach((example) => {
-          if (example.url) {
-            try {
-              const url = new URL(example.url)
-              const pagePath = url.pathname || '/'
-              pagesWithIssuesSet.add(pagePath)
-              
-              if (group.severity === 'high') {
-                criticalPagesSet.add(pagePath)
-              }
-            } catch (e) {
-              console.warn('[HealthScore] Invalid URL in example:', example.url)
-            }
-          }
-        })
-      }
-    })
-  })
-  
-  const totalActive = processedSignatures.size
-  const totalCritical = bySeverity.high
-  const criticalPages = criticalPagesSet.size
-  const pagesWithIssues = pagesWithIssuesSet.size
-  
-  // Apply formula
-  let score = 100
-  score -= bySeverity.low * 1
-  score -= bySeverity.medium * 3
-  score -= bySeverity.high * 7
-  score -= criticalPages * 10
-  
-  // Clamp to 0-100
-  score = Math.max(0, Math.min(100, score))
-  
-  return {
-    score,
-    metrics: {
-      totalActive,
-      totalCritical,
-      bySeverity,
-      criticalPages,
-      pagesWithIssues,
-    },
-  }
-}
+// Removed: calculateAggregatedHealthScoreFromGroups - no longer needed with simplified model
 

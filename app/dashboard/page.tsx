@@ -15,7 +15,7 @@ import { PLAN_NAMES } from "@/lib/plans"
 import { HealthScoreChart } from "@/components/health-score-chart"
 import { HealthScoreCards } from "@/components/health-score-cards"
 import { AuditTable } from "@/components/audit-table"
-import { transformAuditToTableRows, transformInstancesToTableRows } from "@/lib/audit-table-adapter"
+import { useAuditIssues } from "@/hooks/use-audit-issues"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -53,8 +53,14 @@ export default function DashboardPage() {
   const [deletingDomain, setDeletingDomain] = useState<string | null>(null)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [domainToDelete, setDomainToDelete] = useState<string | null>(null)
-  const [tableRows, setTableRows] = useState<any[]>([])
-  const [tableRowsLoading, setTableRowsLoading] = useState(false)
+  const [authToken, setAuthToken] = useState<string | null>(null)
+  
+  // Use shared hook to fetch issues from database
+  const mostRecentAudit = audits.length > 0 ? audits[0] : null
+  const { tableRows, loading: tableRowsLoading, totalIssues: tableTotalIssues } = useAuditIssues(
+    mostRecentAudit?.id || null,
+    authToken
+  )
 
   useEffect(() => {
     checkAuthAndLoad()
@@ -184,6 +190,8 @@ export default function DashboardPage() {
         return
       }
 
+      setAuthToken(session.access_token)
+
       // Check for pending audit to claim (from localStorage)
       await claimPendingAudit(session.access_token)
 
@@ -230,6 +238,8 @@ export default function DashboardPage() {
       
       // Load usage info
       await loadUsageInfo(session.access_token)
+      
+      // Issues are now loaded via useAuditIssues hook
     } catch (error) {
       console.error("Error loading dashboard:", error)
       setError("Failed to load dashboard. Please refresh the page.")
@@ -262,67 +272,9 @@ export default function DashboardPage() {
       if (error) throw error
       setAudits(data || [])
       
-      // Load table rows for most recent audit
-      if (data && data.length > 0) {
-        await loadTableRowsForAudit(data[0].id, token)
-      }
+      // Issues are now loaded via useAuditIssues hook when mostRecentAudit changes
     } catch (error) {
       console.error("Error loading audits:", error)
-    }
-  }
-
-  const loadTableRowsForAudit = async (auditId: string, token: string) => {
-    setTableRowsLoading(true)
-    try {
-      const response = await fetch(`/api/audit/${auditId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch audit')
-      }
-      
-      const data = await response.json()
-      
-      // Always use instances from database (single source of truth)
-      if (data.instances && data.instances.length > 0) {
-        // Fetch issue states for filtering
-        const supabase = createClient()
-        const { data: { session } } = await supabase.auth.getSession()
-        if (session) {
-          const { data: issueStates } = await supabase
-            .from('audit_issue_states')
-            .select('signature, state')
-            .eq('user_id', session.user.id)
-            .eq('domain', data.domain || '')
-          
-          const statesMap = new Map<string, 'active' | 'ignored' | 'resolved'>()
-          issueStates?.forEach((s) => {
-            if (s.signature && s.state) {
-              statesMap.set(s.signature, s.state as 'active' | 'ignored' | 'resolved')
-            }
-          })
-          
-          const rows = transformInstancesToTableRows(data.instances, statesMap)
-          setTableRows(rows)
-        } else {
-          const rows = transformInstancesToTableRows(data.instances)
-          setTableRows(rows)
-        }
-      } else {
-        // No instances found in database
-        setTableRows([])
-      }
-    } catch (error) {
-      console.error("Error loading table rows:", error)
-      // Fallback to issues_json
-      const mostRecentAudit = audits.length > 0 ? audits[0] : null
-      const allIssues = mostRecentAudit?.issues_json?.groups || []
-      setTableRows(transformAuditToTableRows(allIssues))
-    } finally {
-      setTableRowsLoading(false)
     }
   }
 
@@ -540,9 +492,7 @@ export default function DashboardPage() {
     )
   }
 
-  // Get most recent audit for table display
-  const mostRecentAudit = audits.length > 0 ? audits[0] : null
-  // tableRows are now loaded via loadTableRowsForAudit
+  // tableRows are now loaded via useAuditIssues hook
   const previousScore = healthScoreData?.data && healthScoreData.data.length > 1 
     ? healthScoreData.data[healthScoreData.data.length - 2]?.score 
     : undefined
@@ -633,7 +583,7 @@ export default function DashboardPage() {
                     <AuditTable
                       data={tableRows}
                       auditId={mostRecentAudit?.id}
-                      totalIssues={tableRows.reduce((sum, row) => sum + (row.count || 0), 0)}
+                      totalIssues={tableTotalIssues}
                     />
                   </div>
                 )}

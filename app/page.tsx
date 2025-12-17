@@ -13,7 +13,7 @@ import { InterstitialLoader } from "@/components/ui/interstitial-loader"
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import { createClient } from "@/lib/supabase-browser"
 import { AuditTable } from "@/components/audit-table"
-import { transformAuditToTableRows } from "@/lib/audit-table-adapter"
+import { useAuditIssues } from "@/hooks/use-audit-issues"
 
 export default function Home() {
   const router = useRouter()
@@ -24,12 +24,20 @@ export default function Home() {
   const [auditResults, setAuditResults] = useState<any>(null)
   const [sessionToken, setSessionToken] = useState<string | null>(null)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [authToken, setAuthToken] = useState<string | null>(null)
+  
+  // Use shared hook to fetch issues from database (same as dashboard)
+  const { tableRows, loading: issuesLoading, totalIssues } = useAuditIssues(
+    auditResults?.runId || null,
+    authToken
+  )
 
   useEffect(() => {
     const checkAuth = async () => {
       const supabase = createClient()
       const { data: { session } } = await supabase.auth.getSession()
       setIsAuthenticated(!!session)
+      setAuthToken(session?.access_token || null)
     }
     checkAuth()
   }, [])
@@ -48,6 +56,7 @@ export default function Home() {
       const supabase = createClient()
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
+      setAuthToken(token || null)
 
       const baseUrl =
         typeof window !== 'undefined'
@@ -198,7 +207,7 @@ export default function Home() {
       )}
 
       {/* Audit Results Preview */}
-      {!loading && auditResults && auditResults.groups && auditResults.groups.length > 0 && (
+      {!loading && auditResults && auditResults.runId && (
         <section className="border-t border-border py-24 md:py-32">
           <div className="container mx-auto px-6">
             <div className="mb-8">
@@ -206,21 +215,35 @@ export default function Home() {
                 Your Audit Results
               </h2>
               <p className="text-xl text-muted-foreground leading-relaxed max-w-2xl">
-                Found {auditResults.totalIssues || auditResults.groups.length} issues across {auditResults.meta?.pagesScanned || auditResults.pagesScanned || 0} pages
+                {issuesLoading ? (
+                  'Loading issues...'
+                ) : (
+                  `Found ${totalIssues} issues across ${auditResults.meta?.pagesScanned || auditResults.pagesScanned || 0} pages`
+                )}
               </p>
             </div>
-            <AuditTable
-              data={transformAuditToTableRows(auditResults.groups)}
-              showPreview={true}
-              auditId={auditResults.runId}
-              totalIssues={auditResults.totalIssues || auditResults.groups.length}
-            />
+            {issuesLoading ? (
+              <div className="text-center py-12">
+                <p className="text-muted-foreground">Loading issues...</p>
+              </div>
+            ) : tableRows.length > 0 ? (
+              <AuditTable
+                data={tableRows}
+                showPreview={true}
+                auditId={auditResults.runId}
+                totalIssues={totalIssues}
+              />
+            ) : (
+              <div className="text-center py-12">
+                <p className="text-muted-foreground">No issues found</p>
+              </div>
+            )}
           </div>
         </section>
       )}
 
-      {/* No Issues Success State */}
-      {!loading && auditResults && auditResults.groups && auditResults.groups.length === 0 && (
+      {/* No Issues Success State - shown when audit completes but no issues found */}
+      {!loading && auditResults && auditResults.runId && !issuesLoading && tableRows.length === 0 && (
         <section className="border-t border-border py-24 md:py-32">
           <div className="container mx-auto px-6 max-w-2xl">
             <Card className="border-2 border-green-200 bg-green-50/50">
