@@ -24,3 +24,4 @@ CREATE INDEX IF NOT EXISTS idx_audit_usage_user_date
 CREATE INDEX IF NOT EXISTS idx_audit_usage_user_domain 
   ON public.audit_usage(user_id, domain);
 
+

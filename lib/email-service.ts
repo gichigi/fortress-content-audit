@@ -43,6 +43,15 @@ export interface AbandonedCartEmailData {
   sessionId?: string;
 }
 
+export interface AuditCompletionEmailData {
+  customerEmail: string;
+  customerName?: string;
+  domain: string;
+  totalIssues: number;
+  pagesScanned: number;
+  auditId: string;
+}
+
 /**
  * Send an email using the specified template and variables
  */
@@ -144,6 +153,19 @@ class EmailService {
     const subject = 'Complete Your Style Guide – 20% Off';
     const html = this.generateAbandonedCartEmailHTML(data);
     const text = this.generateAbandonedCartEmailText(data);
+
+    return this.sendEmail({
+      to: data.customerEmail,
+      subject,
+      html,
+      text,
+    });
+  }
+
+  async sendAuditCompletionEmail(data: AuditCompletionEmailData) {
+    const subject = `Your content audit for ${data.domain} is complete`;
+    const html = this.generateAuditCompletionEmailHTML(data);
+    const text = this.generateAuditCompletionEmailText(data);
 
     return this.sendEmail({
       to: data.customerEmail,
@@ -294,6 +316,75 @@ Tahi
 Founder, Fortress
 
     `;
+  }
+
+  private generateAuditCompletionEmailHTML(data: AuditCompletionEmailData): string {
+    const firstName = data.customerName ? data.customerName.split(' ')[0] : 'there';
+    const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://fortress.audit'}/dashboard`;
+    const auditUrl = `${dashboardUrl}?audit=${data.auditId}`;
+    
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Your Content Audit is Complete</title>
+        </head>
+        <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          
+          <p style="margin-bottom: 20px;">Hey ${firstName},</p>
+          
+          <p style="margin-bottom: 15px;">Your content audit for <strong>${data.domain}</strong> is complete!</p>
+          
+          <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin: 25px 0;">
+            <p style="margin: 0 0 10px 0; font-weight: 500;">Audit Summary:</p>
+            <ul style="margin: 0; padding-left: 20px;">
+              <li style="margin-bottom: 8px;"><strong>${data.totalIssues}</strong> issue${data.totalIssues === 1 ? '' : 's'} found</li>
+              <li style="margin-bottom: 0;"><strong>${data.pagesScanned}</strong> page${data.pagesScanned === 1 ? '' : 's'} scanned</li>
+            </ul>
+          </div>
+          
+          <div style="text-align: center; margin: 25px 0;">
+            <a href="${auditUrl}" 
+               style="background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 500;">
+              View Audit Results
+            </a>
+          </div>
+          
+          <p style="margin-bottom: 15px;">Review the issues, track your health score over time, and export reports from your dashboard.</p>
+          
+          <p style="margin-bottom: 5px;">Cheers,<br>
+          Tahi<br>
+          Founder, Fortress<br>
+          <a href="https://x.com/tahigichigi" style="color: #2563eb;">x.com/tahigichigi</a></p>
+          
+        </body>
+      </html>
+    `;
+  }
+
+  private generateAuditCompletionEmailText(data: AuditCompletionEmailData): string {
+    const firstName = data.customerName ? data.customerName.split(' ')[0] : 'there';
+    const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://fortress.audit'}/dashboard`;
+    const auditUrl = `${dashboardUrl}?audit=${data.auditId}`;
+    
+    return `Hey ${firstName},
+
+Your content audit for ${data.domain} is complete!
+
+Audit Summary:
+- ${data.totalIssues} issue${data.totalIssues === 1 ? '' : 's'} found
+- ${data.pagesScanned} page${data.pagesScanned === 1 ? '' : 's'} scanned
+
+View your audit results: ${auditUrl}
+
+Review the issues, track your health score over time, and export reports from your dashboard.
+
+Cheers,
+Tahi
+Founder, Fortress
+x.com/tahigichigi`;
   }
 }
 

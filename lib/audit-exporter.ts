@@ -48,7 +48,7 @@ When fixing issues:
 
 **Suggested Fix**: ${issue.fix || 'No fix provided'}
 
-**Locations Found**:
+**Pages Found**:
 `
 
     if (issue.locations && Array.isArray(issue.locations) && issue.locations.length > 0) {
@@ -225,7 +225,7 @@ function generateAuditHTML(
           <p><strong>Suggested Fix:</strong> ${escapeHtml(issue.fix || 'No fix provided')}</p>
           ${issue.locations && Array.isArray(issue.locations) && issue.locations.length > 0 ? `
             <div class="examples">
-              <strong>Locations Found:</strong>
+              <strong>Pages Found:</strong>
               <ul>
                 ${issue.locations.map((loc: any) => `
                   <li>

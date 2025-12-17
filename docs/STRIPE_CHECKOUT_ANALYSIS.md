@@ -106,3 +106,4 @@ STRIPE_MODE=test  # or 'live'
 - **Dashboard:** `app/dashboard/page.tsx` (has upgrade links)
 
 
+

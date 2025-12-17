@@ -2,7 +2,6 @@ import { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
-import Header from '@/components/Header'
 import BlogContent from '@/components/blog/BlogContent'
 import ShareButton from '@/components/blog/ShareButton'
 import { Badge } from '@/components/ui/badge'
@@ -264,8 +263,6 @@ export default async function BlogPostPage({
       <BlogSchema post={post} />
       <BreadcrumbSchema slug={post.slug} title={post.title} />
       <div className="min-h-screen bg-background">
-        <Header />
-        
         <main className="container mx-auto px-4 py-8">
           {/* Navigation */}
           <nav className="mb-8 max-w-[47.6rem] mx-auto">

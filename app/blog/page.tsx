@@ -1,6 +1,5 @@
 import { Metadata } from 'next'
 import Link from 'next/link'
-import Header from '@/components/Header'
 import BlogCard from '@/components/blog/BlogCard'
 import Pagination from '@/components/blog/Pagination'
 import { cn } from '@/lib/utils'
@@ -121,8 +120,6 @@ export default async function BlogPage({
 
   return (
     <div className="min-h-screen bg-background">
-      <Header />
-      
       <main className="container mx-auto px-4 py-12">
         {/* Hero Section */}
         <div className="text-center mb-12">

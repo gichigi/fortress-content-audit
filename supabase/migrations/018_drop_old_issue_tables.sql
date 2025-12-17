@@ -11,3 +11,4 @@ DROP TYPE IF EXISTS issue_category_enum;
 DROP TYPE IF EXISTS issue_severity_enum;  -- Note: We created a new issue_severity enum
 DROP TYPE IF EXISTS issue_state_enum;    -- Note: We created a new issue_status enum
 
+

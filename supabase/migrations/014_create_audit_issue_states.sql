@@ -34,3 +34,4 @@ CREATE INDEX IF NOT EXISTS idx_audit_issue_states_user_domain_signature
 CREATE INDEX IF NOT EXISTS idx_audit_issue_states_user_state_updated 
   ON public.audit_issue_states(user_id, state, updated_at);
 
+

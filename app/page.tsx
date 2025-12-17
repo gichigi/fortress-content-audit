@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -14,6 +15,10 @@ import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import { createClient } from "@/lib/supabase-browser"
 import { AuditTable } from "@/components/audit-table"
 import { useAuditIssues } from "@/hooks/use-audit-issues"
+import { HealthScoreCards } from "@/components/health-score-cards"
+import { HealthScoreChart } from "@/components/health-score-chart"
+import { useHealthScoreMetrics } from "@/hooks/use-health-score-metrics"
+import { transformIssuesToTableRows } from "@/lib/audit-table-adapter"
 
 export default function Home() {
   const router = useRouter()
@@ -26,11 +31,35 @@ export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [authToken, setAuthToken] = useState<string | null>(null)
   
-  // Use shared hook to fetch issues from database (same as dashboard)
-  const { tableRows, loading: issuesLoading, totalIssues } = useAuditIssues(
-    auditResults?.runId || null,
-    authToken
+  // For authenticated users, use the hook to fetch from database
+  // For unauthenticated users, use issues directly from API response
+  const { tableRows: hookTableRows, loading: issuesLoading, totalIssues: hookTotalIssues, refetch } = useAuditIssues(
+    isAuthenticated && auditResults?.runId ? auditResults.runId : null,
+    isAuthenticated ? authToken : null
   )
+
+  // Transform issues from API response for unauthenticated users
+  const responseTableRows = React.useMemo(() => {
+    if (!isAuthenticated && auditResults?.issues && Array.isArray(auditResults.issues)) {
+      return transformIssuesToTableRows(auditResults.issues)
+    }
+    return []
+  }, [isAuthenticated, auditResults?.issues])
+
+  const responseTotalIssues = React.useMemo(() => {
+    if (!isAuthenticated && auditResults) {
+      return auditResults.totalIssues || responseTableRows.length
+    }
+    return 0
+  }, [isAuthenticated, auditResults?.totalIssues, responseTableRows.length])
+
+  // Use hook data for authenticated, response data for unauthenticated
+  const tableRows = isAuthenticated ? hookTableRows : responseTableRows
+  const totalIssues = isAuthenticated ? hookTotalIssues : responseTotalIssues
+  const isLoading = isAuthenticated ? issuesLoading : false
+
+  // Calculate metrics using shared hook
+  const metrics = useHealthScoreMetrics(tableRows)
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -128,23 +157,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen">
-      {/* Header */}
-      <header className="border-b border-border">
-        <nav className="container mx-auto px-6 py-6 flex items-center justify-between">
-          <div className="text-2xl font-serif font-semibold tracking-tight">Fortress</div>
-          <div className="flex items-center gap-4">
-            {isAuthenticated ? (
-              <Button onClick={() => router.push('/dashboard')}>Dashboard</Button>
-            ) : (
-              <>
-                <Button variant="ghost" onClick={() => router.push('/sign-up')}>Sign In</Button>
-                <Button onClick={() => router.push('/sign-up')}>Get Started</Button>
-              </>
-            )}
-          </div>
-        </nav>
-      </header>
-
       {/* Hero Section */}
       <section className="container mx-auto px-6 py-24 md:py-32">
         <div className="max-w-4xl mx-auto text-center">
@@ -152,36 +164,60 @@ export default function Home() {
             Get a full content audit of your website
           </h1>
           <p className="text-xl md:text-2xl text-muted-foreground leading-relaxed text-balance mb-12 max-w-2xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-200">
-            Identify all the content issues, errors and inconsistencies across your site. No signup needed.
+            Content issues are killing your conversion rate. Uncover the hidden errors and inconsistencies across your site. 
           </p>
           
-          <div className="flex flex-col md:flex-row gap-4 max-w-xl mx-auto mb-12">
-            <Input 
-              placeholder="Enter your website URL (e.g., fortress.app)" 
-              className="h-14 px-6 text-lg bg-background shadow-sm"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleAudit()}
-            />
-            <Button 
-              size="lg" 
-              className="h-14 px-8 text-lg font-medium" 
-              onClick={handleAudit} 
-              disabled={loading}
-              aria-busy={loading}
-            >
-              Run Audit
-            </Button>
-          </div>
+          {!isAuthenticated ? (
+            <div className="flex flex-col md:flex-row gap-4 max-w-xl mx-auto mb-12">
+              <Input 
+                placeholder="Enter your website" 
+                className="h-14 px-6 text-lg bg-background shadow-sm"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAudit()}
+              />
+              <Button 
+                size="lg" 
+                className="h-14 px-8 text-lg font-medium" 
+                onClick={handleAudit} 
+                disabled={loading}
+                aria-busy={loading}
+              >
+                Run Audit
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-col sm:flex-row gap-4 max-w-xl mx-auto mb-12 justify-center">
+              <Button 
+                size="lg" 
+                className="h-14 px-8 text-lg font-medium" 
+                onClick={() => router.push('/dashboard')}
+              >
+                Go to Dashboard
+              </Button>
+              <Button 
+                size="lg" 
+                variant="outline"
+                className="h-14 px-8 text-lg font-medium" 
+                onClick={() => router.push('/pricing')}
+              >
+                View Pricing
+              </Button>
+            </div>
+          )}
           
           <div className="flex items-center justify-center gap-8 text-sm text-muted-foreground">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-green-600" />
-              <span>Free 10-page scan</span>
+              <span>Find issues in minutes</span>
             </div>
             <div className="flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-green-600" />
-              <span>No credit card required</span>
+              <span>Search your whole website</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+              <span>Download reports in PDF or JSON</span>
             </div>
           </div>
         </div>
@@ -208,42 +244,69 @@ export default function Home() {
 
       {/* Audit Results Preview */}
       {!loading && auditResults && auditResults.runId && (
-        <section className="border-t border-border py-24 md:py-32">
-          <div className="container mx-auto px-6">
-            <div className="mb-8">
-              <h2 className="font-serif text-4xl md:text-5xl font-light tracking-tight mb-4">
-                Your Audit Results
-              </h2>
-              <p className="text-xl text-muted-foreground leading-relaxed max-w-2xl">
-                {issuesLoading ? (
-                  'Loading issues...'
-                ) : (
-                  `Found ${totalIssues} issues across ${auditResults.meta?.pagesScanned || auditResults.pagesScanned || 0} pages`
-                )}
-              </p>
-            </div>
-            {issuesLoading ? (
-              <div className="text-center py-12">
-                <p className="text-muted-foreground">Loading issues...</p>
+        <div className="@container/main flex flex-1 flex-col gap-2">
+          <div className="flex flex-1 flex-col gap-4 py-4 md:gap-6 md:py-6">
+            {/* Health Score Cards */}
+            <HealthScoreCards
+              currentScore={!isLoading ? {
+                score: metrics.score,
+                metrics: {
+                  totalActive: metrics.totalActive,
+                  totalCritical: metrics.totalCritical,
+                  pagesWithIssues: metrics.pagesWithIssues,
+                  criticalPages: metrics.criticalPages,
+                }
+              } : undefined}
+              previousScore={undefined}
+              loading={isLoading}
+            />
+
+
+            {/* Audit Issues Table */}
+            {isLoading ? (
+              <div className="px-4 lg:px-6 space-y-4">
+                <Skeleton className="h-10 w-48 mb-4" />
+                <div className="space-y-2">
+                  <Skeleton className="h-8 w-64" />
+                  <div className="flex gap-2">
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-4 w-28" />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Skeleton className="h-12 w-full" />
+                  <Skeleton className="h-12 w-full" />
+                  <Skeleton className="h-12 w-full" />
+                  <Skeleton className="h-12 w-full" />
+                </div>
               </div>
             ) : tableRows.length > 0 ? (
-              <AuditTable
-                data={tableRows}
-                showPreview={true}
-                auditId={auditResults.runId}
-                totalIssues={totalIssues}
-              />
+              <div className="px-4 lg:px-6">
+                <AuditTable
+                  data={tableRows}
+                  showPreview={true}
+                  auditId={auditResults.runId}
+                  totalIssues={totalIssues}
+                  hideSearch={true}
+                  hideTabs={true}
+                  readOnly={true}
+                  onStatusUpdate={refetch}
+                />
+              </div>
             ) : (
-              <div className="text-center py-12">
-                <p className="text-muted-foreground">No issues found</p>
+              <div className="px-4 lg:px-6">
+                <div className="text-center py-12">
+                  <p className="text-muted-foreground">No issues found</p>
+                </div>
               </div>
             )}
           </div>
-        </section>
+        </div>
       )}
 
       {/* No Issues Success State - shown when audit completes but no issues found */}
-      {!loading && auditResults && auditResults.runId && !issuesLoading && tableRows.length === 0 && (
+      {!loading && auditResults && auditResults.runId && !isLoading && tableRows.length === 0 && (
         <section className="border-t border-border py-24 md:py-32">
           <div className="container mx-auto px-6 max-w-2xl">
             <Card className="border-2 border-green-200 bg-green-50/50">

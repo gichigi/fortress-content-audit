@@ -63,3 +63,4 @@ CREATE INDEX IF NOT EXISTS idx_audit_issues_signature
 CREATE INDEX IF NOT EXISTS idx_audit_issues_url 
   ON public.audit_issues(url);
 
+

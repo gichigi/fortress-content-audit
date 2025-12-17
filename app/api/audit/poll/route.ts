@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { pollAuditStatus, AuditTier } from '@/lib/audit'
 // Removed: issue-signature imports (no longer needed)
 import { incrementAuditUsage, getAuditUsage } from '@/lib/audit-rate-limit'
+import { emailService } from '@/lib/email-service'
 
 function getBearer(req: Request) {
   const a = req.headers.get('authorization') || req.headers.get('Authorization')
@@ -69,10 +70,10 @@ export async function POST(request: Request) {
 
     // Audit completed - update the database record if we have a runId
     if (runId) {
-      // Get audit domain for filtering ignored issues
+      // Get audit domain and email status for filtering ignored issues and sending email
       const { data: auditRun } = await supabaseAdmin
         .from('brand_audit_runs')
-        .select('domain')
+        .select('domain, completion_email_sent')
         .eq('id', runId)
         .eq('user_id', userId)
         .maybeSingle()
@@ -139,6 +140,43 @@ export async function POST(request: Request) {
           } catch (error) {
             console.error('[Poll] Failed to increment audit usage:', error)
             // Don't fail the request - usage tracking is non-critical
+          }
+        }
+
+        // Send completion email if not already sent (only for authenticated users)
+        if (!auditRun?.completion_email_sent && userId) {
+          try {
+            // Get user email and name
+            const { data: userData } = await supabaseAdmin.auth.admin.getUserById(userId)
+            const userEmail = userData?.user?.email
+            const userName = userData?.user?.user_metadata?.full_name || userData?.user?.user_metadata?.name
+
+            if (userEmail) {
+              const emailResult = await emailService.sendAuditCompletionEmail({
+                customerEmail: userEmail,
+                customerName: userName,
+                domain: auditRun.domain || 'your website',
+                totalIssues: filteredIssues.length,
+                pagesScanned: result.pagesScanned || 0,
+                auditId: runId,
+              })
+
+              if (emailResult.success) {
+                // Mark email as sent
+                await supabaseAdmin
+                  .from('brand_audit_runs')
+                  .update({ completion_email_sent: true })
+                  .eq('id', runId)
+                  .eq('user_id', userId)
+                
+                console.log(`[Poll] Sent completion email for audit: ${runId}`)
+              } else {
+                console.error('[Poll] Failed to send completion email:', emailResult.error)
+              }
+            }
+          } catch (error) {
+            console.error('[Poll] Error sending completion email:', error)
+            // Don't fail the request - email is non-critical
           }
         }
       }

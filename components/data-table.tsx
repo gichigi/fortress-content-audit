@@ -423,10 +423,18 @@ export function DataTable({
   data: initialData,
   auditId,
   userPlan,
+  hideSearch = false,
+  hideTabs = false,
+  readOnly = false,
+  onStatusUpdate,
 }: {
   data: AuditTableRow[]
   auditId?: string
   userPlan?: string
+  hideSearch?: boolean
+  hideTabs?: boolean
+  readOnly?: boolean
+  onStatusUpdate?: () => void
 }) {
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({})
   const [columnVisibility, setColumnVisibility] =
@@ -463,6 +471,10 @@ export function DataTable({
 
   // Update issue status handler with optimistic updates
   const handleUpdateStatus = React.useCallback(async (issueId: string, newStatus: IssueStatus) => {
+    if (readOnly) {
+      return // Don't allow updates in read-only mode
+    }
+
     if (!auditId) {
       throw new Error('Audit ID required')
     }
@@ -504,6 +516,11 @@ export function DataTable({
         const error = await response.json().catch(() => ({ error: 'Failed to update status' }))
         throw new Error(error.error || 'Failed to update status')
       }
+
+      // Trigger refetch in parent component
+      if (onStatusUpdate) {
+        onStatusUpdate()
+      }
     } catch (error) {
       // Revert optimistic update on error
       if (previousData) {
@@ -513,7 +530,7 @@ export function DataTable({
       }
       throw error
     }
-  }, [auditId])
+  }, [auditId, readOnly, onStatusUpdate])
 
   // Bulk update issue status handler with optimistic updates
   const handleBulkUpdateStatus = React.useCallback(async (issueIds: string[], newStatus: IssueStatus) => {
@@ -617,10 +634,10 @@ export function DataTable({
     })
   }, [filteredData, globalFilter])
 
-  // Create columns with status handlers
+  // Create columns with status handlers (only if not read-only)
   const columns = React.useMemo(
-    () => createColumns(handleUpdateStatus, userPlan, activeStateTab),
-    [handleUpdateStatus, userPlan, activeStateTab]
+    () => createColumns(readOnly ? undefined : handleUpdateStatus, userPlan, activeStateTab),
+    [handleUpdateStatus, userPlan, activeStateTab, readOnly]
   )
 
   const table = useReactTable({
@@ -761,304 +778,326 @@ export function DataTable({
     table.resetRowSelection()
   }, [table])
 
-  return (
-    <div className="flex w-full flex-col justify-start gap-6">
-      {/* Severity Tabs */}
-      <Tabs
-        value={activeSeverityTab}
-        onValueChange={(value) => {
-          setActiveSeverityTab(value as "all" | "high" | "medium" | "low")
-          // Pagination reset handled in useEffect above
-        }}
-        className="flex w-full flex-col justify-start gap-6"
-      >
-      <div className="flex flex-col gap-4">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-4 flex-1 min-w-0">
-            {/* Search Input */}
-            <div className="relative flex-1 max-w-sm">
-              <SearchIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search issues..."
-                value={globalFilter}
-                onChange={(e) => setGlobalFilter(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <Label htmlFor="severity-selector" className="sr-only">
-              Filter by Severity
-            </Label>
-            <Select 
-          value={activeSeverityTab} 
-          onValueChange={(value) => {
-            setActiveSeverityTab(value as "all" | "high" | "medium" | "low")
-            // Pagination reset handled in useEffect above
-          }}
-        >
-          <SelectTrigger
-            className="@4xl/main:hidden flex w-fit"
-            id="severity-selector"
-          >
-            <SelectValue placeholder="Filter by severity" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            <SelectItem value="high">Critical</SelectItem>
-            <SelectItem value="medium">Medium</SelectItem>
-            <SelectItem value="low">Low</SelectItem>
-          </SelectContent>
-        </Select>
-            {/* Status Filter */}
-            <Select 
-              value={activeStateTab} 
-              onValueChange={(value) => {
-                setActiveStateTab(value as 'all' | 'active' | 'ignored' | 'resolved')
-              }}
-            >
-              <SelectTrigger className="w-auto min-w-[120px]">
-                <SelectValue>
-                  {activeStateTab === 'all' && 'All Issues'}
-                  {activeStateTab === 'active' && 'Active Issues'}
-                  {activeStateTab === 'ignored' && 'Ignored Issues'}
-                  {activeStateTab === 'resolved' && 'Resolved Issues'}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Issues</SelectItem>
-                <SelectItem value="active">Active Issues</SelectItem>
-                <SelectItem value="ignored">Ignored Issues</SelectItem>
-                <SelectItem value="resolved">Resolved Issues</SelectItem>
-              </SelectContent>
-            </Select>
-        <div className="@4xl/main:flex hidden items-center gap-3">
-          <TabsList>
-            <TabsTrigger value="all">All</TabsTrigger>
-            <TabsTrigger value="high">Critical</TabsTrigger>
-            <TabsTrigger value="medium">Medium</TabsTrigger>
-            <TabsTrigger value="low">Low</TabsTrigger>
-          </TabsList>
-          {/* Bulk action buttons - appear when items are selected */}
-          {selectedRowIds.length > 0 && (
-            <div className="flex items-center gap-2 animate-in fade-in-0 slide-in-from-right-2 duration-200">
-              {canRestore && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleBulkRestore}
-                  disabled={isBulkProcessing}
-                  className="h-9 text-xs"
-                >
-                  <RotateCcwIcon className="mr-1.5 h-3.5 w-3.5" />
-                  Restore
-                </Button>
-              )}
-              {canIgnoreOrResolve && (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleBulkIgnore}
-                    disabled={isBulkProcessing}
-                    className="h-9 text-xs"
-                  >
-                    <XIcon className="mr-1.5 h-3.5 w-3.5" />
-                    Ignore
-                  </Button>
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={handleBulkResolve}
-                    disabled={isBulkProcessing}
-                    className="h-9 text-xs"
-                  >
-                    {isBulkProcessing ? (
-                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <CheckCircle2Icon className="mr-1.5 h-3.5 w-3.5" />
-                    )}
-                    Mark Resolved
-                  </Button>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-        </div>
-        </div>
-      </div>
-      <TabsContent
-        value={activeSeverityTab}
-        className="relative flex flex-col gap-4"
-      >
-        {isFiltering ? (
-          <Card className="border border-border">
-            <CardContent className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              <span className="ml-2 text-sm text-muted-foreground">Filtering...</span>
-            </CardContent>
-          </Card>
-        ) : (
+  // Render table content (reusable for both tabs and non-tabs mode)
+  const tableContent = (
+    <>
+      {isFiltering ? (
+        <Card className="border border-border">
+          <CardContent className="flex items-center justify-center py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <span className="ml-2 text-sm text-muted-foreground">Filtering...</span>
+          </CardContent>
+        </Card>
+      ) : (
         <Card className="border border-border">
           <CardContent className="p-0">
             <div className="overflow-hidden">
               <Table>
-            <TableHeader className="sticky top-0 z-10 bg-muted">
-              {table.getHeaderGroups().map((headerGroup) => (
-                <TableRow key={headerGroup.id}>
-                  {headerGroup.headers.map((header) => {
-                    // Mobile-friendly headers: abbreviate long labels
-                    const headerId = header.id || ''
-                    const mobileHeader = headerId === 'locations' ? 'Pages' : 
-                                        headerId === 'severity' ? 'Sev.' :
-                                        headerId
-                    return (
-                      <TableHead key={header.id} colSpan={header.colSpan}>
-                        {header.isPlaceholder ? null : (
-                          <>
-                            <span className="hidden md:inline">
-                              {flexRender(
-                                header.column.columnDef.header,
-                                header.getContext()
-                              )}
-                            </span>
-                            {mobileHeader && (
-                              <span className="md:hidden text-xs">
-                                {mobileHeader}
-                              </span>
+                <TableHeader className="sticky top-0 z-10 bg-muted">
+                  {table.getHeaderGroups().map((headerGroup) => (
+                    <TableRow key={headerGroup.id}>
+                      {headerGroup.headers.map((header) => {
+                        // Mobile-friendly headers: abbreviate long labels
+                        const headerId = header.id || ''
+                        const mobileHeader = headerId === 'locations' ? 'Pages' : 
+                                            headerId === 'severity' ? 'Sev.' :
+                                            headerId
+                        return (
+                          <TableHead key={header.id} colSpan={header.colSpan}>
+                            {header.isPlaceholder ? null : (
+                              <>
+                                <span className="hidden md:inline">
+                                  {flexRender(
+                                    header.column.columnDef.header,
+                                    header.getContext()
+                                  )}
+                                </span>
+                                {mobileHeader && (
+                                  <span className="md:hidden text-xs">
+                                    {mobileHeader}
+                                  </span>
+                                )}
+                              </>
                             )}
-                          </>
-                        )}
-                      </TableHead>
-                    )
-                  })}
-                </TableRow>
-              ))}
-            </TableHeader>
-            <TableBody>
-              {table.getRowModel().rows?.length ? (
-                table.getRowModel().rows.map((row) => (
-                  <ExpandableRow key={row.id} row={row} />
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell
-                    colSpan={columns.length}
-                    className="h-32 text-center py-8"
-                  >
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <CheckCircle2Icon className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
-                      <p className="text-sm font-medium text-foreground">
-                        {activeStateTab !== 'all' && activeStateTab !== 'active'
-                          ? `No ${activeStateTab} issues found`
-                          : activeSeverityTab === "all" 
-                            ? "No issues found. Great job! ✅"
-                            : `No ${activeSeverityTab} severity issues found. Great job! ✅`
-                        }
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {activeStateTab !== 'all' && activeStateTab !== 'active'
-                          ? `Switch to a different tab to see issues.`
-                          : `Your content audit found no issues${activeSeverityTab !== "all" && ` with ${activeSeverityTab} severity`}.`
-                        }
-                      </p>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+                          </TableHead>
+                        )
+                      })}
+                    </TableRow>
+                  ))}
+                </TableHeader>
+                <TableBody>
+                  {table.getRowModel().rows?.length ? (
+                    table.getRowModel().rows.map((row) => (
+                      <ExpandableRow key={row.id} row={row} />
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell
+                        colSpan={columns.length}
+                        className="h-32 text-center py-8"
+                      >
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <CheckCircle2Icon className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
+                          <p className="text-sm font-medium text-foreground">
+                            {hideTabs ? "No issues found. Great job! ✅" :
+                             activeStateTab !== 'all' && activeStateTab !== 'active'
+                              ? `No ${activeStateTab} issues found`
+                              : activeSeverityTab === "all" 
+                                ? "No issues found. Great job! ✅"
+                                : `No ${activeSeverityTab} severity issues found. Great job! ✅`
+                            }
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {hideTabs ? "Your content audit found no issues." :
+                             activeStateTab !== 'all' && activeStateTab !== 'active'
+                              ? `Switch to a different tab to see issues.`
+                              : `Your content audit found no issues${activeSeverityTab !== "all" && ` with ${activeSeverityTab} severity`}.`
+                            }
+                          </p>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
             </div>
           </CardContent>
         </Card>
-        )}
-        <div className="flex items-center justify-between">
-          <div className="hidden flex-1 text-sm text-muted-foreground lg:flex">
-            {table.getFilteredSelectedRowModel().rows.length > 0 ? (
-              <>
-                {table.getFilteredSelectedRowModel().rows.length} of{" "}
-                {table.getFilteredRowModel().rows.length} row(s) selected.
-              </>
-            ) : (
-              <>
-                Showing {table.getFilteredRowModel().rows.length} of {data.length} issue{table.getFilteredRowModel().rows.length !== 1 ? "s" : ""}
-                {activeSeverityTab !== "all" && ` (filtered by ${activeSeverityTab} severity)`}
-              </>
-            )}
+      )}
+      <div className="flex items-center justify-between">
+        <div className="hidden flex-1 text-sm text-muted-foreground lg:flex">
+          {table.getFilteredSelectedRowModel().rows.length > 0 ? (
+            <>
+              {table.getFilteredSelectedRowModel().rows.length} of{" "}
+              {table.getFilteredRowModel().rows.length} row(s) selected.
+            </>
+          ) : (
+            <>
+              Showing {table.getFilteredRowModel().rows.length} of {data.length} issue{table.getFilteredRowModel().rows.length !== 1 ? "s" : ""}
+              {!hideTabs && activeSeverityTab !== "all" && ` (filtered by ${activeSeverityTab} severity)`}
+            </>
+          )}
+        </div>
+        <div className="flex w-full items-center gap-8 lg:w-fit">
+          <div className="hidden items-center gap-2 lg:flex">
+            <Label htmlFor="rows-per-page" className="text-sm font-medium">
+              Rows per page
+            </Label>
+            <Select
+              value={`${table.getState().pagination.pageSize}`}
+              onValueChange={(value) => {
+                table.setPageSize(Number(value))
+              }}
+            >
+              <SelectTrigger className="w-20" id="rows-per-page">
+                <SelectValue
+                  placeholder={table.getState().pagination.pageSize}
+                />
+              </SelectTrigger>
+              <SelectContent side="top">
+                {[10, 20, 30, 40, 50].map((pageSize) => (
+                  <SelectItem key={pageSize} value={`${pageSize}`}>
+                    {pageSize}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-          <div className="flex w-full items-center gap-8 lg:w-fit">
-            <div className="hidden items-center gap-2 lg:flex">
-              <Label htmlFor="rows-per-page" className="text-sm font-medium">
-                Rows per page
-              </Label>
-              <Select
-                value={`${table.getState().pagination.pageSize}`}
-                onValueChange={(value) => {
-                  table.setPageSize(Number(value))
-                }}
-              >
-                <SelectTrigger className="w-20" id="rows-per-page">
-                  <SelectValue
-                    placeholder={table.getState().pagination.pageSize}
-                  />
-                </SelectTrigger>
-                <SelectContent side="top">
-                  {[10, 20, 30, 40, 50].map((pageSize) => (
-                    <SelectItem key={pageSize} value={`${pageSize}`}>
-                      {pageSize}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex w-fit items-center justify-center text-sm font-medium">
-              Page {table.getState().pagination.pageIndex + 1} of{" "}
-              {table.getPageCount()}
-            </div>
-            <div className="ml-auto flex items-center gap-2 lg:ml-0">
-              <Button
-                variant="outline"
-                className="hidden h-8 w-8 p-0 lg:flex"
-                onClick={() => table.setPageIndex(0)}
-                disabled={!table.getCanPreviousPage()}
-              >
-                <span className="sr-only">Go to first page</span>
-                <ChevronsLeftIcon />
-              </Button>
-              <Button
-                variant="outline"
-                className="size-8"
-                size="icon"
-                onClick={() => table.previousPage()}
-                disabled={!table.getCanPreviousPage()}
-              >
-                <span className="sr-only">Go to previous page</span>
-                <ChevronLeftIcon />
-              </Button>
-              <Button
-                variant="outline"
-                className="size-8"
-                size="icon"
-                onClick={() => table.nextPage()}
-                disabled={!table.getCanNextPage()}
-              >
-                <span className="sr-only">Go to next page</span>
-                <ChevronRightIcon />
-              </Button>
-              <Button
-                variant="outline"
-                className="hidden size-8 lg:flex"
-                size="icon"
-                onClick={() => table.setPageIndex(table.getPageCount() - 1)}
-                disabled={!table.getCanNextPage()}
-              >
-                <span className="sr-only">Go to last page</span>
-                <ChevronsRightIcon />
-              </Button>
-            </div>
+          <div className="flex w-fit items-center justify-center text-sm font-medium">
+            Page {table.getState().pagination.pageIndex + 1} of{" "}
+            {table.getPageCount()}
+          </div>
+          <div className="ml-auto flex items-center gap-2 lg:ml-0">
+            <Button
+              variant="outline"
+              className="hidden h-8 w-8 p-0 lg:flex"
+              onClick={() => table.setPageIndex(0)}
+              disabled={!table.getCanPreviousPage()}
+            >
+              <span className="sr-only">Go to first page</span>
+              <ChevronsLeftIcon />
+            </Button>
+            <Button
+              variant="outline"
+              className="size-8"
+              size="icon"
+              onClick={() => table.previousPage()}
+              disabled={!table.getCanPreviousPage()}
+            >
+              <span className="sr-only">Go to previous page</span>
+              <ChevronLeftIcon />
+            </Button>
+            <Button
+              variant="outline"
+              className="size-8"
+              size="icon"
+              onClick={() => table.nextPage()}
+              disabled={!table.getCanNextPage()}
+            >
+              <span className="sr-only">Go to next page</span>
+              <ChevronRightIcon />
+            </Button>
+            <Button
+              variant="outline"
+              className="hidden size-8 lg:flex"
+              size="icon"
+              onClick={() => table.setPageIndex(table.getPageCount() - 1)}
+              disabled={!table.getCanNextPage()}
+            >
+              <span className="sr-only">Go to last page</span>
+              <ChevronsRightIcon />
+            </Button>
           </div>
         </div>
-      </TabsContent>
-      </Tabs>
+      </div>
+    </>
+  )
+
+  return (
+    <div className="flex w-full flex-col justify-start gap-6">
+      {hideTabs ? (
+        // Simple table without tabs
+        tableContent
+      ) : (
+        // Full table with tabs
+        <Tabs
+          value={activeSeverityTab}
+          onValueChange={(value) => {
+            setActiveSeverityTab(value as "all" | "high" | "medium" | "low")
+            // Pagination reset handled in useEffect above
+          }}
+          className="flex w-full flex-col justify-start gap-6"
+        >
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-4 flex-1 min-w-0">
+            {/* Search Input */}
+            {!hideSearch && (
+              <div className="relative flex-1 max-w-sm">
+                <SearchIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search issues..."
+                  value={globalFilter}
+                  onChange={(e) => setGlobalFilter(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+            )}
+            {!hideTabs && (
+              <>
+                <Label htmlFor="severity-selector" className="sr-only">
+                  Filter by Severity
+                </Label>
+                <Select 
+                  value={activeSeverityTab} 
+                  onValueChange={(value) => {
+                    setActiveSeverityTab(value as "all" | "high" | "medium" | "low")
+                    // Pagination reset handled in useEffect above
+                  }}
+                >
+                  <SelectTrigger
+                    className="@4xl/main:hidden flex w-fit"
+                    id="severity-selector"
+                  >
+                    <SelectValue placeholder="Filter by severity" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="high">Critical</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="low">Low</SelectItem>
+                  </SelectContent>
+                </Select>
+                {/* Status Filter */}
+                <Select 
+                  value={activeStateTab} 
+                  onValueChange={(value) => {
+                    setActiveStateTab(value as 'all' | 'active' | 'ignored' | 'resolved')
+                  }}
+                >
+                  <SelectTrigger className="w-auto min-w-[120px]">
+                    <SelectValue>
+                      {activeStateTab === 'all' && 'All Issues'}
+                      {activeStateTab === 'active' && 'Active Issues'}
+                      {activeStateTab === 'ignored' && 'Ignored Issues'}
+                      {activeStateTab === 'resolved' && 'Resolved Issues'}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Issues</SelectItem>
+                    <SelectItem value="active">Active Issues</SelectItem>
+                    <SelectItem value="ignored">Ignored Issues</SelectItem>
+                    <SelectItem value="resolved">Resolved Issues</SelectItem>
+                  </SelectContent>
+                </Select>
+              </>
+            )}
+        {!hideTabs && (
+          <div className="@4xl/main:flex hidden items-center gap-3">
+            <TabsList>
+              <TabsTrigger value="all">All</TabsTrigger>
+              <TabsTrigger value="high">Critical</TabsTrigger>
+              <TabsTrigger value="medium">Medium</TabsTrigger>
+              <TabsTrigger value="low">Low</TabsTrigger>
+            </TabsList>
+            {/* Bulk action buttons - appear when items are selected */}
+            {!readOnly && selectedRowIds.length > 0 && (
+              <div className="flex items-center gap-2 animate-in fade-in-0 slide-in-from-right-2 duration-200">
+                {canRestore && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleBulkRestore}
+                    disabled={isBulkProcessing}
+                    className="h-9 text-xs"
+                  >
+                    <RotateCcwIcon className="mr-1.5 h-3.5 w-3.5" />
+                    Restore
+                  </Button>
+                )}
+                {canIgnoreOrResolve && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleBulkIgnore}
+                      disabled={isBulkProcessing}
+                      className="h-9 text-xs"
+                    >
+                      <XIcon className="mr-1.5 h-3.5 w-3.5" />
+                      Ignore
+                    </Button>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={handleBulkResolve}
+                      disabled={isBulkProcessing}
+                      className="h-9 text-xs"
+                    >
+                      {isBulkProcessing ? (
+                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <CheckCircle2Icon className="mr-1.5 h-3.5 w-3.5" />
+                      )}
+                      Mark Resolved
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        </div>
+        </div>
+      </div>
+          <TabsContent
+            value={activeSeverityTab}
+            className="relative flex flex-col gap-4"
+          >
+            {tableContent}
+          </TabsContent>
+        </Tabs>
+      )}
     </div>
   )
 }

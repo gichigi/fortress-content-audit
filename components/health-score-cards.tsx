@@ -98,10 +98,10 @@ export function HealthScoreCards({ currentScore, previousScore, loading }: Healt
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1 text-sm">
           <div className="line-clamp-1 flex gap-2 font-medium">
-            Issues found across all audits
+            Active issues in current audit
           </div>
           <div className="text-muted-foreground">
-            Excludes ignored issues
+            Excludes ignored and resolved issues
           </div>
         </CardFooter>
       </Card>

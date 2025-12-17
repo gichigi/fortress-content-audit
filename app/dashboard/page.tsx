@@ -1,7 +1,7 @@
 // fortress v1
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase-browser"
@@ -16,6 +16,7 @@ import { HealthScoreChart } from "@/components/health-score-chart"
 import { HealthScoreCards } from "@/components/health-score-cards"
 import { AuditTable } from "@/components/audit-table"
 import { useAuditIssues } from "@/hooks/use-audit-issues"
+import { useHealthScoreMetrics } from "@/hooks/use-health-score-metrics"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -57,10 +58,73 @@ export default function DashboardPage() {
   
   // Use shared hook to fetch issues from database
   const mostRecentAudit = audits.length > 0 ? audits[0] : null
-  const { tableRows, loading: tableRowsLoading, totalIssues: tableTotalIssues } = useAuditIssues(
+  const { tableRows, loading: tableRowsLoading, totalIssues: tableTotalIssues, refetch } = useAuditIssues(
     mostRecentAudit?.id || null,
     authToken
   )
+
+  // Calculate metrics using shared hook
+  const metrics = useHealthScoreMetrics(tableRows)
+
+  // Merge chart data with current table metrics
+  const chartDataWithCurrent = useMemo(() => {
+    if (!healthScoreData?.data) {
+      // If no historical data, just show current score
+      if (mostRecentAudit?.created_at && metrics.score !== undefined) {
+        const auditDate = new Date(mostRecentAudit.created_at).toISOString().split('T')[0]
+        return [{
+          date: auditDate,
+          score: metrics.score,
+          metrics: {
+            totalActive: metrics.totalActive,
+            totalCritical: metrics.totalCritical,
+            criticalPages: metrics.criticalPages,
+            pagesWithIssues: metrics.pagesWithIssues,
+          }
+        }]
+      }
+      return []
+    }
+
+    const historicalData = [...healthScoreData.data]
+    
+    // Add or update current score from table data
+    if (mostRecentAudit?.created_at && metrics.score !== undefined) {
+      const auditDate = new Date(mostRecentAudit.created_at).toISOString().split('T')[0]
+      
+      // Check if we already have data for this date
+      const existingIndex = historicalData.findIndex(item => item.date === auditDate)
+      
+      if (existingIndex >= 0) {
+        // Update existing entry with current table metrics
+        historicalData[existingIndex] = {
+          date: auditDate,
+          score: metrics.score,
+          metrics: {
+            totalActive: metrics.totalActive,
+            totalCritical: metrics.totalCritical,
+            criticalPages: metrics.criticalPages,
+            pagesWithIssues: metrics.pagesWithIssues,
+          }
+        }
+      } else {
+        // Add new entry for current audit
+        historicalData.push({
+          date: auditDate,
+          score: metrics.score,
+          metrics: {
+            totalActive: metrics.totalActive,
+            totalCritical: metrics.totalCritical,
+            criticalPages: metrics.criticalPages,
+            pagesWithIssues: metrics.pagesWithIssues,
+          }
+        })
+      }
+    }
+    
+    // Sort by date
+    return historicalData.sort((a, b) => a.date.localeCompare(b.date))
+  }, [healthScoreData?.data, mostRecentAudit?.created_at, metrics])
 
   useEffect(() => {
     checkAuthAndLoad()
@@ -545,17 +609,25 @@ export default function DashboardPage() {
 
                 {/* Health Score Section - Available to all authenticated users */}
                 <HealthScoreCards
-                  currentScore={healthScoreData?.currentScore}
+                  currentScore={metrics.score !== undefined ? {
+                    score: metrics.score,
+                    metrics: {
+                      totalActive: metrics.totalActive,
+                      totalCritical: metrics.totalCritical,
+                      pagesWithIssues: metrics.pagesWithIssues,
+                      criticalPages: metrics.criticalPages,
+                    }
+                  } : healthScoreData?.currentScore}
                   previousScore={previousScore}
-                  loading={healthScoreLoading}
+                  loading={tableRowsLoading || healthScoreLoading}
                 />
 
-                {/* Health Score Chart - Always render if healthScoreData exists */}
-                {healthScoreData && (
+                {/* Health Score Chart - Show if we have data (historical or current) */}
+                {(chartDataWithCurrent.length > 0 || healthScoreData) && (
                   <div className="px-4 lg:px-6">
                     <HealthScoreChart 
-                      data={healthScoreData.data || []} 
-                      domain={healthScoreData.domain}
+                      data={chartDataWithCurrent.length > 0 ? chartDataWithCurrent : (healthScoreData?.data || [])} 
+                      domain={healthScoreData?.domain || selectedDomain || undefined}
                     />
                   </div>
                 )}
@@ -584,6 +656,7 @@ export default function DashboardPage() {
                       data={tableRows}
                       auditId={mostRecentAudit?.id}
                       totalIssues={tableTotalIssues}
+                      onStatusUpdate={refetch}
                     />
                   </div>
                 )}

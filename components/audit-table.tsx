@@ -15,6 +15,10 @@ interface AuditTableProps {
   showPreview?: boolean // If true, show first 3-5 rows with fade-out
   auditId?: string // For linking to full view
   totalIssues?: number // Total issues count (for preview text)
+  hideSearch?: boolean
+  hideTabs?: boolean
+  readOnly?: boolean
+  onStatusUpdate?: () => void
 }
 
 export function AuditTable({
@@ -22,6 +26,10 @@ export function AuditTable({
   showPreview = false,
   auditId,
   totalIssues,
+  hideSearch = false,
+  hideTabs = false,
+  readOnly = false,
+  onStatusUpdate,
 }: AuditTableProps) {
   const router = useRouter()
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -71,6 +79,10 @@ export function AuditTable({
         data={previewRows} 
         auditId={auditId}
         userPlan={userPlan}
+        hideSearch={hideSearch}
+        hideTabs={hideTabs}
+        readOnly={readOnly}
+        onStatusUpdate={onStatusUpdate}
       />
       {showPreview && remainingCount > 0 && (
         <div className="relative -mt-24 h-24 bg-gradient-to-t from-background via-background to-transparent pointer-events-none" />
@@ -78,7 +90,7 @@ export function AuditTable({
       {showPreview && remainingCount > 0 && (
         <div className="flex justify-center pt-8 pb-4">
           <Button variant="outline" onClick={handleViewAll} disabled={checking}>
-            View all {totalIssues || data.length} issues
+            View all {totalIssues ?? data.length} issue{(totalIssues ?? data.length) !== 1 ? 's' : ''}
             <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
         </div>

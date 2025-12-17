@@ -91,14 +91,6 @@ export default function UpdatePasswordPage() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="border-b border-border">
-        <nav className="container mx-auto px-6 py-6">
-          <Link href="/" className="text-2xl font-serif font-semibold tracking-tight">
-            Fortress
-          </Link>
-        </nav>
-      </header>
-      
       <main className="flex-1 flex items-center justify-center px-6 py-16">
         <div className="w-full max-w-sm">
           <div className="mb-8 text-center">
@@ -196,4 +188,5 @@ export default function UpdatePasswordPage() {
     </div>
   )
 }
+
 

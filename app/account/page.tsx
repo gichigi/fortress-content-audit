@@ -19,7 +19,6 @@ import {
 } from "@/components/ui/dialog"
 import { ArrowLeft, Loader2, CreditCard, Trash2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import Header from "@/components/Header"
 import { PLAN_NAMES } from "@/lib/plans"
 
 export default function AccountPage() {
@@ -237,7 +236,6 @@ export default function AccountPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
-        <Header />
         <div className="container mx-auto px-6 py-16 max-w-4xl">
           <div className="flex items-center justify-center py-24">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -249,7 +247,6 @@ export default function AccountPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header />
       <main className="container mx-auto px-6 py-16 max-w-4xl">
         <div className="mb-12">
           <Link href="/dashboard" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6">

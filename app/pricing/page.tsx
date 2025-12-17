@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Check } from "lucide-react"
-import Header from "@/components/Header"
 import { PLAN_NAMES, PLAN_PRICES, PLAN_FEATURES } from "@/lib/plans"
 import { Loader2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
@@ -77,7 +76,6 @@ export default function PricingPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
-        <Header />
         <div className="container mx-auto px-6 py-16 max-w-4xl">
           <div className="flex items-center justify-center py-24">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -89,7 +87,6 @@ export default function PricingPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header />
       <main className="container mx-auto px-6 py-16 max-w-6xl">
         <div className="mb-16 text-center">
           <h1 className="font-serif text-5xl md:text-6xl font-light tracking-tight mb-4">

@@ -376,15 +376,6 @@ function SignUpForm() {
 export default function SignUpPage() {
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Header */}
-      <header className="border-b border-border">
-        <nav className="container mx-auto px-6 py-6 flex items-center justify-between">
-          <Link href="/" className="text-2xl font-serif font-semibold tracking-tight">
-            Fortress
-          </Link>
-        </nav>
-      </header>
-
       {/* Main content */}
       <main className="flex-1 flex items-center justify-center px-6 py-16">
         <div className="w-full max-w-sm">

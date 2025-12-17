@@ -1,5 +1,5 @@
 // Shared hook for fetching audit issues from database
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { transformIssuesToTableRows } from '@/lib/audit-table-adapter'
 import { AuditTableRow } from '@/lib/audit-table-adapter'
 
@@ -8,6 +8,7 @@ interface UseAuditIssuesResult {
   loading: boolean
   error: Error | null
   totalIssues: number
+  refetch: () => Promise<void>
 }
 
 export function useAuditIssues(auditId: string | null, token: string | null): UseAuditIssuesResult {
@@ -16,60 +17,61 @@ export function useAuditIssues(auditId: string | null, token: string | null): Us
   const [error, setError] = useState<Error | null>(null)
   const [totalIssues, setTotalIssues] = useState(0)
 
-  useEffect(() => {
+  const fetchIssues = useCallback(async () => {
     if (!auditId || !token) {
       setTableRows([])
       setTotalIssues(0)
       return
     }
 
-    const fetchIssues = async () => {
-      setLoading(true)
-      setError(null)
+    setLoading(true)
+    setError(null)
+    
+    try {
+      const baseUrl = typeof window !== 'undefined' 
+        ? window.location.origin 
+        : process.env.NEXT_PUBLIC_APP_URL || ''
       
-      try {
-        const baseUrl = typeof window !== 'undefined' 
-          ? window.location.origin 
-          : process.env.NEXT_PUBLIC_APP_URL || ''
-        
-        const response = await fetch(`${baseUrl}/api/audit/${auditId}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        })
-        
-        if (!response.ok) {
-          throw new Error('Failed to fetch audit')
+      const response = await fetch(`${baseUrl}/api/audit/${auditId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
         }
-        
-        const data = await response.json()
-        
-        // Always use issues from database (single source of truth)
-        if (data.issues && data.issues.length > 0) {
-          const rows = transformIssuesToTableRows(data.issues)
-          // Deduplicate by ID just in case
-          const uniqueRows = rows.filter((row, idx, self) => 
-            idx === self.findIndex(r => r.id === row.id)
-          )
-          setTableRows(uniqueRows)
-          setTotalIssues(data.totalIssues || uniqueRows.length)
-        } else {
-          setTableRows([])
-          setTotalIssues(0)
-        }
-      } catch (err) {
-        console.error("Error loading audit issues:", err)
-        setError(err instanceof Error ? err : new Error('Failed to load issues'))
+      })
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch audit')
+      }
+      
+      const data = await response.json()
+      
+      // Always use issues from database (single source of truth)
+      if (data.issues && data.issues.length > 0) {
+        const rows = transformIssuesToTableRows(data.issues)
+        // Deduplicate by ID just in case
+        const uniqueRows = rows.filter((row, idx, self) => 
+          idx === self.findIndex(r => r.id === row.id)
+        )
+        setTableRows(uniqueRows)
+        setTotalIssues(data.totalIssues || uniqueRows.length)
+      } else {
         setTableRows([])
         setTotalIssues(0)
-      } finally {
-        setLoading(false)
       }
+    } catch (err) {
+      console.error("Error loading audit issues:", err)
+      setError(err instanceof Error ? err : new Error('Failed to load issues'))
+      setTableRows([])
+      setTotalIssues(0)
+    } finally {
+      setLoading(false)
     }
-
-    fetchIssues()
   }, [auditId, token])
 
-  return { tableRows, loading, error, totalIssues }
+  useEffect(() => {
+    fetchIssues()
+  }, [fetchIssues])
+
+  return { tableRows, loading, error, totalIssues, refetch: fetchIssues }
 }
+
 

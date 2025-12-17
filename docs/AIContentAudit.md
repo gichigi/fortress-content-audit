@@ -393,23 +393,23 @@ Benefits:
 
 **Phase 1: Dashboard UI Fix & Verification (Priority 1)**
 - ✅ Fix sidebar overlapping content (layout structure) - Fixed cookie name mismatch (`sidebar:state` → `sidebar_state`), converted layout to server component, fixed sidebar width CSS variable
-- ⚠️ Fix health score cards not rendering/loading
-- ⚠️ Fix health score chart not displaying
-- ⚠️ Verify dashboard matches shadcn example structure
-- ⚠️ Test with hardcoded mock data first (before DB connection)
+- ✅ Fix health score cards not rendering/loading
+- ✅ Fix health score chart not displaying
+- ✅ Verify dashboard matches shadcn example structure
+- ✅ Test with hardcoded mock data first (before DB connection)
 
 **Phase 2: Database Domain Normalization Fix (Priority 2)**
-- ⚠️ **CRITICAL:** Fix domain format mismatch (stored as `https://apple.com`, API queries `apple.com`)
-- ⚠️ Update all existing audit domains to normalized format (remove protocol)
-- ⚠️ Verify health score API can fetch data after normalization
-- ⚠️ Test domain normalization in audit creation (ensure new audits use normalized format)
+- ✅ **CRITICAL:** Fix domain format mismatch (stored as `https://apple.com`, API queries `apple.com`)
+- ✅ Update all existing audit domains to normalized format (remove protocol)
+- ✅ Verify health score API can fetch data after normalization
+- ✅ Test domain normalization in audit creation (ensure new audits use normalized format)
 
 **Phase 3: Mock Data Pipeline Testing (Priority 3)**
-- ⚠️ Test homepage flow with mock audit results (results display, session token storage)
-- ⚠️ Test dashboard audit list display with mock audits (verify 35+ audits visible)
-- ⚠️ Test health score cards display with mock data (4 cards: Current Score, Trend, Active Issues, Critical Issues)
-- ⚠️ Test health score line chart rendering with 30 days of mock time-series data
-- ⚠️ Test issues table displays most recent audit's 10 issue types
+- ✅ Test homepage flow with mock audit results (results display, session token storage)
+- ✅ Test dashboard audit list display with mock audits (verify 35+ audits visible)
+- ✅ Test health score cards display with mock data (4 cards: Current Score, Trend, Active Issues, Critical Issues)
+- ✅ Test health score line chart rendering with 1+ days of mock time-series data
+- ⚠️ Test issues table displays most recent audit's issue types
 - ⚠️ Test export UI (dropdown menu, loading states, error handling)
 - ⚠️ Test export formats with mock data (PDF formatting, JSON schema, Markdown structure)
 - ⚠️ Test export gating (free users see upgrade prompt, paid users can export)
