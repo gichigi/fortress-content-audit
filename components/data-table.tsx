@@ -5,6 +5,7 @@ import {
   ColumnDef,
   ColumnFiltersState,
   Row,
+  RowSelectionState,
   SortingState,
   VisibilityState,
   flexRender,
@@ -25,18 +26,19 @@ import {
   ChevronsLeftIcon,
   ChevronsRightIcon,
   ChevronsUpDownIcon,
-  ColumnsIcon,
   EyeIcon,
   Loader2,
   MoreVerticalIcon,
   SearchIcon,
   XIcon,
+  RotateCcwIcon,
 } from "lucide-react"
 import { toast } from "sonner"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Collapsible,
@@ -91,7 +93,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { RotateCcwIcon } from "lucide-react"
 
 // Create columns factory function to accept state update handlers
 function createColumns(
@@ -340,7 +341,7 @@ function IssueActionsDropdown({
   )
 }
 
-// Expandable row component for showing locations and details
+// Expandable row component for showing pages and details
 function ExpandableRow({ row }: { row: Row<AuditTableRow> }) {
   const [isOpen, setIsOpen] = React.useState(false)
   const locationCount = row.original.locations?.length || 0
@@ -377,7 +378,7 @@ function ExpandableRow({ row }: { row: Row<AuditTableRow> }) {
         role={isMultiLocation ? "button" : undefined}
       >
         {row.getVisibleCells().map((cell) => {
-          // In the Issue/Title column, show chevron for multi-location issues
+          // In the Issue/Title column, show chevron for multi-page issues
           if (cell.column.id === 'title' && isMultiLocation) {
             return (
               <TableCell key={cell.id}>
@@ -391,7 +392,7 @@ function ExpandableRow({ row }: { row: Row<AuditTableRow> }) {
           return <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
         })}
       </TableRow>
-      {/* Only multi-location issues expand to show locations list */}
+      {/* Only multi-page issues expand to show pages list */}
       {isOpen && isMultiLocation && (
         <TableRow>
           <TableCell colSpan={row.getVisibleCells().length} className="bg-muted/30 pl-8">
@@ -427,7 +428,7 @@ export function DataTable({
   auditId?: string
   userPlan?: string
 }) {
-  const [rowSelection, setRowSelection] = React.useState({})
+  const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({})
   const [columnVisibility, setColumnVisibility] =
     React.useState<VisibilityState>({})
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
@@ -446,8 +447,9 @@ export function DataTable({
     pageSize: 10,
   })
   const [activeSeverityTab, setActiveSeverityTab] = React.useState<"all" | "high" | "medium" | "low">("all")
-  const [activeStateTab, setActiveStateTab] = React.useState<'all' | 'active' | 'ignored' | 'resolved'>('all')
+  const [activeStateTab, setActiveStateTab] = React.useState<'all' | 'active' | 'ignored' | 'resolved'>('active')
   const [isFiltering, setIsFiltering] = React.useState(false)
+  const [isBulkProcessing, setIsBulkProcessing] = React.useState(false)
   const [globalFilter, setGlobalFilter] = React.useState("")
   const [data, setData] = React.useState(initialData)
   // Store initial data in ref to avoid dependency issues
@@ -513,6 +515,63 @@ export function DataTable({
     }
   }, [auditId])
 
+  // Bulk update issue status handler with optimistic updates
+  const handleBulkUpdateStatus = React.useCallback(async (issueIds: string[], newStatus: IssueStatus) => {
+    if (!auditId) {
+      throw new Error('Audit ID required')
+    }
+
+    const supabase = createClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.access_token) {
+      throw new Error('Not authenticated')
+    }
+
+    // Store previous state for potential revert
+    let previousData: AuditTableRow[] | null = null
+
+    // Optimistic update
+    setData(prevData => {
+      previousData = prevData
+      return prevData.map(item => 
+        issueIds.includes(item.id) ? { ...item, status: newStatus } : item
+      )
+    })
+
+    try {
+      const response = await fetch(`/api/audit/${auditId}/issues/bulk`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ issueIds, status: newStatus }),
+      })
+
+      if (!response.ok) {
+        // Revert optimistic update on error
+        if (previousData) {
+          setData(previousData)
+        } else {
+          setData(initialDataRef.current)
+        }
+        const error = await response.json().catch(() => ({ error: 'Failed to update status' }))
+        throw new Error(error.error || 'Failed to update status')
+      }
+
+      const result = await response.json()
+      return result
+    } catch (error) {
+      // Revert optimistic update on error
+      if (previousData) {
+        setData(previousData)
+      } else {
+        setData(initialDataRef.current)
+      }
+      throw error
+    }
+  }, [auditId])
+
   // Filter data by status first, then by severity
   const filteredByState = React.useMemo(() => {
     if (activeStateTab === 'all') {
@@ -548,7 +607,7 @@ export function DataTable({
       const matchesImpact = row.impact?.toLowerCase().includes(searchLower) || false
       const matchesFix = row.fix?.toLowerCase().includes(searchLower) || false
       
-      // Search locations array
+      // Search pages array
       const matchesLocations = row.locations?.some(loc => 
         loc.url.toLowerCase().includes(searchLower) ||
         loc.snippet.toLowerCase().includes(searchLower)
@@ -614,66 +673,96 @@ export function DataTable({
     return counts
   }, [data])
 
+  // Get selected row IDs from rowSelection state
+  const selectedRowIds = React.useMemo(() => {
+    return Object.keys(rowSelection).filter(key => rowSelection[key] === true)
+  }, [rowSelection])
+
+  // Get selected rows with their data to check statuses
+  const selectedRows = React.useMemo(() => {
+    return table.getFilteredSelectedRowModel().rows.map(row => row.original)
+  }, [table, rowSelection])
+
+  // Check if selected issues can be restored (ignored or resolved)
+  const canRestore = React.useMemo(() => {
+    return selectedRows.some(row => row.status === 'ignored' || row.status === 'resolved')
+  }, [selectedRows])
+
+  // Check if selected issues can be ignored/resolved (active)
+  const canIgnoreOrResolve = React.useMemo(() => {
+    return selectedRows.some(row => (row.status || 'active') === 'active')
+  }, [selectedRows])
+
+  // Bulk action handlers - only apply to relevant issues
+  const handleBulkResolve = React.useCallback(async () => {
+    // Only resolve active issues
+    const activeIssueIds = selectedRows
+      .filter(row => (row.status || 'active') === 'active')
+      .map(row => row.id)
+    
+    if (activeIssueIds.length === 0) return
+    
+    setIsBulkProcessing(true)
+    try {
+      await handleBulkUpdateStatus(activeIssueIds, 'resolved')
+      const count = activeIssueIds.length
+      toast.success(`${count} ${count === 1 ? 'issue' : 'issues'} marked as resolved`)
+      table.resetRowSelection()
+    } catch (error) {
+      toast.error(`Failed to resolve issues`)
+    } finally {
+      setIsBulkProcessing(false)
+    }
+  }, [selectedRows, handleBulkUpdateStatus, table])
+
+  const handleBulkIgnore = React.useCallback(async () => {
+    // Only ignore active issues
+    const activeIssueIds = selectedRows
+      .filter(row => (row.status || 'active') === 'active')
+      .map(row => row.id)
+    
+    if (activeIssueIds.length === 0) return
+    
+    setIsBulkProcessing(true)
+    try {
+      await handleBulkUpdateStatus(activeIssueIds, 'ignored')
+      const count = activeIssueIds.length
+      toast.success(`${count} ${count === 1 ? 'issue' : 'issues'} ignored`)
+      table.resetRowSelection()
+    } catch (error) {
+      toast.error(`Failed to ignore issues`)
+    } finally {
+      setIsBulkProcessing(false)
+    }
+  }, [selectedRows, handleBulkUpdateStatus, table])
+
+  const handleBulkRestore = React.useCallback(async () => {
+    // Only restore ignored or resolved issues
+    const restorableIssueIds = selectedRows
+      .filter(row => row.status === 'ignored' || row.status === 'resolved')
+      .map(row => row.id)
+    
+    if (restorableIssueIds.length === 0) return
+    
+    setIsBulkProcessing(true)
+    try {
+      await handleBulkUpdateStatus(restorableIssueIds, 'active')
+      const count = restorableIssueIds.length
+      toast.success(`${count} ${count === 1 ? 'issue' : 'issues'} restored`)
+      table.resetRowSelection()
+    } catch (error) {
+      toast.error(`Failed to restore issues`)
+    } finally {
+      setIsBulkProcessing(false)
+    }
+  }, [selectedRows, handleBulkUpdateStatus, table])
+
+  const handleClearSelection = React.useCallback(() => {
+    table.resetRowSelection()
+  }, [table])
+
   return (
     <div className="flex w-full flex-col justify-start gap-6">
-      {/* State Tabs (Active/Ignored/Resolved) - available to all authenticated users */}
-      {userPlan && (
-        <Tabs
-          value={activeStateTab}
-          onValueChange={(value) => {
-            setActiveStateTab(value as 'all' | 'active' | 'ignored' | 'resolved')
-          }}
-          className="w-full"
-        >
-          <TabsList className="w-full justify-start">
-            <TabsTrigger value="all">
-              All Issues
-              {stateCounts.all > 0 && (
-                <Badge
-                  variant="secondary"
-                  className="ml-1 flex h-5 w-5 items-center justify-center bg-muted-foreground/30"
-                >
-                  {stateCounts.all}
-                </Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="active">
-              Active
-              {stateCounts.active > 0 && (
-                <Badge
-                  variant="secondary"
-                  className="ml-1 flex h-5 w-5 items-center justify-center bg-muted-foreground/30"
-                >
-                  {stateCounts.active}
-                </Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="ignored">
-              Ignored
-              {stateCounts.ignored > 0 && (
-                <Badge
-                  variant="secondary"
-                  className="ml-1 flex h-5 w-5 items-center justify-center bg-muted-foreground/30"
-                >
-                  {stateCounts.ignored}
-                </Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="resolved">
-              Resolved
-              {stateCounts.resolved > 0 && (
-                <Badge
-                  variant="secondary"
-                  className="ml-1 flex h-5 w-5 items-center justify-center bg-muted-foreground/30"
-                >
-                  {stateCounts.resolved}
-                </Badge>
-              )}
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
-      )}
-
       {/* Severity Tabs */}
       <Tabs
         value={activeSeverityTab}
@@ -683,7 +772,7 @@ export function DataTable({
         }}
         className="flex w-full flex-col justify-start gap-6"
       >
-      <div className="flex flex-col gap-4 px-4 lg:px-6">
+      <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-4 flex-1 min-w-0">
             {/* Search Input */}
@@ -713,115 +802,113 @@ export function DataTable({
             <SelectValue placeholder="Filter by severity" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Issues</SelectItem>
+            <SelectItem value="all">All</SelectItem>
             <SelectItem value="high">Critical</SelectItem>
             <SelectItem value="medium">Medium</SelectItem>
             <SelectItem value="low">Low</SelectItem>
           </SelectContent>
         </Select>
-        <TabsList className="@4xl/main:flex hidden">
-          <TabsTrigger value="all">
-            All Issues{" "}
-            {severityCounts.all > 0 && (
-              <Badge
-                variant="secondary"
-                className="ml-1 flex h-5 w-5 items-center justify-center bg-muted-foreground/30"
-              >
-                {severityCounts.all}
-              </Badge>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="high" className="gap-1">
-            Critical{" "}
-            {severityCounts.high > 0 && (
-              <Badge
-                variant="secondary"
-                className="flex h-5 w-5 items-center justify-center bg-muted-foreground/30"
-              >
-                {severityCounts.high}
-              </Badge>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="medium" className="gap-1">
-            Medium{" "}
-            {severityCounts.medium > 0 && (
-              <Badge
-                variant="secondary"
-                className="flex h-5 w-5 items-center justify-center bg-muted-foreground/30"
-              >
-                {severityCounts.medium}
-              </Badge>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="low">
-            Low{" "}
-            {severityCounts.low > 0 && (
-              <Badge
-                variant="secondary"
-                className="ml-1 flex h-5 w-5 items-center justify-center bg-muted-foreground/30"
-              >
-                {severityCounts.low}
-              </Badge>
-            )}
-          </TabsTrigger>
-        </TabsList>
-        <div className="flex items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <ColumnsIcon />
-                <span className="hidden lg:inline">Customize Columns</span>
-                <span className="lg:hidden">Columns</span>
-                <ChevronDownIcon />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              {table
-                .getAllColumns()
-                .filter(
-                  (column) =>
-                    typeof column.accessorFn !== "undefined" &&
-                    column.getCanHide()
-                )
-                .map((column) => {
-                  return (
-                    <DropdownMenuCheckboxItem
-                      key={column.id}
-                      className="capitalize"
-                      checked={column.getIsVisible()}
-                      onCheckedChange={(value) =>
-                        column.toggleVisibility(!!value)
-                      }
-                    >
-                      {column.id}
-                    </DropdownMenuCheckboxItem>
-                  )
-                })}
-            </DropdownMenuContent>
-          </DropdownMenu>
+            {/* Status Filter */}
+            <Select 
+              value={activeStateTab} 
+              onValueChange={(value) => {
+                setActiveStateTab(value as 'all' | 'active' | 'ignored' | 'resolved')
+              }}
+            >
+              <SelectTrigger className="w-auto min-w-[120px]">
+                <SelectValue>
+                  {activeStateTab === 'all' && 'All Issues'}
+                  {activeStateTab === 'active' && 'Active Issues'}
+                  {activeStateTab === 'ignored' && 'Ignored Issues'}
+                  {activeStateTab === 'resolved' && 'Resolved Issues'}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Issues</SelectItem>
+                <SelectItem value="active">Active Issues</SelectItem>
+                <SelectItem value="ignored">Ignored Issues</SelectItem>
+                <SelectItem value="resolved">Resolved Issues</SelectItem>
+              </SelectContent>
+            </Select>
+        <div className="@4xl/main:flex hidden items-center gap-3">
+          <TabsList>
+            <TabsTrigger value="all">All</TabsTrigger>
+            <TabsTrigger value="high">Critical</TabsTrigger>
+            <TabsTrigger value="medium">Medium</TabsTrigger>
+            <TabsTrigger value="low">Low</TabsTrigger>
+          </TabsList>
+          {/* Bulk action buttons - appear when items are selected */}
+          {selectedRowIds.length > 0 && (
+            <div className="flex items-center gap-2 animate-in fade-in-0 slide-in-from-right-2 duration-200">
+              {canRestore && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleBulkRestore}
+                  disabled={isBulkProcessing}
+                  className="h-9 text-xs"
+                >
+                  <RotateCcwIcon className="mr-1.5 h-3.5 w-3.5" />
+                  Restore
+                </Button>
+              )}
+              {canIgnoreOrResolve && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleBulkIgnore}
+                    disabled={isBulkProcessing}
+                    className="h-9 text-xs"
+                  >
+                    <XIcon className="mr-1.5 h-3.5 w-3.5" />
+                    Ignore
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={handleBulkResolve}
+                    disabled={isBulkProcessing}
+                    className="h-9 text-xs"
+                  >
+                    {isBulkProcessing ? (
+                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <CheckCircle2Icon className="mr-1.5 h-3.5 w-3.5" />
+                    )}
+                    Mark Resolved
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
         </div>
         </div>
         </div>
       </div>
       <TabsContent
         value={activeSeverityTab}
-        className="relative flex flex-col gap-4 overflow-auto px-4 lg:px-6"
+        className="relative flex flex-col gap-4"
       >
         {isFiltering ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            <span className="ml-2 text-sm text-muted-foreground">Filtering...</span>
-          </div>
+          <Card className="border border-border">
+            <CardContent className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              <span className="ml-2 text-sm text-muted-foreground">Filtering...</span>
+            </CardContent>
+          </Card>
         ) : (
-        <div className="overflow-hidden border">
-          <Table>
+        <Card className="border border-border">
+          <CardContent className="p-0">
+            <div className="overflow-hidden">
+              <Table>
             <TableHeader className="sticky top-0 z-10 bg-muted">
               {table.getHeaderGroups().map((headerGroup) => (
                 <TableRow key={headerGroup.id}>
                   {headerGroup.headers.map((header) => {
                     // Mobile-friendly headers: abbreviate long labels
                     const headerId = header.id || ''
-                    const mobileHeader = headerId === 'locations' ? 'Loc.' : 
+                    const mobileHeader = headerId === 'locations' ? 'Pages' : 
                                         headerId === 'severity' ? 'Sev.' :
                                         headerId
                     return (
@@ -880,9 +967,11 @@ export function DataTable({
               )}
             </TableBody>
           </Table>
-        </div>
+            </div>
+          </CardContent>
+        </Card>
         )}
-        <div className="flex items-center justify-between px-4">
+        <div className="flex items-center justify-between">
           <div className="hidden flex-1 text-sm text-muted-foreground lg:flex">
             {table.getFilteredSelectedRowModel().rows.length > 0 ? (
               <>
@@ -974,23 +1063,4 @@ export function DataTable({
   )
 }
 
-const chartData = [
-  { month: "January", desktop: 186, mobile: 80 },
-  { month: "February", desktop: 305, mobile: 200 },
-  { month: "March", desktop: 237, mobile: 120 },
-  { month: "April", desktop: 73, mobile: 190 },
-  { month: "May", desktop: 209, mobile: 130 },
-  { month: "June", desktop: 214, mobile: 140 },
-]
-
-const chartConfig = {
-  desktop: {
-    label: "Desktop",
-    color: "var(--primary)",
-  },
-  mobile: {
-    label: "Mobile",
-    color: "var(--primary)",
-  },
-} satisfies ChartConfig
 

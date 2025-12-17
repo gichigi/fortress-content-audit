@@ -1,3 +1,28 @@
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+// #region agent log
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const logPath = join(__dirname, '.cursor/debug.log');
+const log = (msg, data, hypothesisId) => {
+  try {
+    const entry = JSON.stringify({
+      sessionId: 'debug-session',
+      runId: 'build-debug',
+      hypothesisId,
+      location: 'next.config.js',
+      message: msg,
+      data: data || {},
+      timestamp: Date.now()
+    }) + '\n';
+    fs.appendFileSync(logPath, entry);
+  } catch (e) {}
+};
+log('Next.js config loading', { timestamp: new Date().toISOString() }, 'A');
+// #endregion
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -41,6 +66,22 @@ const nextConfig = {
   },
   // This is required to support PostHog trailing slash API requests
   skipTrailingSlashRedirect: true,
+  // #region agent log
+  webpack: (config, { isServer, dev }) => {
+    log('Webpack config called', { isServer, dev, hasCache: !!config.cache }, 'A');
+    if (dev && config.cache) {
+      // Disable webpack cache in dev mode to prevent file access issues
+      // The cache can become corrupted and cause ENOENT errors
+      config.cache = false;
+      log('Webpack cache disabled in dev mode', {}, 'A');
+    }
+    return config;
+  },
+  // #endregion
 };
+
+// #region agent log
+log('Next.js config exported', { hasRewrites: typeof nextConfig.rewrites === 'function' }, 'A');
+// #endregion
 
 export default nextConfig;

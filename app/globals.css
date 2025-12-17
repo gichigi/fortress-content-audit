@@ -373,9 +373,3 @@ html, body {
 .pdf-exclude {
   display: block; /* Visible on page by default, hidden during PDF generation */
 }
-
-/* Reset positioning on Next.js portal elements */
-nextjs-portal {
-  left: unset;
-  top: unset;
-}
