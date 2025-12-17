@@ -286,7 +286,7 @@ export default function DashboardPage() {
       
       const data = await response.json()
       
-      // Use instances if available, otherwise fall back to groups
+      // Always use instances from database (single source of truth)
       if (data.instances && data.instances.length > 0) {
         // Fetch issue states for filtering
         const supabase = createClient()
@@ -311,11 +311,8 @@ export default function DashboardPage() {
           const rows = transformInstancesToTableRows(data.instances)
           setTableRows(rows)
         }
-      } else if (data.groups && data.groups.length > 0) {
-        // Fallback to groups for backward compatibility
-        const rows = transformAuditToTableRows(data.groups)
-        setTableRows(rows)
       } else {
+        // No instances found in database
         setTableRows([])
       }
     } catch (error) {

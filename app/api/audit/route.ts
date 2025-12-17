@@ -5,7 +5,7 @@ import { validateUrl } from '@/lib/url-validation'
 import { auditSite, miniAudit, AuditTier, AuditResult } from '@/lib/audit'
 import PostHogClient from '@/lib/posthog'
 import { generateIssueSignature, generateInstanceSignature } from '@/lib/issue-signature'
-import { AuditIssueGroup } from '@/lib/audit-table-adapter'
+import { AuditIssueGroup, deriveCategory } from '@/lib/audit-table-adapter'
 import { checkDailyLimit, checkDomainLimit, isNewDomain, incrementAuditUsage, getAuditUsage } from '@/lib/audit-rate-limit'
 import { createMockAuditData } from '@/lib/mock-audit-data'
 
@@ -139,12 +139,37 @@ export async function POST(request: Request) {
       // Generate mock data with 8-10 issues
       // normalized is already url.origin format (e.g., https://example.com)
       const mockData = createMockAuditData(normalized, 10)
+      
+      // Extract instances from groups (same logic as real audits)
+      const instances = []
+      for (const group of mockData.groups) {
+        const category = deriveCategory(group.title)
+        for (const example of group.examples || []) {
+          const signature = generateInstanceSignature({
+            url: example.url,
+            title: group.title,
+            snippet: example.snippet,
+          })
+          instances.push({
+            category,
+            severity: group.severity,
+            title: group.title,
+            url: example.url,
+            snippet: example.snippet,
+            impact: group.impact,
+            fix: group.fix,
+            signature,
+          })
+        }
+      }
+      
       result = {
         groups: mockData.groups,
         pagesScanned: mockData.pagesScanned,
         auditedUrls: mockData.auditedUrls,
         status: 'completed',
         tier: auditTier,
+        instances: instances as any,
       }
     } else {
       // Run audit based on tier

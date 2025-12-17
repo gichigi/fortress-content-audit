@@ -185,7 +185,7 @@ export function transformInstancesToTableRows(
       ? new Map(Object.entries(issueStates))
       : undefined
 
-  // Group instances by category + severity (or url)
+  // Group instances by the model's original title to preserve model grouping (or url)
   const groups = new Map<string, AuditIssueInstance[]>()
   
   instances.forEach((instance) => {
@@ -196,7 +196,7 @@ export function transformInstancesToTableRows(
     }
 
     const key = groupBy === 'category' 
-      ? `${instance.category}-${instance.severity}`
+      ? instance.title
       : instance.url
     
     if (!groups.has(key)) {
@@ -216,10 +216,10 @@ export function transformInstancesToTableRows(
     // Look up state if available (use first instance's state as group state)
     const state = statesMap?.get(groupSignature) || 'active'
 
-    // Create group title based on category and severity
-    const categoryLabel = firstInstance.category.charAt(0).toUpperCase() + firstInstance.category.slice(1)
+    // Create group title using the descriptive title from instances
+    // Use the first instance's title since it describes the specific issue type
     const title = groupBy === 'category'
-      ? `${categoryLabel} issues`
+      ? firstInstance.title
       : `Issues on ${firstInstance.url}`
 
     // Collect all examples from instances

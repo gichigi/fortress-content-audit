@@ -39,7 +39,7 @@ export async function GET(
       .maybeSingle()
     const plan = profile?.plan || 'free'
 
-    // Query instances from audit_issues table
+    // Query instances from audit_issues table (single source of truth)
     const { data: instances, error: instancesErr } = await (supabaseAdmin as any)
       .from('audit_issues')
       .select('*')
@@ -50,16 +50,17 @@ export async function GET(
     if (instancesErr) {
       console.error('[Audit] Error fetching instances:', instancesErr)
       console.error('[Audit] Audit ID:', id)
-      // Fallback to issues_json for backward compatibility
-      const groups = Array.isArray(run.issues_json?.groups) ? run.issues_json.groups : []
-      const gatedGroups = plan === 'free' ? groups.slice(0, 5) : groups
+      throw instancesErr
+    }
 
+    // If no instances found, return empty array (no fallback to issues_json)
+    if (!instances || instances.length === 0) {
       return NextResponse.json({
         runId: run.id,
         preview: plan === 'free',
         domain: run.domain,
-        groups: gatedGroups,
-        totalIssues: groups.length,
+        instances: [],
+        totalIssues: 0,
         meta: { 
           pagesScanned: run.pages_scanned, 
           createdAt: run.created_at,
@@ -91,8 +92,7 @@ export async function GET(
     // Apply gating for free plan
     const gatedInstances = plan === 'free' ? activeInstances.slice(0, 5) : activeInstances
 
-    // For backward compatibility, also return groups (can be generated from instances)
-    // But primary data is now instances
+    // Return instances from database (single source of truth)
     return NextResponse.json({
       runId: run.id,
       preview: plan === 'free',
@@ -104,8 +104,6 @@ export async function GET(
         createdAt: run.created_at,
         auditedUrls: run.issues_json?.auditedUrls || [],
       },
-      // Legacy groups for backward compatibility (from issues_json if available)
-      groups: Array.isArray(run.issues_json?.groups) ? run.issues_json.groups : [],
     })
   } catch (e) {
     return NextResponse.json(

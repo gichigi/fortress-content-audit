@@ -48,8 +48,21 @@ export async function calculateHealthScore(
 
   if (error) {
     console.error('[HealthScore] Error fetching instances:', error)
-    // Fallback to issues_json for backward compatibility
-    return calculateHealthScoreFromGroups(audit, ignoredSignatures)
+    throw error
+  }
+
+  // If no instances found, return empty score
+  if (!instances || instances.length === 0) {
+    return {
+      score: 100,
+      metrics: {
+        totalActive: 0,
+        totalCritical: 0,
+        bySeverity: { low: 0, medium: 0, high: 0 },
+        criticalPages: 0,
+        pagesWithIssues: 0,
+      },
+    }
   }
 
   // Filter out ignored instances
@@ -241,8 +254,21 @@ export async function calculateAggregatedHealthScore(
 
   if (error) {
     console.error('[HealthScore] Error fetching instances:', error)
-    // Fallback to groups for backward compatibility
-    return calculateAggregatedHealthScoreFromGroups(audits, ignoredSignatures)
+    throw error
+  }
+
+  // If no instances found, return empty score
+  if (!allInstances || allInstances.length === 0) {
+    return {
+      score: 100,
+      metrics: {
+        totalActive: 0,
+        totalCritical: 0,
+        bySeverity: { low: 0, medium: 0, high: 0 },
+        criticalPages: 0,
+        pagesWithIssues: 0,
+      },
+    }
   }
 
   // Process instances

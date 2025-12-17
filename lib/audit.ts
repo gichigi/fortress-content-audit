@@ -39,9 +39,12 @@ Focus ONLY on objective content errors:
 • Broken links: detect 404s, 500s, and redirect loops (report URL, anchor text, source page, status)
 
 For each issue found, provide:
-1. The page URL where the issue was found
-2. A short snippet showing the exact error
-3. A suggested fix
+1. A specific, descriptive title that identifies the exact issue (e.g., "Support misspelt on contact page" or "Pricing inconsistency: $29 vs $39" rather than generic titles like "Typos and Spelling Errors" or "Factual Contradictions")
+2. The page URL where the issue was found
+3. A short snippet showing the exact error
+4. A suggested fix
+
+Important: Group similar issues together. For example, if you find the same typo ("support" misspelt as "suport") on multiple pages, group them under one title like "Support misspelt on multiple pages". If you find different typos, create separate groups with specific titles like "Company name typo: 'accomodate'" and "Product name typo: 'seperate'".
 
 Be thorough but precise. Only report issues you are certain about.
 If you find no issues after a thorough review, return an empty groups array.
