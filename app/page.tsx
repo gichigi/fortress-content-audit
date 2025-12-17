@@ -11,7 +11,6 @@ import { Card, CardContent } from "@/components/ui/card"
 import { CheckCircle2, FileText, Search, AlertCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { InterstitialLoader } from "@/components/ui/interstitial-loader"
-import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import { createClient } from "@/lib/supabase-browser"
 import { AuditTable } from "@/components/audit-table"
 import { useAuditIssues } from "@/hooks/use-audit-issues"
@@ -20,12 +19,64 @@ import { HealthScoreChart } from "@/components/health-score-chart"
 import { useHealthScoreMetrics } from "@/hooks/use-health-score-metrics"
 import { transformIssuesToTableRows } from "@/lib/audit-table-adapter"
 
+// Client-side URL validation (simplified version of validateUrl)
+function validateUrlClient(input: string): { isValid: boolean; error?: string; normalizedUrl?: string } {
+  if (!input || !input.trim()) {
+    return { isValid: false, error: "Enter a website URL" }
+  }
+
+  try {
+    // Add https if no protocol specified
+    let urlString = input.trim()
+    if (!urlString.startsWith('http://') && !urlString.startsWith('https://')) {
+      urlString = 'https://' + urlString
+    }
+
+    // Try to construct URL object
+    const url = new URL(urlString)
+
+    // Basic validation checks
+    if (!url.hostname) {
+      return { isValid: false, error: "Invalid URL" }
+    }
+
+    // Check for common issues
+    if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+      return { isValid: false, error: "Localhost URLs not allowed" }
+    }
+
+    // Validate hostname has a valid TLD
+    const hostname = url.hostname.toLowerCase()
+    const tldPattern = /\.[a-z]{2,}$/i
+    if (!hostname.includes('.') || !tldPattern.test(hostname)) {
+      return { isValid: false, error: "Invalid domain format" }
+    }
+
+    // Reject invalid domain patterns
+    if (hostname.includes('..') || hostname.startsWith('.') || hostname.endsWith('.')) {
+      return { isValid: false, error: "Invalid domain format" }
+    }
+
+    // Normalize to origin (remove path, query, etc.)
+    const normalizedUrl = url.origin
+
+    return { isValid: true, normalizedUrl }
+  } catch (error) {
+    return { 
+      isValid: false, 
+      error: "Invalid URL format" 
+    }
+  }
+}
+
 export default function Home() {
   const router = useRouter()
   const { toast } = useToast()
   const [url, setUrl] = useState("")
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [validationError, setValidationError] = useState<string | null>(null) // Client-side validation errors
+  const [apiError, setApiError] = useState<string | null>(null) // API/server errors
+  const [touched, setTouched] = useState(false) // Track if input has been interacted with
   const [auditResults, setAuditResults] = useState<any>(null)
   const [sessionToken, setSessionToken] = useState<string | null>(null)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -71,14 +122,35 @@ export default function Home() {
     checkAuth()
   }, [])
 
+  // Validate on blur for better UX
+  const handleBlur = () => {
+    setTouched(true)
+    if (url.trim()) {
+      const validation = validateUrlClient(url)
+      if (!validation.isValid) {
+        setValidationError(validation.error || "Please enter a valid website URL")
+      } else {
+        setValidationError(null)
+      }
+    } else {
+      setValidationError(null)
+    }
+  }
+
   const handleAudit = async () => {
-    if (!url) {
-      setError("Please enter a website URL to audit")
+    setTouched(true)
+    setApiError(null) // Clear API errors on new submission
+    
+    // Validate URL client-side first
+    const validation = validateUrlClient(url)
+    if (!validation.isValid) {
+      setValidationError(validation.error || "Invalid URL")
       return
     }
 
+    setValidationError(null)
     setLoading(true)
-    setError(null)
+    setApiError(null)
     setAuditResults(null)
 
     try {
@@ -92,13 +164,16 @@ export default function Home() {
           ? window.location.origin
           : process.env.NEXT_PUBLIC_APP_URL || ''
 
+      // Use normalized URL if available, otherwise use original
+      const domainToSubmit = validation.normalizedUrl || url.trim()
+
       const response = await fetch(`${baseUrl}/api/audit`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(token && { 'Authorization': `Bearer ${token}` })
         },
-        body: JSON.stringify({ domain: url })
+        body: JSON.stringify({ domain: domainToSubmit })
       })
 
       // Check content type before parsing
@@ -107,13 +182,34 @@ export default function Home() {
 
       if (!response.ok) {
         if (isJson) {
-          const error = await response.json()
-          throw new Error(error.error || 'Audit failed')
+          const errorData = await response.json()
+          
+          // Provide specific error messages based on status code
+          if (response.status === 400) {
+            throw new Error(errorData.error || 'Invalid URL')
+          } else if (response.status === 429) {
+            throw new Error(errorData.message || errorData.error || 'Too many requests. Try again later.')
+          } else if (response.status === 403) {
+            throw new Error('Upgrade to Pro or Enterprise')
+          } else if (response.status === 401) {
+            throw new Error('Please sign in')
+          } else if (response.status === 500) {
+            throw new Error('Server error. Try again.')
+          } else {
+            throw new Error(errorData.error || errorData.message || `Failed to start audit`)
+          }
         } else {
           // Response is HTML or other format (likely an error page)
           const text = await response.text()
           console.error('Non-JSON error response:', text.substring(0, 200))
-          throw new Error(`Audit failed: ${response.status} ${response.statusText}`)
+          
+          if (response.status === 429) {
+            throw new Error('Too many requests. Try again later.')
+          } else if (response.status >= 500) {
+            throw new Error('Server error. Try again.')
+          } else {
+            throw new Error('Failed to start audit')
+          }
         }
       }
 
@@ -121,7 +217,7 @@ export default function Home() {
       if (!isJson) {
         const text = await response.text()
         console.error('Non-JSON success response:', text.substring(0, 200))
-        throw new Error('Invalid response format from server')
+        throw new Error('Server error')
       }
 
       const data = await response.json()
@@ -137,9 +233,12 @@ export default function Home() {
       }
     } catch (error) {
       console.error('Audit error:', error)
-      let errorMessage = "Failed to run audit"
+      let errorMessage = "Failed to start audit"
       
-      if (error && typeof error === 'object') {
+      // Handle network errors
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        errorMessage = "Network error. Check your connection."
+      } else if (error && typeof error === 'object') {
         if ('message' in error && typeof error.message === 'string') {
           errorMessage = error.message
         } else if ('error' in error && typeof error.error === 'string') {
@@ -149,7 +248,7 @@ export default function Home() {
         errorMessage = error
       }
       
-      setError(errorMessage)
+      setApiError(errorMessage)
     } finally {
       setLoading(false)
     }
@@ -164,27 +263,60 @@ export default function Home() {
             Get a full content audit of your website
           </h1>
           <p className="text-xl md:text-2xl text-muted-foreground leading-relaxed text-balance mb-12 max-w-2xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-200">
-            Content issues are killing your conversion rate. Uncover the hidden errors and inconsistencies across your site. 
+            Content issues kill conversion rates. Uncover the hidden errors and inconsistencies across your site. 
           </p>
           
           {!isAuthenticated ? (
-            <div className="flex flex-col md:flex-row gap-4 max-w-xl mx-auto mb-12">
-              <Input 
-                placeholder="Enter your website" 
-                className="h-14 px-6 text-lg bg-background shadow-sm"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAudit()}
-              />
-              <Button 
-                size="lg" 
-                className="h-14 px-8 text-lg font-medium" 
-                onClick={handleAudit} 
-                disabled={loading}
-                aria-busy={loading}
-              >
-                Run Audit
-              </Button>
+            <div className="flex flex-col gap-4 max-w-xl mx-auto mb-12">
+              <div className="flex flex-col md:flex-row gap-4">
+                <div className="flex-1 space-y-2">
+                  <Input 
+                    placeholder="example.com" 
+                    className={`h-14 px-6 text-lg bg-background shadow-sm transition-colors ${
+                      validationError && touched 
+                        ? 'border-destructive focus-visible:ring-destructive' 
+                        : 'border-input'
+                    }`}
+                    value={url}
+                    onChange={(e) => {
+                      setUrl(e.target.value)
+                      // Clear validation error when user starts typing
+                      if (validationError) setValidationError(null)
+                      // Clear API error when user starts typing
+                      if (apiError) setApiError(null)
+                    }}
+                    onBlur={handleBlur}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        handleAudit()
+                      }
+                    }}
+                    aria-invalid={!!validationError && touched}
+                    aria-describedby={validationError && touched ? "url-error" : undefined}
+                    id="url-input"
+                  />
+                  {/* Inline validation error message */}
+                  {validationError && touched && (
+                    <p 
+                      id="url-error" 
+                      className="text-sm text-destructive mt-1 animate-in fade-in slide-in-from-top-1"
+                      role="alert"
+                    >
+                      {validationError}
+                    </p>
+                  )}
+                </div>
+                <Button 
+                  size="lg" 
+                  className="h-14 px-8 text-lg font-medium shrink-0" 
+                  onClick={handleAudit} 
+                  disabled={loading || (touched && !!validationError)}
+                  aria-busy={loading}
+                >
+                  {loading ? "Starting..." : "Run Audit"}
+                </Button>
+              </div>
             </div>
           ) : (
             <div className="flex flex-col sm:flex-row gap-4 max-w-xl mx-auto mb-12 justify-center">
@@ -230,14 +362,11 @@ export default function Home() {
         description="Scanning pages and identifying content issues. This may take a moment."
       />
 
-      {/* Error Alert */}
-      {error && !loading && (
-        <section className="border-t border-border py-24 md:py-32">
-          <div className="container mx-auto px-6 max-w-2xl">
-            <Alert variant="destructive">
-              <AlertTitle>Error</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
+      {/* API Error Message (for errors that occur after submission) */}
+      {apiError && !loading && (
+        <section className="border-t border-border py-12 md:py-16">
+          <div className="container mx-auto px-6 max-w-2xl text-center">
+            <p className="text-destructive text-sm" role="alert">{apiError}</p>
           </div>
         </section>
       )}

@@ -85,11 +85,16 @@ export function AuditTable({
         onStatusUpdate={onStatusUpdate}
       />
       {showPreview && remainingCount > 0 && (
-        <div className="relative -mt-24 h-24 bg-gradient-to-t from-background via-background to-transparent pointer-events-none" />
+        <div 
+          className="relative -mt-48 h-48 pointer-events-none"
+          style={{
+            background: 'linear-gradient(to top, hsl(var(--background)) 0%, hsl(var(--background) / 0.98) 10%, hsl(var(--background) / 0.95) 20%, hsl(var(--background) / 0.9) 30%, hsl(var(--background) / 0.8) 40%, hsl(var(--background) / 0.65) 50%, hsl(var(--background) / 0.5) 60%, hsl(var(--background) / 0.35) 70%, hsl(var(--background) / 0.2) 80%, hsl(var(--background) / 0.1) 90%, transparent 100%)'
+          }}
+        />
       )}
       {showPreview && remainingCount > 0 && (
         <div className="flex justify-center pt-8 pb-4">
-          <Button variant="outline" onClick={handleViewAll} disabled={checking}>
+          <Button variant="default" size="lg" onClick={handleViewAll} disabled={checking} className="font-semibold shadow-md">
             View all {totalIssues ?? data.length} issue{(totalIssues ?? data.length) !== 1 ? 's' : ''}
             <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
@@ -97,7 +102,7 @@ export function AuditTable({
       )}
       {showPreview && remainingCount === 0 && data.length > 0 && (
         <div className="flex justify-center pt-8 pb-4">
-          <Button variant="outline" onClick={handleViewAll} disabled={checking}>
+          <Button variant="default" size="lg" onClick={handleViewAll} disabled={checking} className="font-semibold shadow-md">
             View full audit
             <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
