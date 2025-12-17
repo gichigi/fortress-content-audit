@@ -6,6 +6,7 @@ import { Database } from './database.types'
 // Audits
 export type AuditRun = Database['public']['Tables']['brand_audit_runs']['Row']
 
+// Legacy AuditIssue interface (kept for backward compatibility)
 export interface AuditIssue {
   category: string
   severity: 'high' | 'medium' | 'low'
@@ -13,6 +14,21 @@ export interface AuditIssue {
   recommendation: string
   url?: string
   snippet?: string
+}
+
+// New instance-based AuditIssue matching audit_issues table
+export interface AuditIssueInstance {
+  id: string
+  audit_id: string
+  category: 'typos' | 'grammar' | 'punctuation' | 'seo' | 'links' | 'terminology' | 'factual' | 'other'
+  severity: 'low' | 'medium' | 'high'
+  title: string
+  url: string
+  snippet: string
+  impact: string | null
+  fix: string | null
+  signature: string
+  created_at: string
 }
 
 export interface AuditResult {
@@ -52,6 +68,7 @@ export interface AuditIssuesJson {
   }>
   auditedUrls?: string[]
   // Note: issueStates now stored in audit_issue_states table, not in JSONB
+  // Note: instances now stored in audit_issues table, groups kept for backward compatibility
 }
 
 // Advanced Generators

@@ -1,7 +1,27 @@
 // Transform audit issue groups to table row format
 import { z } from "zod"
 import { generateIssueSignature } from "./issue-signature"
-import { IssueState } from "@/types/fortress"
+import { IssueState, AuditIssueInstance } from "@/types/fortress"
+
+/**
+ * Derive issue category from title using pattern matching
+ * 
+ * @param title - Issue title to analyze
+ * @returns Category enum value
+ */
+export function deriveCategory(title: string): 'typos' | 'grammar' | 'punctuation' | 'seo' | 'links' | 'terminology' | 'factual' | 'other' {
+  const lower = title.toLowerCase()
+  
+  if (lower.includes('typo') || lower.includes('spelling')) return 'typos'
+  if (lower.includes('grammar')) return 'grammar'
+  if (lower.includes('punctuation')) return 'punctuation'
+  if (lower.includes('seo') || lower.includes('meta') || lower.includes('alt') || lower.includes('h1') || lower.includes('title tag')) return 'seo'
+  if (lower.includes('link') || lower.includes('404') || lower.includes('broken') || lower.includes('redirect')) return 'links'
+  if (lower.includes('terminology') || lower.includes('inconsistent') || lower.includes('inconsistency')) return 'terminology'
+  if (lower.includes('factual') || lower.includes('contradiction') || lower.includes('conflict')) return 'factual'
+  
+  return 'other'
+}
 
 // Audit issue group structure from API
 export interface AuditIssueGroup {
@@ -30,6 +50,8 @@ export interface AuditTableRow {
   count: number
   state?: IssueState // Optional state for filtered views
   signature?: string // Optional signature for state management
+  category?: string // Optional category for filtering/grouping
+  instances?: AuditIssueInstance[] // Optional instances for nested row display
 }
 
 /**
@@ -134,6 +156,80 @@ export function filterIssuesByState(
     const signature = generateIssueSignature(group)
     const state = statesMap.get(signature) || 'active' // Default to active if not found
     return state === targetState
+  })
+}
+
+/**
+ * Transform instances to table rows with grouping
+ * Groups instances by category and severity for display
+ * 
+ * @param instances - Audit issue instances to transform
+ * @param issueStates - Optional map/record of issue states keyed by signature
+ * @param groupBy - Grouping strategy: 'category' (default) or 'url'
+ * @returns Transformed table rows with grouped instances
+ */
+export function transformInstancesToTableRows(
+  instances: AuditIssueInstance[],
+  issueStates?: Map<string, IssueState> | Record<string, IssueState>,
+  groupBy: 'category' | 'url' = 'category'
+): AuditTableRow[] {
+  // Convert Record to Map if needed
+  const statesMap = issueStates instanceof Map 
+    ? issueStates 
+    : issueStates 
+      ? new Map(Object.entries(issueStates))
+      : undefined
+
+  // Group instances by category + severity (or url)
+  const groups = new Map<string, AuditIssueInstance[]>()
+  
+  instances.forEach((instance) => {
+    const key = groupBy === 'category' 
+      ? `${instance.category}-${instance.severity}`
+      : instance.url
+    
+    if (!groups.has(key)) {
+      groups.set(key, [])
+    }
+    groups.get(key)!.push(instance)
+  })
+
+  // Convert groups to table rows
+  return Array.from(groups.entries()).map(([key, groupInstances], index) => {
+    const firstInstance = groupInstances[0]
+    
+    // Generate a group-level signature for state lookup (use first instance's signature as group identifier)
+    // For grouping purposes, we use the first instance's signature
+    const groupSignature = firstInstance.signature
+    
+    // Look up state if available (use first instance's state as group state)
+    const state = statesMap?.get(groupSignature) || 'active'
+
+    // Create group title based on category and severity
+    const categoryLabel = firstInstance.category.charAt(0).toUpperCase() + firstInstance.category.slice(1)
+    const title = groupBy === 'category'
+      ? `${categoryLabel} issues`
+      : `Issues on ${firstInstance.url}`
+
+    // Collect all examples from instances
+    const examples = groupInstances.map(inst => ({
+      url: inst.url,
+      snippet: inst.snippet,
+    }))
+
+    return {
+      id: `${key}-${index}`,
+      title,
+      severity: firstInstance.severity,
+      impact: firstInstance.impact || '',
+      fix: firstInstance.fix || '',
+      examples,
+      count: groupInstances.length,
+      state,
+      signature: groupSignature, // Use first instance signature for group-level state management
+      category: firstInstance.category, // Add category for filtering
+      instances: groupInstances, // Store instances for nested row display
+    }
   })
 }
 

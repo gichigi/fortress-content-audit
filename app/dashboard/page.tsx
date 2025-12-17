@@ -1,23 +1,21 @@
 // fortress v1
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase-browser"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ArrowLeft, FileText, Copy, Trash2, ExternalLink, RefreshCw, Loader2, TrendingUp, TrendingDown, Minus, CheckCircle2 } from "lucide-react"
+import { ArrowLeft, FileText, ExternalLink, RefreshCw, Loader2, TrendingUp, TrendingDown, Minus, CheckCircle2 } from "lucide-react"
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import { useToast } from "@/hooks/use-toast"
 import { PLAN_NAMES } from "@/lib/plans"
-import posthog from "posthog-js"
 import { HealthScoreChart } from "@/components/health-score-chart"
 import { HealthScoreCards } from "@/components/health-score-cards"
 import { AuditTable } from "@/components/audit-table"
-import { transformAuditToTableRows } from "@/lib/audit-table-adapter"
+import { transformAuditToTableRows, transformInstancesToTableRows } from "@/lib/audit-table-adapter"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,13 +26,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-
-interface Guideline {
-  id: string
-  title: string | null
-  created_at: string | null
-  last_modified: string | null
-}
 
 interface AuditRun {
   id: string
@@ -51,22 +42,48 @@ export default function DashboardPage() {
   const router = useRouter()
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
-  const [guidelines, setGuidelines] = useState<Guideline[]>([])
   const [audits, setAudits] = useState<AuditRun[]>([])
   const [plan, setPlan] = useState<string>("free")
-  const [deletingId, setDeletingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [healthScoreData, setHealthScoreData] = useState<any>(null)
   const [healthScoreLoading, setHealthScoreLoading] = useState(false)
   const [usageInfo, setUsageInfo] = useState<any>(null)
   const [domains, setDomains] = useState<string[]>([])
+  const [selectedDomain, setSelectedDomain] = useState<string | null>(null)
   const [deletingDomain, setDeletingDomain] = useState<string | null>(null)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [domainToDelete, setDomainToDelete] = useState<string | null>(null)
+  const [tableRows, setTableRows] = useState<any[]>([])
+  const [tableRowsLoading, setTableRowsLoading] = useState(false)
 
   useEffect(() => {
     checkAuthAndLoad()
   }, [])
+
+  // Track if this is the initial load to avoid double-loading
+  const isInitialLoad = useRef(true)
+  
+  // Reload data when selected domain changes (but not on initial load)
+  useEffect(() => {
+    if (isInitialLoad.current) {
+      isInitialLoad.current = false
+      return
+    }
+    
+    if (selectedDomain) {
+      const reloadData = async () => {
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session) {
+          await Promise.all([
+            loadAudits(session.access_token),
+            loadHealthScore(session.access_token)
+          ])
+        }
+      }
+      reloadData()
+    }
+  }, [selectedDomain])
 
   useEffect(() => {
     // Check for payment success query param
@@ -181,18 +198,38 @@ export default function DashboardPage() {
         setPlan(profile.plan || 'free')
       }
 
-      // Load guidelines and audits
-      await Promise.all([
-        loadGuidelines(session.access_token),
-        loadAudits(session.access_token)
-      ])
+      // Load domains first to determine selected domain
+      await loadDomains(session.access_token)
+      
+      // Get available domains and validate saved domain
+      const { data: domainData } = await supabase
+        .from('brand_audit_runs')
+        .select('domain')
+        .eq('user_id', user.id)
+        .not('domain', 'is', null)
+      
+      const availableDomains = Array.from(new Set(
+        (domainData || []).map(a => a.domain).filter((d): d is string => d !== null)
+      ))
+      
+      // Validate saved domain exists, otherwise use first available
+      const savedDomain = localStorage.getItem('selectedDomain')
+      const isValidDomain = savedDomain && availableDomains.includes(savedDomain)
+      const initialDomain = isValidDomain ? savedDomain : (availableDomains[0] || null)
+      
+      if (initialDomain) {
+        setSelectedDomain(initialDomain)
+        localStorage.setItem('selectedDomain', initialDomain)
+      }
+
+      // Load audits (now with domain set)
+      await loadAudits(session.access_token)
       
       // Load health score for all authenticated users
       await loadHealthScore(session.access_token)
       
-      // Load usage info and domains
+      // Load usage info
       await loadUsageInfo(session.access_token)
-      await loadDomains(session.access_token)
     } catch (error) {
       console.error("Error loading dashboard:", error)
       setError("Failed to load dashboard. Please refresh the page.")
@@ -201,27 +238,6 @@ export default function DashboardPage() {
     }
   }
 
-  const loadGuidelines = async (token: string) => {
-    try {
-      const response = await fetch('/api/guidelines?mode=list&limit=50', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      if (!response.ok) {
-        // Guidelines API may not exist yet - fail gracefully
-        console.warn('[Dashboard] Guidelines API not available or returned error')
-        setGuidelines([])
-        return
-      }
-      const data = await response.json()
-      setGuidelines(data.guidelines || [])
-    } catch (error) {
-      // Fail gracefully - guidelines feature is optional
-      console.warn("Error loading guidelines:", error)
-      setGuidelines([])
-    }
-  }
 
   const loadAudits = async (token: string) => {
     try {
@@ -229,26 +245,100 @@ export default function DashboardPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      // Force fresh data fetch
-      const { data, error } = await supabase
+      // Build query with domain filter if selected
+      let query = supabase
         .from('brand_audit_runs')
         .select('*')
         .eq('user_id', user.id)
+      
+      if (selectedDomain) {
+        query = query.eq('domain', selectedDomain)
+      }
+      
+      const { data, error } = await query
         .order('created_at', { ascending: false })
         .limit(50)
 
       if (error) throw error
       setAudits(data || [])
+      
+      // Load table rows for most recent audit
+      if (data && data.length > 0) {
+        await loadTableRowsForAudit(data[0].id, token)
+      }
     } catch (error) {
       console.error("Error loading audits:", error)
     }
   }
 
+  const loadTableRowsForAudit = async (auditId: string, token: string) => {
+    setTableRowsLoading(true)
+    try {
+      const response = await fetch(`/api/audit/${auditId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch audit')
+      }
+      
+      const data = await response.json()
+      
+      // Use instances if available, otherwise fall back to groups
+      if (data.instances && data.instances.length > 0) {
+        // Fetch issue states for filtering
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session) {
+          const { data: issueStates } = await supabase
+            .from('audit_issue_states')
+            .select('signature, state')
+            .eq('user_id', session.user.id)
+            .eq('domain', data.domain || '')
+          
+          const statesMap = new Map<string, 'active' | 'ignored' | 'resolved'>()
+          issueStates?.forEach((s) => {
+            if (s.signature && s.state) {
+              statesMap.set(s.signature, s.state as 'active' | 'ignored' | 'resolved')
+            }
+          })
+          
+          const rows = transformInstancesToTableRows(data.instances, statesMap)
+          setTableRows(rows)
+        } else {
+          const rows = transformInstancesToTableRows(data.instances)
+          setTableRows(rows)
+        }
+      } else if (data.groups && data.groups.length > 0) {
+        // Fallback to groups for backward compatibility
+        const rows = transformAuditToTableRows(data.groups)
+        setTableRows(rows)
+      } else {
+        setTableRows([])
+      }
+    } catch (error) {
+      console.error("Error loading table rows:", error)
+      // Fallback to issues_json
+      const mostRecentAudit = audits.length > 0 ? audits[0] : null
+      const allIssues = mostRecentAudit?.issues_json?.groups || []
+      setTableRows(transformAuditToTableRows(allIssues))
+    } finally {
+      setTableRowsLoading(false)
+    }
+  }
+
   const loadHealthScore = async (token: string) => {
     // Load health score for all authenticated users
+    if (!selectedDomain) {
+      setHealthScoreData(null)
+      return
+    }
+    
     setHealthScoreLoading(true)
     try {
-      const response = await fetch('/api/health-score?days=30', {
+      const response = await fetch(`/api/health-score?days=30&domain=${encodeURIComponent(selectedDomain)}`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -271,75 +361,6 @@ export default function DashboardPage() {
     }
   }
 
-  const handleDuplicate = async (guidelineId: string) => {
-    try {
-      const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return
-
-      const response = await fetch('/api/guidelines', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
-        },
-        body: JSON.stringify({ duplicateFromId: guidelineId })
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to duplicate')
-      }
-
-      toast({
-        title: "Duplicated",
-        description: "Guideline duplicated successfully"
-      })
-
-      await loadGuidelines(session.access_token)
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to duplicate guideline",
-        variant: "destructive"
-      })
-    }
-  }
-
-  const handleDelete = async (guidelineId: string) => {
-    if (!confirm("Are you sure you want to delete this guideline?")) return
-
-    setDeletingId(guidelineId)
-    try {
-      const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return
-
-      const response = await fetch(`/api/guidelines/${guidelineId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`
-        }
-      })
-
-      if (!response.ok) throw new Error('Failed to delete')
-
-      toast({
-        title: "Deleted",
-        description: "Guideline deleted successfully"
-      })
-
-      await loadGuidelines(session.access_token)
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to delete guideline",
-        variant: "destructive"
-      })
-    } finally {
-      setDeletingId(null)
-    }
-  }
 
   const handleRerunAudit = async (auditId: string, domain: string) => {
     try {
@@ -487,42 +508,35 @@ export default function DashboardPage() {
             <Skeleton className="h-10 w-48 mb-4" />
           </div>
           <div className="px-4 lg:px-6 space-y-8">
-            <Tabs defaultValue="audit" className="space-y-8">
-              <TabsList>
-                <Skeleton className="h-10 w-24" />
-                <Skeleton className="h-10 w-32 ml-2" />
-              </TabsList>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between mb-4">
+                <Skeleton className="h-8 w-40" />
+                <Skeleton className="h-10 w-32" />
+              </div>
               
-              <TabsContent value="audit" className="space-y-4">
-                <div className="flex items-center justify-between mb-4">
-                  <Skeleton className="h-8 w-40" />
-                  <Skeleton className="h-10 w-32" />
-                </div>
-                
-                <div className="grid gap-4">
-                  {[1, 2, 3].map((i) => (
-                    <Card key={i} className="border border-border">
-                      <CardHeader>
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1 space-y-3">
-                            <Skeleton className="h-8 w-64" />
-                            <div className="flex items-center gap-4">
-                              <Skeleton className="h-4 w-32" />
-                              <Skeleton className="h-4 w-24" />
-                              <Skeleton className="h-4 w-28" />
-                            </div>
-                          </div>
-                          <div className="flex gap-2">
-                            <Skeleton className="h-9 w-24" />
-                            <Skeleton className="h-9 w-9" />
+              <div className="grid gap-4">
+                {[1, 2, 3].map((i) => (
+                  <Card key={i} className="border border-border">
+                    <CardHeader>
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 space-y-3">
+                          <Skeleton className="h-8 w-64" />
+                          <div className="flex items-center gap-4">
+                            <Skeleton className="h-4 w-32" />
+                            <Skeleton className="h-4 w-24" />
+                            <Skeleton className="h-4 w-28" />
                           </div>
                         </div>
-                      </CardHeader>
-                    </Card>
-                  ))}
-                </div>
-              </TabsContent>
-            </Tabs>
+                        <div className="flex gap-2">
+                          <Skeleton className="h-9 w-24" />
+                          <Skeleton className="h-9 w-9" />
+                        </div>
+                      </div>
+                    </CardHeader>
+                  </Card>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -531,8 +545,7 @@ export default function DashboardPage() {
 
   // Get most recent audit for table display
   const mostRecentAudit = audits.length > 0 ? audits[0] : null
-  const allIssues = mostRecentAudit?.issues_json?.groups || []
-  const tableRows = transformAuditToTableRows(allIssues)
+  // tableRows are now loaded via loadTableRowsForAudit
   const previousScore = healthScoreData?.data && healthScoreData.data.length > 1 
     ? healthScoreData.data[healthScoreData.data.length - 2]?.score 
     : undefined
@@ -550,98 +563,7 @@ export default function DashboardPage() {
               </div>
             )}
 
-            <Tabs defaultValue="audit" className="flex flex-1 flex-col" onValueChange={(value) => {
-              if (value === 'audit') {
-                try {
-                  posthog.capture('audit_viewed', {
-                    audit_count: audits.length,
-                    plan: plan
-                  })
-                } catch {}
-              }
-            }}>
-              <div className="px-4 lg:px-6 pt-4">
-                <TabsList>
-                  <TabsTrigger value="audit">Audit</TabsTrigger>
-                  <TabsTrigger value="guidelines">Guidelines</TabsTrigger>
-                </TabsList>
-              </div>
-
-              <TabsContent value="guidelines" className="flex flex-1 flex-col gap-4 py-4 md:gap-6 md:py-6 px-4 lg:px-6">
-            {guidelines.length === 0 ? (
-              <Card className="border border-border">
-                <CardContent className="pt-6">
-                  <div className="text-center py-12">
-                    <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                    <h3 className="font-serif text-2xl font-semibold mb-2">No guidelines yet</h3>
-                    <p className="text-muted-foreground mb-6">
-                      Create your first brand voice guideline to get started
-                    </p>
-                    <Button asChild variant="outline">
-                      <Link href="/start">Create Audit</Link>
-                    </Button>
-                    <p className="text-xs text-muted-foreground mt-4">
-                      Note: Guidelines feature is currently deprioritized in favor of content audits
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid gap-4">
-                {guidelines.map((guideline) => (
-                  <Card key={guideline.id} className="border border-border">
-                    <CardHeader>
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <CardTitle className="font-serif text-2xl font-semibold mb-2">
-                            {guideline.title || "Untitled"}
-                          </CardTitle>
-                          <CardDescription>
-                            Last modified {formatDate(guideline.last_modified)}
-                          </CardDescription>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            asChild
-                          >
-                            <Link href={`/guidelines/${guideline.id}`}>
-                              Open
-                            </Link>
-                          </Button>
-                          {plan === 'pro' && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDuplicate(guideline.id)}
-                              disabled={deletingId === guideline.id}
-                            >
-                              <Copy className="h-4 w-4" />
-                            </Button>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDelete(guideline.id)}
-                            disabled={deletingId === guideline.id}
-                          >
-                            {deletingId === guideline.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="h-4 w-4" />
-                            )}
-                          </Button>
-                        </div>
-                      </div>
-                    </CardHeader>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </TabsContent>
-
-              <TabsContent value="audit" className="flex flex-1 flex-col gap-4 py-4 md:gap-6 md:py-6">
+            <div className="flex flex-1 flex-col gap-4 py-4 md:gap-6 md:py-6">
                 <div className="flex items-center justify-between px-4 lg:px-6">
                   <h2 className="font-serif text-2xl font-semibold">Content Audits</h2>
                   <div className="flex items-center gap-3">
@@ -673,43 +595,6 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* Domain Management Section */}
-                {domains.length > 0 && (
-                  <div className="px-4 lg:px-6">
-                    <Card className="border border-border">
-                      <CardHeader>
-                        <CardTitle className="font-serif text-xl font-semibold">Your Domains</CardTitle>
-                        <CardDescription>
-                          Manage your audited domains. Delete a domain to free up a slot for a new one.
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-2">
-                          {domains.map((domain) => (
-                            <div key={domain} className="flex items-center justify-between py-2 px-3 rounded-md border border-border">
-                              <span className="text-sm font-medium">{domain}</span>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  setDomainToDelete(domain)
-                                  setShowDeleteDialog(true)
-                                }}
-                                disabled={deletingDomain === domain}
-                              >
-                                {deletingDomain === domain ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Trash2 className="h-4 w-4" />
-                                )}
-                              </Button>
-                            </div>
-                          ))}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </div>
-                )}
 
                 {/* Health Score Section - Available to all authenticated users */}
                 <HealthScoreCards
@@ -751,12 +636,11 @@ export default function DashboardPage() {
                     <AuditTable
                       data={tableRows}
                       auditId={mostRecentAudit?.id}
-                      totalIssues={allIssues.length}
+                      totalIssues={tableRows.reduce((sum, row) => sum + (row.count || 0), 0)}
                     />
                   </div>
                 )}
-                  </TabsContent>
-            </Tabs>
+            </div>
           </div>
 
       {/* Domain Deletion Confirmation Dialog */}

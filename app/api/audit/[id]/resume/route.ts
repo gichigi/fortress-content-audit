@@ -83,6 +83,24 @@ export async function POST(
 
     // If completed, update the database
     if (result.status === 'completed') {
+      // Filter out ignored instances if domain exists
+      let filteredInstances = result.instances || []
+      if (auditRun?.domain) {
+        const { data: ignoredStates } = await supabaseAdmin
+          .from('audit_issue_states')
+          .select('signature')
+          .eq('user_id', userId)
+          .eq('domain', auditRun.domain)
+          .eq('state', 'ignored')
+
+        if (ignoredStates && ignoredStates.length > 0) {
+          const ignoredSignatures = new Set(ignoredStates.map((s) => s.signature))
+          filteredInstances = (result.instances || []).filter((instance) => {
+            return !ignoredSignatures.has(instance.signature)
+          })
+        }
+      }
+
       const updatedIssuesJson = {
         groups: result.groups,
         auditedUrls: result.auditedUrls || [],
@@ -101,6 +119,37 @@ export async function POST(
       if (updateErr) {
         console.error('[Resume] Failed to update audit run:', updateErr)
         return NextResponse.json({ error: 'Failed to update audit' }, { status: 500 })
+      }
+
+      // Save instances to audit_issues table
+      if (filteredInstances.length > 0) {
+        try {
+          const instancesToInsert = filteredInstances.map((instance) => ({
+            audit_id: id,
+            category: instance.category,
+            severity: instance.severity,
+            title: instance.title,
+            url: instance.url,
+            snippet: instance.snippet,
+            impact: instance.impact || null,
+            fix: instance.fix || null,
+            signature: instance.signature,
+          }))
+
+          const { error: instancesErr } = await (supabaseAdmin as any)
+            .from('audit_issues')
+            .insert(instancesToInsert)
+
+          if (instancesErr) {
+            console.error('[Resume] Failed to save instances:', instancesErr)
+            // Don't fail the request - instances are non-critical for backward compatibility
+          } else {
+            console.log(`[Resume] Saved ${instancesToInsert.length} instances to audit_issues table`)
+          }
+        } catch (error) {
+          console.error('[Resume] Error saving instances:', error)
+          // Don't fail the request
+        }
       }
 
       return NextResponse.json({

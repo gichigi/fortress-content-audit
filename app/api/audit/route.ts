@@ -4,7 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { validateUrl } from '@/lib/url-validation'
 import { auditSite, miniAudit, AuditTier, AuditResult } from '@/lib/audit'
 import PostHogClient from '@/lib/posthog'
-import { generateIssueSignature } from '@/lib/issue-signature'
+import { generateIssueSignature, generateInstanceSignature } from '@/lib/issue-signature'
 import { AuditIssueGroup } from '@/lib/audit-table-adapter'
 import { checkDailyLimit, checkDomainLimit, isNewDomain, incrementAuditUsage, getAuditUsage } from '@/lib/audit-rate-limit'
 import { createMockAuditData } from '@/lib/mock-audit-data'
@@ -80,6 +80,10 @@ export async function POST(request: Request) {
       else auditTier = 'FREE'
     }
 
+    // Normalize domain for storage (remove protocol to match health score API format)
+    // Health score API queries with normalized domain (no protocol), so we must store it the same way
+    const storageDomain = normalized.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '')
+
     // Rate limiting checks (only for authenticated users)
     if (isAuthenticated && userId) {
       // Check if domain is new (use storageDomain to match database format)
@@ -151,10 +155,6 @@ export async function POST(request: Request) {
         ? await miniAudit(normalized)
         : await auditSite(normalized, auditTier)
     }
-
-    // Normalize domain for storage (remove protocol to match health score API format)
-    // Health score API queries with normalized domain (no protocol), so we must store it the same way
-    const storageDomain = normalized.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '')
     
     // Extract brand name/title
     // Simple heuristic: extract domain name without TLD
@@ -202,6 +202,8 @@ export async function POST(request: Request) {
 
     // Filter out ignored issues for authenticated users
     let filteredGroups = result.groups || []
+    let filteredInstances = result.instances || []
+    
     if (isAuthenticated && userId && storageDomain) {
       // Query ignored issue signatures for this user/domain
       const { data: ignoredStates } = await supabaseAdmin
@@ -214,13 +216,18 @@ export async function POST(request: Request) {
       if (ignoredStates && ignoredStates.length > 0) {
         const ignoredSignatures = new Set(ignoredStates.map((s) => s.signature))
         
-        // Filter out groups whose signatures match ignored states
+        // Filter out groups whose signatures match ignored states (legacy)
         filteredGroups = result.groups.filter((group: AuditIssueGroup) => {
           const signature = generateIssueSignature(group)
           return !ignoredSignatures.has(signature)
         })
 
-        console.log(`[Audit] Filtered out ${result.groups.length - filteredGroups.length} ignored issues`)
+        // Filter out instances whose signatures match ignored states
+        filteredInstances = (result.instances || []).filter((instance) => {
+          return !ignoredSignatures.has(instance.signature)
+        })
+
+        console.log(`[Audit] Filtered out ${result.groups.length - filteredGroups.length} ignored issue groups, ${(result.instances?.length || 0) - filteredInstances.length} ignored instances`)
       }
     }
 
@@ -257,6 +264,37 @@ export async function POST(request: Request) {
     } else {
       runId = run?.id || null
       console.log(`[Audit] Saved audit run: ${runId}, authenticated: ${isAuthenticated}, tier: ${auditTier}`)
+      
+      // Save instances to audit_issues table
+      if (runId && filteredInstances.length > 0) {
+        try {
+          const instancesToInsert = filteredInstances.map((instance) => ({
+            audit_id: runId,
+            category: instance.category,
+            severity: instance.severity,
+            title: instance.title,
+            url: instance.url,
+            snippet: instance.snippet,
+            impact: instance.impact || null,
+            fix: instance.fix || null,
+            signature: instance.signature,
+          }))
+
+          const { error: instancesErr } = await (supabaseAdmin as any)
+            .from('audit_issues')
+            .insert(instancesToInsert)
+
+          if (instancesErr) {
+            console.error('[Audit] Failed to save instances:', instancesErr)
+            // Don't fail the request - instances are non-critical for backward compatibility
+          } else {
+            console.log(`[Audit] Saved ${instancesToInsert.length} instances to audit_issues table`)
+          }
+        } catch (error) {
+          console.error('[Audit] Error saving instances:', error)
+          // Don't fail the request
+        }
+      }
       
       // Increment audit usage (only for authenticated users, only on successful save)
       if (isAuthenticated && userId && runId) {

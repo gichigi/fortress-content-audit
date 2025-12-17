@@ -1,5 +1,8 @@
 import OpenAI from "openai"
 import { z } from "zod"
+import { deriveCategory } from "./audit-table-adapter"
+import { generateInstanceSignature } from "./issue-signature"
+import { AuditIssueInstance } from "@/types/fortress"
 
 // ============================================================================
 // Deep Research Content Audit
@@ -70,6 +73,7 @@ export type AuditResult = z.infer<typeof AuditResultSchema> & {
   responseId?: string
   status?: "completed" | "in_progress" | "failed"
   tier?: AuditTier
+  instances?: AuditIssueInstance[] // Extracted instances from groups
 }
 
 // JSON schema for OpenAI structured output
@@ -106,7 +110,7 @@ const AUDIT_JSON_SCHEMA = {
     pagesScanned: { type: "number" },
     auditedUrls: { type: "array", items: { type: "string" } },
   },
-  required: ["groups", "pagesScanned"],
+  required: ["groups", "pagesScanned", "auditedUrls"],
   additionalProperties: false,
 }
 
@@ -143,19 +147,16 @@ Return your findings as JSON matching this structure:
 
   try {
     // Use deep research model with tool call limit for cost control
+    // Note: o4-mini-deep-research doesn't support json_schema format,
+    // so we rely on prompt engineering and parse JSON from output_text
     const params: any = {
       model: tier.model,
       input,
       tools: [{ type: "web_search_preview" }],
       max_tool_calls: tier.maxToolCalls,
       reasoning: { summary: "auto" },
-      text: {
-        format: {
-          type: "json_schema",
-          name: "audit_result",
-          schema: AUDIT_JSON_SCHEMA,
-        },
-      },
+      // No text.format for o4-mini - it doesn't support structured outputs
+      // The prompt already instructs JSON format, we'll parse it manually
     }
     const response = await openai.responses.create(params)
 
@@ -324,6 +325,42 @@ function normalizeDomain(domain: string): string {
   }
 }
 
+/**
+ * Extract instances from issue groups
+ * Expands each group's examples into individual instances
+ */
+function extractInstancesFromGroups(
+  groups: z.infer<typeof AuditResultSchema>['groups'],
+  auditId?: string
+): Array<Omit<AuditIssueInstance, 'id' | 'audit_id' | 'created_at'>> {
+  const instances: Omit<AuditIssueInstance, 'id' | 'audit_id' | 'created_at'>[] = []
+
+  for (const group of groups) {
+    const category = deriveCategory(group.title)
+
+    for (const example of group.examples || []) {
+      const signature = generateInstanceSignature({
+        url: example.url,
+        title: group.title,
+        snippet: example.snippet,
+      })
+
+      instances.push({
+        category,
+        severity: group.severity,
+        title: group.title,
+        url: example.url,
+        snippet: example.snippet,
+        impact: group.impact,
+        fix: group.fix,
+        signature,
+      })
+    }
+  }
+
+  return instances
+}
+
 // Parse and validate audit response from OpenAI
 function parseAuditResponse(response: any, tier: AuditTier): AuditResult {
   if (!response.output_text) {
@@ -353,7 +390,10 @@ function parseAuditResponse(response: any, tier: AuditTier): AuditResult {
   const pagesScanned = typeof parsed.pagesScanned === "number" ? parsed.pagesScanned : 0
   const auditedUrls = Array.isArray(parsed.auditedUrls) ? parsed.auditedUrls : []
 
-  console.log(`[Audit] Parsed ${validated.groups.length} issue groups from ${pagesScanned} pages`)
+  // Extract instances from groups
+  const instances = extractInstancesFromGroups(validated.groups)
+
+  console.log(`[Audit] Parsed ${validated.groups.length} issue groups (${instances.length} instances) from ${pagesScanned} pages`)
 
   return {
     groups: validated.groups,
@@ -362,6 +402,7 @@ function parseAuditResponse(response: any, tier: AuditTier): AuditResult {
     responseId: response.id,
     status: "completed",
     tier,
+    instances: instances as any, // Type assertion - instances will have full structure when saved to DB
   }
 }
 

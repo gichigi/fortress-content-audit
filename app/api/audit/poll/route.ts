@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { pollAuditStatus, AuditTier } from '@/lib/audit'
-import { generateIssueSignature } from '@/lib/issue-signature'
+import { generateIssueSignature, generateInstanceSignature } from '@/lib/issue-signature'
 import { AuditIssueGroup } from '@/lib/audit-table-adapter'
 import { incrementAuditUsage, getAuditUsage } from '@/lib/audit-rate-limit'
 
@@ -80,6 +80,8 @@ export async function POST(request: Request) {
 
       // Filter out ignored issues for authenticated users
       let filteredGroups = result.groups || []
+      let filteredInstances = result.instances || []
+      
       if (auditRun?.domain) {
         // Query ignored issue signatures for this user/domain
         const { data: ignoredStates } = await supabaseAdmin
@@ -92,13 +94,18 @@ export async function POST(request: Request) {
         if (ignoredStates && ignoredStates.length > 0) {
           const ignoredSignatures = new Set(ignoredStates.map((s) => s.signature))
           
-          // Filter out groups whose signatures match ignored states
+          // Filter out groups whose signatures match ignored states (legacy)
           filteredGroups = result.groups.filter((group: AuditIssueGroup) => {
             const signature = generateIssueSignature(group)
             return !ignoredSignatures.has(signature)
           })
 
-          console.log(`[Poll] Filtered out ${result.groups.length - filteredGroups.length} ignored issues`)
+          // Filter out instances whose signatures match ignored states
+          filteredInstances = (result.instances || []).filter((instance) => {
+            return !ignoredSignatures.has(instance.signature)
+          })
+
+          console.log(`[Poll] Filtered out ${result.groups.length - filteredGroups.length} ignored issue groups, ${(result.instances?.length || 0) - filteredInstances.length} ignored instances`)
         }
       }
 
@@ -121,6 +128,37 @@ export async function POST(request: Request) {
         console.error('[Poll] Failed to update audit run:', updateErr)
       } else {
         console.log(`[Poll] Updated audit run: ${runId}`)
+        
+        // Save instances to audit_issues table
+        if (filteredInstances.length > 0) {
+          try {
+            const instancesToInsert = filteredInstances.map((instance) => ({
+              audit_id: runId,
+              category: instance.category,
+              severity: instance.severity,
+              title: instance.title,
+              url: instance.url,
+              snippet: instance.snippet,
+              impact: instance.impact || null,
+              fix: instance.fix || null,
+              signature: instance.signature,
+            }))
+
+            const { error: instancesErr } = await (supabaseAdmin as any)
+              .from('audit_issues')
+              .insert(instancesToInsert)
+
+            if (instancesErr) {
+              console.error('[Poll] Failed to save instances:', instancesErr)
+              // Don't fail the request - instances are non-critical for backward compatibility
+            } else {
+              console.log(`[Poll] Saved ${instancesToInsert.length} instances to audit_issues table`)
+            }
+          } catch (error) {
+            console.error('[Poll] Error saving instances:', error)
+            // Don't fail the request
+          }
+        }
         
         // Increment audit usage when audit completes (only once per audit)
         // Check if we've already incremented by checking if audit was just completed

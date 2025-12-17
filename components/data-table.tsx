@@ -151,6 +151,23 @@ function createColumns(
       enableHiding: false,
     },
     {
+      accessorKey: "category",
+      header: "Category",
+      cell: ({ row }) => {
+        const category = row.original.category
+        if (!category) return null
+        return (
+          <Badge variant="outline" className="text-xs">
+            {category}
+          </Badge>
+        )
+      },
+      filterFn: (row, id, value) => {
+        const category = row.original.category || ''
+        return category.toLowerCase().includes(value.toLowerCase())
+      },
+    },
+    {
       accessorKey: "severity",
       header: "Severity",
       cell: ({ row }) => (
@@ -380,8 +397,36 @@ function ExpandableRow({ row }: { row: Row<AuditTableRow> }) {
                     </div>
                   </div>
 
-                  {/* Evidence Section */}
-                  {row.original.examples && row.original.examples.length > 0 && (
+                  {/* Evidence Section - Show instances if available, otherwise show examples */}
+                  {row.original.instances && row.original.instances.length > 0 ? (
+                    <div>
+                      <h4 className="text-sm font-serif font-semibold mb-4">Instances Found ({row.original.instances.length})</h4>
+                      <div className="space-y-3 max-h-96 overflow-y-auto">
+                        {row.original.instances.slice(0, 20).map((instance, idx) => (
+                          <Card key={idx} className="border">
+                            <CardContent className="p-3">
+                              <p className="text-sm text-foreground/80 italic mb-2 leading-relaxed">
+                                "{instance.snippet}"
+                              </p>
+                              <a
+                                href={instance.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-muted-foreground font-mono hover:text-foreground transition-colors break-all"
+                              >
+                                {instance.url}
+                              </a>
+                            </CardContent>
+                          </Card>
+                        ))}
+                        {row.original.instances.length > 20 && (
+                          <p className="text-xs text-muted-foreground text-center py-2">
+                            Showing first 20 of {row.original.instances.length} instances
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ) : row.original.examples && row.original.examples.length > 0 ? (
                     <div>
                       <h4 className="text-sm font-serif font-semibold mb-4">Evidence Found</h4>
                       <div className="space-y-4">
@@ -404,7 +449,7 @@ function ExpandableRow({ row }: { row: Row<AuditTableRow> }) {
                         ))}
                       </div>
                     </div>
-                  )}
+                  ) : null}
 
                   {/* Fix/Recommendation Section */}
                   {row.original.fix && (

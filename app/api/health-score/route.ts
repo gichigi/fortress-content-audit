@@ -145,16 +145,16 @@ export async function GET(request: Request) {
     })
 
     // Calculate score for each date
-    auditsByDate.forEach((dateAudits, dateKey) => {
+    for (const [dateKey, dateAudits] of auditsByDate.entries()) {
       // Use aggregated calculation for multiple audits on same day
-      const result = calculateAggregatedHealthScore(dateAudits, ignoredSignatures)
+      const result = await calculateAggregatedHealthScore(dateAudits, ignoredSignatures)
       
       scoresByDate.set(dateKey, {
         date: dateKey,
         score: result.score,
         metrics: result.metrics,
       })
-    })
+    }
 
     // Convert to array and sort by date
     const data = Array.from(scoresByDate.values()).sort((a, b) => 
