@@ -49,6 +49,7 @@ export async function GET(
 
     if (instancesErr) {
       console.error('[Audit] Error fetching instances:', instancesErr)
+      console.error('[Audit] Audit ID:', id)
       // Fallback to issues_json for backward compatibility
       const groups = Array.isArray(run.issues_json?.groups) ? run.issues_json.groups : []
       const gatedGroups = plan === 'free' ? groups.slice(0, 5) : groups

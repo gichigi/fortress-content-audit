@@ -377,7 +377,99 @@ function ExpandableRow({ row }: { row: Row<AuditTableRow> }) {
           </TableCell>
         ))}
       </TableRow>
-      {isOpen && (
+      {isOpen && row.original.instances && row.original.instances.length > 0 && (
+        <>
+          {/* Render instances as nested table rows */}
+          {row.original.instances.map((instance, idx) => {
+            const visibleCells = row.getVisibleCells()
+            return (
+              <TableRow 
+                key={`instance-${row.id}-${idx}`} 
+                className="bg-muted/20 hover:bg-muted/30"
+                data-nested="true"
+              >
+                {/* Match exact column structure from parent row */}
+                {visibleCells.map((cell, cellIdx) => {
+                  // First column: select checkbox with indent
+                  if (cellIdx === 0) {
+                    return (
+                      <TableCell key={cell.id} className="w-12 pl-8">
+                        <div className="flex items-center gap-2">
+                          <div className="w-4 h-px bg-border"></div>
+                          <Checkbox disabled aria-label="Select instance" />
+                        </div>
+                      </TableCell>
+                    )
+                  }
+                  // Second column: snippet (Issue column)
+                  if (cellIdx === 1) {
+                    return (
+                      <TableCell key={cell.id}>
+                        <p className="text-sm text-foreground/80 italic leading-relaxed pl-4">
+                          "{instance.snippet}"
+                        </p>
+                      </TableCell>
+                    )
+                  }
+                  // Third column: category
+                  if (cellIdx === 2) {
+                    return (
+                      <TableCell key={cell.id}>
+                        <Badge variant="outline" className="text-xs">
+                          {instance.category}
+                        </Badge>
+                      </TableCell>
+                    )
+                  }
+                  // Fourth column: severity
+                  if (cellIdx === 3) {
+                    return (
+                      <TableCell key={cell.id}>
+                        <Badge
+                          variant={getSeverityBadgeVariant(instance.severity)}
+                          className="px-2 py-0.5 text-xs font-semibold uppercase"
+                        >
+                          {instance.severity}
+                        </Badge>
+                      </TableCell>
+                    )
+                  }
+                  // Fifth column: impact (show URL for instances)
+                  if (cellIdx === 4) {
+                    return (
+                      <TableCell key={cell.id}>
+                        <a
+                          href={instance.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-muted-foreground font-mono hover:text-foreground transition-colors break-all max-w-md truncate block"
+                        >
+                          {instance.url}
+                        </a>
+                      </TableCell>
+                    )
+                  }
+                  // Sixth column: count (empty for instances)
+                  if (cellIdx === 5) {
+                    return (
+                      <TableCell key={cell.id} className="text-right">
+                        —
+                      </TableCell>
+                    )
+                  }
+                  // Last column: actions (empty for instances)
+                  return (
+                    <TableCell key={cell.id}>
+                      {/* Instance-level actions could go here */}
+                    </TableCell>
+                  )
+                })}
+              </TableRow>
+            )
+          })}
+        </>
+      )}
+      {isOpen && (!row.original.instances || row.original.instances.length === 0) && (
         <TableRow aria-labelledby={`row-${row.id}`}>
           <TableCell colSpan={row.getVisibleCells().length} className="p-0 bg-muted/30">
             <Collapsible open={isOpen} onOpenChange={setIsOpen}>
@@ -397,36 +489,8 @@ function ExpandableRow({ row }: { row: Row<AuditTableRow> }) {
                     </div>
                   </div>
 
-                  {/* Evidence Section - Show instances if available, otherwise show examples */}
-                  {row.original.instances && row.original.instances.length > 0 ? (
-                    <div>
-                      <h4 className="text-sm font-serif font-semibold mb-4">Instances Found ({row.original.instances.length})</h4>
-                      <div className="space-y-3 max-h-96 overflow-y-auto">
-                        {row.original.instances.slice(0, 20).map((instance, idx) => (
-                          <Card key={idx} className="border">
-                            <CardContent className="p-3">
-                              <p className="text-sm text-foreground/80 italic mb-2 leading-relaxed">
-                                "{instance.snippet}"
-                              </p>
-                              <a
-                                href={instance.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs text-muted-foreground font-mono hover:text-foreground transition-colors break-all"
-                              >
-                                {instance.url}
-                              </a>
-                            </CardContent>
-                          </Card>
-                        ))}
-                        {row.original.instances.length > 20 && (
-                          <p className="text-xs text-muted-foreground text-center py-2">
-                            Showing first 20 of {row.original.instances.length} instances
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  ) : row.original.examples && row.original.examples.length > 0 ? (
+                  {/* Examples fallback */}
+                  {row.original.examples && row.original.examples.length > 0 && (
                     <div>
                       <h4 className="text-sm font-serif font-semibold mb-4">Evidence Found</h4>
                       <div className="space-y-4">
@@ -449,7 +513,7 @@ function ExpandableRow({ row }: { row: Row<AuditTableRow> }) {
                         ))}
                       </div>
                     </div>
-                  ) : null}
+                  )}
 
                   {/* Fix/Recommendation Section */}
                   {row.original.fix && (
@@ -639,6 +703,9 @@ export function DataTable({
         ...row,
         state,
         signature,
+        // Explicitly preserve instances for nested row display
+        instances: row.instances,
+        category: row.category,
       }
     })
   }, [initialData, issueStates])

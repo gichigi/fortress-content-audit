@@ -173,6 +173,11 @@ export function transformInstancesToTableRows(
   issueStates?: Map<string, IssueState> | Record<string, IssueState>,
   groupBy: 'category' | 'url' = 'category'
 ): AuditTableRow[] {
+  // Handle empty instances array
+  if (!instances || instances.length === 0) {
+    return []
+  }
+
   // Convert Record to Map if needed
   const statesMap = issueStates instanceof Map 
     ? issueStates 
@@ -184,6 +189,12 @@ export function transformInstancesToTableRows(
   const groups = new Map<string, AuditIssueInstance[]>()
   
   instances.forEach((instance) => {
+    // Skip invalid instances
+    if (!instance || !instance.category || !instance.severity) {
+      console.warn('[transformInstancesToTableRows] Skipping invalid instance:', instance)
+      return
+    }
+
     const key = groupBy === 'category' 
       ? `${instance.category}-${instance.severity}`
       : instance.url
