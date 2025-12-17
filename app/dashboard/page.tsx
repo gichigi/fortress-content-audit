@@ -537,7 +537,7 @@ export default function DashboardPage() {
                           : undefined
                       }
                     >
-                      <Link href="/">Run New Audit</Link>
+                      <Link href="/">Rerun Audit</Link>
                     </Button>
                   </div>
                 </div>

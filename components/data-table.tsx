@@ -30,16 +30,13 @@ import {
   Loader2,
   MoreVerticalIcon,
   SearchIcon,
-  SparklesIcon,
   XIcon,
 } from "lucide-react"
 import { toast } from "sonner"
 
-import { useMobile } from "@/hooks/use-mobile"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Collapsible,
@@ -63,17 +60,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Separator } from "@/components/ui/separator"
-import {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet"
 import {
   Table,
   TableBody,
@@ -144,38 +130,24 @@ function createColumns(
       accessorKey: "title",
       header: "Issue",
       cell: ({ row }) => {
-        return <TableCellViewer item={row.original} />
+        return <div className="font-medium">{row.original.title}</div>
       },
       enableHiding: false,
     },
     {
-      accessorKey: "category",
-      header: "Category",
+      accessorKey: "severity",
+      header: "Severity",
       cell: ({ row }) => {
-        const category = row.original.category
-        if (!category) return null
+        const severityLabel = row.original.severity === 'high' ? 'critical' : row.original.severity
         return (
-          <Badge variant="outline" className="text-xs">
-            {category}
+          <Badge
+            variant={getSeverityBadgeVariant(row.original.severity)}
+            className="px-2 py-0.5 text-xs font-semibold uppercase"
+          >
+            {severityLabel}
           </Badge>
         )
       },
-      filterFn: (row, id, value) => {
-        const category = row.original.category || ''
-        return category.toLowerCase().includes(value.toLowerCase())
-      },
-    },
-    {
-      accessorKey: "severity",
-      header: "Severity",
-      cell: ({ row }) => (
-        <Badge
-          variant={getSeverityBadgeVariant(row.original.severity)}
-          className="px-2 py-0.5 text-xs font-semibold uppercase"
-        >
-          {row.original.severity}
-        </Badge>
-      ),
       sortingFn: (rowA, rowB) => {
         const order = { high: 0, medium: 1, low: 2 }
         return order[rowA.original.severity] - order[rowB.original.severity]
@@ -192,12 +164,40 @@ function createColumns(
     },
     {
       accessorKey: "locations",
-      header: () => <div className="w-full text-right">Locations</div>,
+      header: () => <div className="w-full text-right">Pages</div>,
       cell: ({ row }) => {
-        const locationCount = row.original.locations?.length || 0
+        const locations = row.original.locations || []
+        const locationCount = locations.length
+        
+        if (locationCount === 0) {
+          return <div className="text-right text-sm text-muted-foreground">—</div>
+        }
+        
+        if (locationCount === 1) {
+          // Single page: show URL (truncated if long)
+          const url = locations[0].url
+          const maxLength = 50
+          const displayUrl = url.length > maxLength ? `${url.substring(0, maxLength)}...` : url
+          return (
+            <div className="text-right">
+              <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-primary hover:underline break-all"
+                title={url}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {displayUrl}
+              </a>
+            </div>
+          )
+        }
+        
+        // Multiple pages: show count only (user can expand to see URLs)
         return (
           <div className="text-right font-medium">
-            {locationCount > 1 ? `${locationCount} pages` : '1 page'}
+            {locationCount} pages
           </div>
         )
       },
@@ -228,14 +228,14 @@ function createColumns(
 
 // Issue actions dropdown component
 function IssueActionsDropdown({
-  signature,
-  currentState,
-  onUpdateState,
+  issueId,
+  currentStatus,
+  onUpdateStatus,
   currentStateTab,
 }: {
-  signature: string
-  currentState: IssueState
-  onUpdateState: (signature: string, state: IssueState) => Promise<void>
+  issueId: string
+  currentStatus: IssueStatus
+  onUpdateStatus: (issueId: string, status: IssueStatus) => Promise<void>
   currentStateTab?: 'active' | 'ignored' | 'resolved' | 'all'
 }) {
   const [ignoreDialogOpen, setIgnoreDialogOpen] = React.useState(false)
@@ -244,7 +244,7 @@ function IssueActionsDropdown({
   const handleIgnore = async () => {
     setIsUpdating(true)
     try {
-      await onUpdateState(signature, 'ignored')
+      await onUpdateStatus(issueId, 'ignored')
       setIgnoreDialogOpen(false)
       toast.success('Issue ignored')
     } catch (error) {
@@ -257,7 +257,7 @@ function IssueActionsDropdown({
   const handleResolve = async () => {
     setIsUpdating(true)
     try {
-      await onUpdateState(signature, 'resolved')
+      await onUpdateStatus(issueId, 'resolved')
       toast.success('Issue marked as resolved')
     } catch (error) {
       toast.error('Failed to resolve issue')
@@ -269,7 +269,7 @@ function IssueActionsDropdown({
   const handleRestore = async () => {
     setIsUpdating(true)
     try {
-      await onUpdateState(signature, 'active')
+      await onUpdateStatus(issueId, 'active')
       toast.success('Issue restored')
     } catch (error) {
       toast.error('Failed to restore issue')
@@ -377,15 +377,12 @@ function ExpandableRow({ row }: { row: Row<AuditTableRow> }) {
         role={isMultiLocation ? "button" : undefined}
       >
         {row.getVisibleCells().map((cell) => {
-          // In the Issue/Title column, show location count badge for multi-location issues
+          // In the Issue/Title column, show chevron for multi-location issues
           if (cell.column.id === 'title' && isMultiLocation) {
             return (
               <TableCell key={cell.id}>
                 <div className="flex items-center gap-2">
                   {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  <Badge variant="secondary" className="text-xs">
-                    {locationCount} pages
-                  </Badge>
                   <ChevronDownIcon className={`h-3 w-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
                 </div>
               </TableCell>
@@ -401,7 +398,15 @@ function ExpandableRow({ row }: { row: Row<AuditTableRow> }) {
             <ul className="space-y-2 py-2">
               {row.original.locations.map((loc, i) => (
                 <li key={i} className="text-sm">
-                  <span className="font-mono text-muted-foreground">{loc.url}</span>
+                  <a
+                    href={loc.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-mono text-primary hover:underline break-all"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {loc.url}
+                  </a>
                   <span className="ml-2 italic text-foreground/80">"{loc.snippet}"</span>
                 </li>
               ))}
@@ -428,12 +433,12 @@ export function DataTable({
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
     []
   )
-  // Sort by severity by default: High → Medium → Low
+  // Sort by severity by default: Critical → Medium → Low
   const severityOrder = { high: 0, medium: 1, low: 2 }
   const [sorting, setSorting] = React.useState<SortingState>([
     {
       id: "severity",
-      desc: false, // Ascending: High first
+      desc: false, // Ascending: Critical first
     },
   ])
   const [pagination, setPagination] = React.useState({
@@ -445,9 +450,12 @@ export function DataTable({
   const [isFiltering, setIsFiltering] = React.useState(false)
   const [globalFilter, setGlobalFilter] = React.useState("")
   const [data, setData] = React.useState(initialData)
+  // Store initial data in ref to avoid dependency issues
+  const initialDataRef = React.useRef(initialData)
 
-  // Update data when initialData changes
+  // Update data and ref when initialData changes
   React.useEffect(() => {
+    initialDataRef.current = initialData
     setData(initialData)
   }, [initialData])
 
@@ -463,12 +471,16 @@ export function DataTable({
       throw new Error('Not authenticated')
     }
 
+    // Store previous state for potential revert
+    let previousData: AuditTableRow[] | null = null
+
     // Optimistic update
-    setData(prevData => 
-      prevData.map(item => 
+    setData(prevData => {
+      previousData = prevData
+      return prevData.map(item => 
         item.id === issueId ? { ...item, status: newStatus } : item
       )
-    )
+    })
 
     try {
       const response = await fetch(`/api/audit/${auditId}/issues/${issueId}`, {
@@ -482,16 +494,24 @@ export function DataTable({
 
       if (!response.ok) {
         // Revert optimistic update on error
-        setData(initialData)
+        if (previousData) {
+          setData(previousData)
+        } else {
+          setData(initialDataRef.current)
+        }
         const error = await response.json().catch(() => ({ error: 'Failed to update status' }))
         throw new Error(error.error || 'Failed to update status')
       }
     } catch (error) {
       // Revert optimistic update on error
-      setData(initialData)
+      if (previousData) {
+        setData(previousData)
+      } else {
+        setData(initialDataRef.current)
+      }
       throw error
     }
-  }, [auditId, initialData])
+  }, [auditId])
 
   // Filter data by status first, then by severity
   const filteredByState = React.useMemo(() => {
@@ -694,7 +714,7 @@ export function DataTable({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Issues</SelectItem>
-            <SelectItem value="high">High</SelectItem>
+            <SelectItem value="high">Critical</SelectItem>
             <SelectItem value="medium">Medium</SelectItem>
             <SelectItem value="low">Low</SelectItem>
           </SelectContent>
@@ -712,7 +732,7 @@ export function DataTable({
             )}
           </TabsTrigger>
           <TabsTrigger value="high" className="gap-1">
-            High{" "}
+            Critical{" "}
             {severityCounts.high > 0 && (
               <Badge
                 variant="secondary"
@@ -782,18 +802,6 @@ export function DataTable({
         </div>
         </div>
         </div>
-        {/* Clear Selection Button */}
-        {table.getFilteredSelectedRowModel().rows.length > 0 && (
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => table.toggleAllPageRowsSelected(false)}
-            >
-              Clear Selection ({table.getFilteredSelectedRowModel().rows.length})
-            </Button>
-          </div>
-        )}
       </div>
       <TabsContent
         value={activeSeverityTab}
@@ -986,83 +994,3 @@ const chartConfig = {
   },
 } satisfies ChartConfig
 
-function TableCellViewer({ item }: { item: AuditTableRow }) {
-  const isMobile = useMobile()
-
-  return (
-    <Sheet>
-      <SheetTrigger asChild>
-        <Button variant="link" className="w-fit px-0 text-left text-foreground">
-          {item.title}
-        </Button>
-      </SheetTrigger>
-      <SheetContent side="right" className="flex flex-col">
-        <SheetHeader className="gap-1">
-          <SheetTitle className="font-serif">{item.title}</SheetTitle>
-          <div className="mt-1">
-            <Badge variant={getSeverityBadgeVariant(item.severity)}>
-              {item.severity.toUpperCase()}
-            </Badge>
-          </div>
-        </SheetHeader>
-        <div className="flex flex-1 flex-col gap-6 overflow-y-auto py-4 text-sm">
-          {/* Impact Section */}
-          {item.impact && (
-            <div>
-              <h4 className="text-sm font-serif font-semibold mb-2">Business Impact</h4>
-              <p className="text-sm text-muted-foreground">{item.impact}</p>
-            </div>
-          )}
-
-          {item.impact && <Separator />}
-
-          {/* Locations Section */}
-          {item.locations && item.locations.length > 0 && (
-            <div>
-              <h4 className="text-sm font-serif font-semibold mb-4">Locations Found</h4>
-              <div className="space-y-4">
-                {item.locations.map((location, idx) => (
-                  <Card key={idx} className="border">
-                    <CardContent className="p-4">
-                      <p className="text-sm text-foreground/80 italic mb-2 leading-relaxed">
-                        "{location.snippet}"
-                      </p>
-                      <a
-                        href={location.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-muted-foreground font-mono hover:text-foreground transition-colors break-all"
-                      >
-                        {location.url}
-                      </a>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {item.fix && <Separator />}
-
-          {/* Fix/Recommendation Section */}
-          {item.fix && (
-            <div>
-              <div className="flex items-start gap-2 mb-2">
-                <SparklesIcon className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-                <h4 className="text-sm font-serif font-semibold">Recommendation</h4>
-              </div>
-              <p className="text-sm text-foreground">{item.fix}</p>
-            </div>
-          )}
-        </div>
-        <SheetFooter className="mt-auto flex gap-2 sm:flex-col sm:space-x-0">
-          <SheetClose asChild>
-            <Button variant="outline" className="w-full">
-              Close
-            </Button>
-          </SheetClose>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
-  )
-}
