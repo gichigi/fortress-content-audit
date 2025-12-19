@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { FileText, Search, AlertCircle, CheckCircle2, Sparkles, LockKeyhole, Clock, Mail, Loader2 } from "lucide-react"
 import { createClient } from "@/lib/supabase-browser"
+import { EmptyAuditState } from "@/components/empty-audit-state"
 
 interface AuditResultsProps {
   results: any
@@ -484,15 +485,7 @@ export function AuditResults({
             )}
           </div>
         ) : (
-          <Card className="border-2 border-dashed">
-            <CardContent className="p-12 text-center">
-              <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto mb-4" />
-              <h3 className="font-serif text-2xl font-semibold mb-2">No issues found</h3>
-              <p className="text-muted-foreground">
-                Your content looks great! Keep up the good work.
-              </p>
-            </CardContent>
-          </Card>
+          <EmptyAuditState variant="card" />
         )}
       </div>
     </section>

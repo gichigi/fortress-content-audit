@@ -64,6 +64,7 @@ export async function POST(request: Request) {
         progress: {
           pagesScanned: result.pagesScanned || 0,
           issuesFound: result.issues?.length || 0,
+          auditedUrls: result.auditedUrls || [],
         },
       })
     }

@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Card, CardContent } from "@/components/ui/card"
 import { CheckCircle2, FileText, Search, AlertCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { InterstitialLoader } from "@/components/ui/interstitial-loader"
@@ -18,6 +17,7 @@ import { HealthScoreCards } from "@/components/health-score-cards"
 import { HealthScoreChart } from "@/components/health-score-chart"
 import { useHealthScoreMetrics } from "@/hooks/use-health-score-metrics"
 import { transformIssuesToTableRows } from "@/lib/audit-table-adapter"
+import { EmptyAuditState } from "@/components/empty-audit-state"
 
 // Client-side URL validation (simplified version of validateUrl)
 function validateUrlClient(input: string): { isValid: boolean; error?: string; normalizedUrl?: string } {
@@ -81,6 +81,10 @@ export default function Home() {
   const [sessionToken, setSessionToken] = useState<string | null>(null)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [authToken, setAuthToken] = useState<string | null>(null)
+  const [progressInfo, setProgressInfo] = useState<{ pagesScanned: number; pagesBeingCrawled: string[] }>({
+    pagesScanned: 0,
+    pagesBeingCrawled: []
+  })
   
   // For authenticated users, use the hook to fetch from database
   // For unauthenticated users, use issues directly from API response
@@ -109,6 +113,15 @@ export default function Home() {
   const totalIssues = isAuthenticated ? hookTotalIssues : responseTotalIssues
   const isLoading = isAuthenticated ? issuesLoading : false
 
+  // TEST: Force empty state via query param (remove after testing)
+  const [testEmptyState, setTestEmptyState] = useState(false)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('testEmpty') === 'true') {
+      setTestEmptyState(true)
+    }
+  }, [])
+
   // Calculate metrics using shared hook
   const metrics = useHealthScoreMetrics(tableRows)
 
@@ -121,6 +134,73 @@ export default function Home() {
     }
     checkAuth()
   }, [])
+
+  // Poll for audit progress when audit is in progress
+  useEffect(() => {
+    // Only poll if we have a responseId and audit is in progress
+    const responseId = auditResults?.responseId || auditResults?.meta?.responseId
+    if (!responseId || !loading) {
+      return
+    }
+
+    let pollInterval: NodeJS.Timeout | null = null
+
+    const pollStatus = async () => {
+      try {
+        const baseUrl =
+          typeof window !== 'undefined'
+            ? window.location.origin
+            : process.env.NEXT_PUBLIC_APP_URL || ''
+
+        const pollResponse = await fetch(`${baseUrl}/api/audit/poll`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(authToken && { 'Authorization': `Bearer ${authToken}` })
+          },
+          body: JSON.stringify({
+            responseId,
+            runId: auditResults?.runId
+          })
+        })
+
+        if (!pollResponse.ok) {
+          console.error('[Poll] Failed to poll status')
+          return
+        }
+
+        const pollData = await pollResponse.json()
+
+        if (pollData.status === 'in_progress') {
+          // Update progress info
+          setProgressInfo({
+            pagesScanned: pollData.progress?.pagesScanned || 0,
+            pagesBeingCrawled: pollData.progress?.auditedUrls || []
+          })
+        } else if (pollData.status === 'completed') {
+          // Audit completed, update results and stop polling
+          setAuditResults(pollData)
+          setLoading(false)
+          setProgressInfo({ pagesScanned: 0, pagesBeingCrawled: [] })
+          if (pollInterval) {
+            clearInterval(pollInterval)
+          }
+        }
+      } catch (error) {
+        console.error('[Poll] Error polling status:', error)
+      }
+    }
+
+    // Poll immediately, then every 5 seconds
+    pollStatus()
+    pollInterval = setInterval(pollStatus, 5000)
+
+    return () => {
+      if (pollInterval) {
+        clearInterval(pollInterval)
+      }
+    }
+  }, [auditResults?.responseId, auditResults?.meta?.responseId, auditResults?.runId, loading, authToken])
 
   // Validate on blur for better UX
   const handleBlur = () => {
@@ -222,6 +302,21 @@ export default function Home() {
 
       const data = await response.json()
       setAuditResults(data)
+      
+      // If audit is in progress, keep loading state and start polling
+      if (data.status === 'in_progress' || data.responseId || data.meta?.responseId) {
+        setLoading(true)
+        // Initialize progress info if available
+        if (data.progress) {
+          setProgressInfo({
+            pagesScanned: data.progress.pagesScanned || 0,
+            pagesBeingCrawled: data.progress.auditedUrls || []
+          })
+        }
+      } else {
+        // Audit completed immediately, stop loading
+        setLoading(false)
+      }
       
       // Store session token if provided (for unauthenticated users)
       // This enables claiming the audit after signup
@@ -360,6 +455,8 @@ export default function Home() {
         open={loading}
         title="Analyzing your website..."
         description="Scanning pages and identifying content issues. This may take a moment."
+        pagesScanned={progressInfo.pagesScanned}
+        pagesBeingCrawled={progressInfo.pagesBeingCrawled}
       />
 
       {/* API Error Message (for errors that occur after submission) */}
@@ -410,7 +507,7 @@ export default function Home() {
                   <Skeleton className="h-12 w-full" />
                 </div>
               </div>
-            ) : tableRows.length > 0 ? (
+            ) : !testEmptyState && tableRows.length > 0 ? (
               <div className="px-4 lg:px-6">
                 <AuditTable
                   data={tableRows}
@@ -423,37 +520,17 @@ export default function Home() {
                   onStatusUpdate={refetch}
                 />
               </div>
-            ) : (
-              <div className="px-4 lg:px-6">
-                <div className="text-center py-12">
-                  <p className="text-muted-foreground">No issues found</p>
-                </div>
-              </div>
-            )}
+            ) : null}
           </div>
         </div>
       )}
 
       {/* No Issues Success State - shown when audit completes but no issues found */}
-      {!loading && auditResults && auditResults.runId && !isLoading && tableRows.length === 0 && (
-        <section className="border-t border-border py-24 md:py-32">
-          <div className="container mx-auto px-6 max-w-2xl">
-            <Card className="border-2 border-green-200 bg-green-50/50">
-              <CardContent className="p-12 text-center">
-                <CheckCircle2 className="h-16 w-16 text-green-600 mx-auto mb-4" />
-                <h2 className="font-serif text-3xl md:text-4xl font-light tracking-tight mb-4">
-                  No issues found
-                </h2>
-                <p className="text-lg text-muted-foreground leading-relaxed mb-2">
-                  Your content looks great! We scanned {auditResults.meta?.pagesScanned || auditResults.pagesScanned || 0} pages and found no issues.
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  Keep up the good work maintaining high-quality content.
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-        </section>
+      {!loading && auditResults && auditResults.runId && !isLoading && (testEmptyState || tableRows.length === 0) && (
+        <EmptyAuditState 
+          pagesScanned={testEmptyState ? 5 : (auditResults.meta?.pagesScanned ?? auditResults.pagesScanned ?? undefined)}
+          variant="card"
+        />
       )}
 
       {/* Features Section */}

@@ -83,6 +83,7 @@ import {
 } from "@/lib/audit-table-adapter"
 import { IssueStatus } from "@/types/fortress"
 import { createClient } from "@/lib/supabase-browser"
+import { EmptyAuditState } from "@/components/empty-audit-state"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -456,7 +457,6 @@ export function DataTable({
   })
   const [activeSeverityTab, setActiveSeverityTab] = React.useState<"all" | "high" | "medium" | "low">("all")
   const [activeStateTab, setActiveStateTab] = React.useState<'all' | 'active' | 'ignored' | 'resolved'>('active')
-  const [isFiltering, setIsFiltering] = React.useState(false)
   const [isBulkProcessing, setIsBulkProcessing] = React.useState(false)
   const [globalFilter, setGlobalFilter] = React.useState("")
   const [data, setData] = React.useState(initialData)
@@ -605,14 +605,9 @@ export function DataTable({
     return filterBySeverity(filteredByState, activeSeverityTab)
   }, [filteredByState, activeSeverityTab])
 
-  // Reset pagination when severity or state filter changes
+  // Reset pagination when severity or state filter changes (smooth, no jump)
   React.useEffect(() => {
-    setIsFiltering(true)
-    const timer = setTimeout(() => {
-      setPagination((prev) => ({ pageIndex: 0, pageSize: prev.pageSize }))
-      setIsFiltering(false)
-    }, 100)
-    return () => clearTimeout(timer)
+    setPagination((prev) => ({ pageIndex: 0, pageSize: prev.pageSize }))
   }, [activeSeverityTab, activeStateTab])
 
   // Apply global filter (search) to filtered data
@@ -781,15 +776,7 @@ export function DataTable({
   // Render table content (reusable for both tabs and non-tabs mode)
   const tableContent = (
     <>
-      {isFiltering ? (
-        <Card className="border border-border">
-          <CardContent className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            <span className="ml-2 text-sm text-muted-foreground">Filtering...</span>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card className="border border-border">
+      <Card className="border border-border">
           <CardContent className="p-0">
             <div className="overflow-hidden">
               <Table>
@@ -836,25 +823,26 @@ export function DataTable({
                         colSpan={columns.length}
                         className="h-32 text-center py-8"
                       >
-                        <div className="flex flex-col items-center justify-center gap-2">
-                          <CheckCircle2Icon className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
-                          <p className="text-sm font-medium text-foreground">
-                            {hideTabs ? "No issues found. Great job! ✅" :
-                             activeStateTab !== 'all' && activeStateTab !== 'active'
-                              ? `No ${activeStateTab} issues found`
-                              : activeSeverityTab === "all" 
-                                ? "No issues found. Great job! ✅"
+                        {/* Use shared empty state when no filters are active */}
+                        {hideTabs || (activeStateTab === 'all' && activeSeverityTab === "all") ? (
+                          <EmptyAuditState variant="inline" />
+                        ) : (
+                          <div className="flex flex-col items-center justify-center gap-2">
+                            <CheckCircle2Icon className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
+                            <p className="text-sm font-medium text-foreground">
+                              {activeStateTab !== 'all' && activeStateTab !== 'active'
+                                ? `No ${activeStateTab} issues found`
                                 : `No ${activeSeverityTab} severity issues found. Great job! ✅`
-                            }
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {hideTabs ? "Your content audit found no issues." :
-                             activeStateTab !== 'all' && activeStateTab !== 'active'
-                              ? `Switch to a different tab to see issues.`
-                              : `Your content audit found no issues${activeSeverityTab !== "all" && ` with ${activeSeverityTab} severity`}.`
-                            }
-                          </p>
-                        </div>
+                              }
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {activeStateTab !== 'all' && activeStateTab !== 'active'
+                                ? `Switch to a different tab to see issues.`
+                                : `Your content audit found no issues${activeSeverityTab !== "all" && ` with ${activeSeverityTab} severity`}.`
+                              }
+                            </p>
+                          </div>
+                        )}
                       </TableCell>
                     </TableRow>
                   )}
@@ -863,7 +851,6 @@ export function DataTable({
             </div>
           </CardContent>
         </Card>
-      )}
       <div className="flex items-center justify-between">
         <div className="hidden flex-1 text-sm text-muted-foreground lg:flex">
           {table.getFilteredSelectedRowModel().rows.length > 0 ? (

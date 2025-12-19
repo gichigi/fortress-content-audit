@@ -271,6 +271,10 @@ Return your findings as JSON matching this structure:
 // ============================================================================
 // Poll background audit status (for paid/enterprise tiers)
 // ============================================================================
+// Deep Research supports polling via responses.retrieve() per OpenAI API docs:
+// https://platform.openai.com/docs/guides/deep-research
+// When background=true, responses can be polled to check status (queued/in_progress/completed)
+// and extract partial progress from output_text during processing
 export async function pollAuditStatus(responseId: string, tier?: AuditTier): Promise<AuditResult> {
   console.log(`[Audit] Polling status for: ${responseId}${tier ? ` (tier: ${tier})` : ''}`)
 
@@ -280,6 +284,7 @@ export async function pollAuditStatus(responseId: string, tier?: AuditTier): Pro
   })
 
   try {
+    // Poll Deep Research response status - supports queued/in_progress/completed states
     const response = await openai.responses.retrieve(responseId)
 
     // Check both "queued" and "in_progress" states (cast to string for SDK type compat)
@@ -288,11 +293,15 @@ export async function pollAuditStatus(responseId: string, tier?: AuditTier): Pro
       console.log(`[Audit] Still running (${status}): ${responseId}`)
       // Try to extract progress info from partial response if available
       let pagesScanned = 0
+      let auditedUrls: string[] = []
       if (response.output_text) {
         try {
           const partial = JSON.parse(response.output_text)
           if (typeof partial.pagesScanned === 'number') {
             pagesScanned = partial.pagesScanned
+          }
+          if (Array.isArray(partial.auditedUrls)) {
+            auditedUrls = partial.auditedUrls
           }
         } catch {
           // Ignore parse errors for partial responses
@@ -301,7 +310,7 @@ export async function pollAuditStatus(responseId: string, tier?: AuditTier): Pro
       return {
         issues: [],
         pagesScanned,
-        auditedUrls: [],
+        auditedUrls,
         responseId,
         status: "in_progress",
       }

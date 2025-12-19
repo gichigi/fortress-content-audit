@@ -413,11 +413,11 @@ Benefits:
 - ✅ Test export UI (dropdown menu, loading states, error handling)
 - ✅ Test export formats with mock data (PDF formatting, JSON schema, Markdown structure)
 - ✅ Test export for all users
-- ⚠️ Test progress polling UI with mock in-progress states
-- ⚠️ Test empty audit results display
-- ⚠️ Test very large audits display (many issues, pagination)
+- ✅ Test progress polling UI (homepage) with mock in-progress states
+- ✅ Test empty audit results display (`?testEmpty=true` on homepage/dashboard)
+- ✅ Test very large audits display (many issues, pagination) (`?testLarge=true` on dashboard)
 - ✅ Test severity filtering tabs with mock data
-- ⚠️ Test issue state filtering (active/ignored/resolved) with mock data
+- ✅ Test issue state filtering (active/ignored/resolved) with mock data
 
 **Health Score UI Testing (Mock Data):**
 - ⚠️ Test health score calculation display with various issue combinations (low/medium/high severity)

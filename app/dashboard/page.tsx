@@ -17,6 +17,8 @@ import { HealthScoreCards } from "@/components/health-score-cards"
 import { AuditTable } from "@/components/audit-table"
 import { useAuditIssues } from "@/hooks/use-audit-issues"
 import { useHealthScoreMetrics } from "@/hooks/use-health-score-metrics"
+import { createMockAuditData } from "@/lib/mock-audit-data"
+import { transformIssuesToTableRows } from "@/lib/audit-table-adapter"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -70,8 +72,42 @@ export default function DashboardPage() {
     authToken
   )
 
+  // TEST: Force empty state via query param (remove after testing)
+  const [testEmptyState, setTestEmptyState] = useState(false)
+  const [testLargeAudit, setTestLargeAudit] = useState(false)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('testEmpty') === 'true') {
+      setTestEmptyState(true)
+    }
+    if (params.get('testLarge') === 'true') {
+      setTestLargeAudit(true)
+    }
+  }, [])
+
+  // TEST: Generate large mock audit data for pagination testing (remove after testing)
+  const largeMockRows = useMemo(() => {
+    if (!testLargeAudit) return null
+    const mockData = createMockAuditData('example.com', 150) // Generate 150 issues
+    // Transform mock issues to table row format
+    return mockData.issues.map((issue, idx) => ({
+      id: `mock-${idx}`,
+      title: issue.title,
+      category: issue.category,
+      severity: issue.severity,
+      impact: issue.impact || '',
+      fix: issue.fix || '',
+      locations: issue.locations || [],
+      status: 'active' as const,
+    }))
+  }, [testLargeAudit])
+
+  // Use large mock data if test mode is enabled
+  const displayTableRows = testLargeAudit && largeMockRows ? largeMockRows : (testEmptyState ? [] : tableRows)
+  const displayTotalIssues = testLargeAudit && largeMockRows ? largeMockRows.length : (testEmptyState ? 0 : tableTotalIssues)
+
   // Calculate metrics using shared hook
-  const metrics = useHealthScoreMetrics(tableRows)
+  const metrics = useHealthScoreMetrics(displayTableRows)
 
   // Merge chart data with current table metrics
   const chartDataWithCurrent = useMemo(() => {
@@ -755,16 +791,21 @@ export default function DashboardPage() {
                 {/* Audit Issues Table - Show most recent audit's issues */}
                 {audits.length === 0 ? (
                   <div className="px-4 lg:px-6">
-                    <Card className="border border-border">
+                    <Card className="border-2 border-dashed border-border">
                       <CardContent className="pt-6">
-                        <div className="text-center py-12">
-                          <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                          <h3 className="font-serif text-2xl font-semibold mb-2">No audits yet</h3>
-                          <p className="text-muted-foreground mb-6">
-                            Run your first content audit to get started
+                        <div className="text-center py-12 px-4">
+                          <FileText className="h-12 w-12 sm:h-16 sm:w-16 text-muted-foreground mx-auto mb-4" />
+                          <h3 className="font-serif text-2xl sm:text-3xl font-semibold mb-3">
+                            Welcome! Get started with your first audit
+                          </h3>
+                          <p className="text-base sm:text-lg text-muted-foreground leading-relaxed mb-2 max-w-xl mx-auto">
+                            Run a content audit to discover issues across your website. We'll scan your pages and identify typos, grammar errors, inconsistencies, and more.
                           </p>
-                          <Button asChild>
-                            <Link href="/">Run Audit</Link>
+                          <p className="text-sm text-muted-foreground mb-6">
+                            Your audit results will appear here once complete.
+                          </p>
+                          <Button asChild size="lg" className="font-semibold">
+                            <Link href="/">Run Your First Audit</Link>
                           </Button>
                         </div>
                       </CardContent>
@@ -773,9 +814,9 @@ export default function DashboardPage() {
                 ) : (
                   <div className="px-4 lg:px-6">
                     <AuditTable
-                      data={tableRows}
+                      data={displayTableRows}
                       auditId={mostRecentAudit?.id}
-                      totalIssues={tableTotalIssues}
+                      totalIssues={displayTotalIssues}
                       onStatusUpdate={refetch}
                     />
                   </div>
