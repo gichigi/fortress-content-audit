@@ -2,30 +2,36 @@
 
 import * as React from "react"
 import { createClient } from "@/lib/supabase-browser"
-import { Globe, Check, ChevronRight, Plus } from "lucide-react"
+import { Globe, Check, Plus, Trash2, MoreHorizontalIcon } from "lucide-react"
 import {
   SidebarGroup,
-  SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
+  SidebarMenuAction,
+  useSidebar,
 } from "@/components/ui/sidebar"
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { NewAuditDialog } from "@/components/new-audit-dialog"
 
 export function DomainSwitcher() {
   const [domains, setDomains] = React.useState<string[]>([])
   const [selectedDomain, setSelectedDomain] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(true)
-  const [open, setOpen] = React.useState(false)
   const [newAuditDialogOpen, setNewAuditDialogOpen] = React.useState(false)
+  const { isMobile } = useSidebar()
+
+  const handleDeleteDomain = (domain: string, e: React.MouseEvent) => {
+    e.stopPropagation() // Prevent domain selection when clicking delete
+    // Dispatch event to dashboard to show delete confirmation
+    window.dispatchEvent(new CustomEvent('requestDeleteDomain', { detail: { domain } }))
+  }
 
   React.useEffect(() => {
     const loadDomains = async () => {
@@ -60,15 +66,58 @@ export function DomainSwitcher() {
 
     loadDomains()
 
-    // Listen for custom event (same window)
+    // Listen for custom events
     const handleCustomStorageChange = () => {
       const domain = localStorage.getItem('selectedDomain')
       setSelectedDomain(domain)
     }
+    
+    // Listen for domain deletion/reload events
+    const handleDomainsReload = async () => {
+      console.log('[DomainSwitcher] Reloading domains after deletion')
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      const { data: audits } = await supabase
+        .from('brand_audit_runs')
+        .select('domain')
+        .eq('user_id', user.id)
+        .not('domain', 'is', null)
+
+      if (audits) {
+        const uniqueDomains = Array.from(new Set(
+          audits.map(a => a.domain).filter((d): d is string => d !== null)
+        ))
+        setDomains(uniqueDomains)
+        
+        // Update selected domain if it was deleted
+        const savedDomain = localStorage.getItem('selectedDomain')
+        if (savedDomain && !uniqueDomains.includes(savedDomain)) {
+          // Selected domain was deleted, switch to first available or clear
+          const newDomain = uniqueDomains[0] || null
+          setSelectedDomain(newDomain)
+          if (newDomain) {
+            localStorage.setItem('selectedDomain', newDomain)
+            window.dispatchEvent(new Event('domainChanged'))
+          } else {
+            localStorage.removeItem('selectedDomain')
+          }
+        }
+      } else {
+        // No domains left
+        setDomains([])
+        setSelectedDomain(null)
+        localStorage.removeItem('selectedDomain')
+      }
+    }
+    
     window.addEventListener('domainChanged', handleCustomStorageChange)
+    window.addEventListener('domainsReload', handleDomainsReload)
 
     return () => {
       window.removeEventListener('domainChanged', handleCustomStorageChange)
+      window.removeEventListener('domainsReload', handleDomainsReload)
     }
   }, [])
 
@@ -77,7 +126,6 @@ export function DomainSwitcher() {
     localStorage.setItem('selectedDomain', domain)
     // Dispatch custom event for same-window updates
     window.dispatchEvent(new Event('domainChanged'))
-    setOpen(false)
   }
 
   const handleNewAuditSuccess = () => {
@@ -112,48 +160,59 @@ export function DomainSwitcher() {
   }
 
   return (
-    <SidebarGroup>
-      <SidebarGroupContent>
-        <Collapsible open={open} onOpenChange={setOpen}>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <CollapsibleTrigger asChild>
-                <SidebarMenuButton tooltip="Switch Domain">
-                  <Globe className="h-4 w-4" />
-                  <span>{selectedDomain || 'Select Domain'}</span>
-                  <ChevronRight className={`ml-auto h-4 w-4 transition-transform ${open ? 'rotate-90' : ''}`} />
-                </SidebarMenuButton>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <SidebarMenuSub>
-                  {domains.map((domain) => (
-                    <SidebarMenuSubItem key={domain}>
-                      <SidebarMenuSubButton
-                        onClick={() => handleDomainChange(domain)}
-                        className="w-full justify-between"
-                      >
-                        <span>{domain}</span>
-                        {selectedDomain === domain && (
-                          <Check className="h-4 w-4" />
-                        )}
-                      </SidebarMenuSubButton>
-                    </SidebarMenuSubItem>
-                  ))}
-                </SidebarMenuSub>
-              </CollapsibleContent>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => setNewAuditDialogOpen(true)}
-                tooltip="New Audit"
+    <SidebarGroup className="group-data-[collapsible=icon]:hidden">
+      <SidebarGroupLabel>Domains</SidebarGroupLabel>
+      <SidebarMenu>
+        {domains.map((domain) => (
+          <SidebarMenuItem key={domain}>
+            <SidebarMenuButton
+              onClick={() => handleDomainChange(domain)}
+              data-active={selectedDomain === domain}
+              tooltip={domain}
+            >
+              <Globe className="h-4 w-4" />
+              <span>{domain}</span>
+              {selectedDomain === domain && (
+                <Check className="ml-auto h-4 w-4" />
+              )}
+            </SidebarMenuButton>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <SidebarMenuAction
+                  showOnHover
+                  className="rounded-sm data-[state=open]:bg-accent"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <MoreHorizontalIcon />
+                  <span className="sr-only">More</span>
+                </SidebarMenuAction>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                className="w-32 rounded-lg"
+                side={isMobile ? "bottom" : "right"}
+                align={isMobile ? "end" : "start"}
               >
-                <Plus className="h-4 w-4" />
-                <span>New Audit</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </Collapsible>
-      </SidebarGroupContent>
+                <DropdownMenuItem
+                  onClick={(e) => handleDeleteDomain(domain, e)}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  <span>Delete</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </SidebarMenuItem>
+        ))}
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            onClick={() => setNewAuditDialogOpen(true)}
+            tooltip="New Audit"
+          >
+            <Plus className="h-4 w-4" />
+            <span>New Audit</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
       <NewAuditDialog
         open={newAuditDialogOpen}
         onOpenChange={setNewAuditDialogOpen}

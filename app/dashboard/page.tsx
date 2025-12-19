@@ -173,6 +173,34 @@ export default function DashboardPage() {
     checkAuthAndLoad()
   }, [])
 
+  // Listen for domain changes from domain switcher
+  useEffect(() => {
+    const handleDomainChanged = () => {
+      const newDomain = localStorage.getItem('selectedDomain')
+      console.log('[Dashboard] Domain changed to:', newDomain)
+      setSelectedDomain(newDomain)
+    }
+    
+    // Listen for delete domain request
+    const handleRequestDeleteDomain = (e: Event) => {
+      const customEvent = e as CustomEvent<{ domain: string }>
+      const domainToDelete = customEvent.detail?.domain
+      if (domainToDelete) {
+        console.log('[Dashboard] Delete domain requested:', domainToDelete)
+        setDomainToDelete(domainToDelete)
+        setShowDeleteDialog(true)
+      }
+    }
+    
+    window.addEventListener('domainChanged', handleDomainChanged)
+    window.addEventListener('requestDeleteDomain', handleRequestDeleteDomain as EventListener)
+    
+    return () => {
+      window.removeEventListener('domainChanged', handleDomainChanged)
+      window.removeEventListener('requestDeleteDomain', handleRequestDeleteDomain as EventListener)
+    }
+  }, [])
+
   // Track if this is the initial load to avoid double-loading
   const isInitialLoad = useRef(true)
   
@@ -184,12 +212,13 @@ export default function DashboardPage() {
     }
     
     if (selectedDomain) {
+      console.log('[Dashboard] Reloading data for domain:', selectedDomain)
       const reloadData = async () => {
         const supabase = createClient()
         const { data: { session } } = await supabase.auth.getSession()
         if (session) {
           await Promise.all([
-            loadAudits(session.access_token),
+            loadAudits(session.access_token, selectedDomain),
             loadHealthScore(session.access_token)
           ])
         }
@@ -338,7 +367,7 @@ export default function DashboardPage() {
       }
 
       // Load audits (now with domain set)
-      await loadAudits(session.access_token)
+      await loadAudits(session.access_token, initialDomain)
       
       // Load health score for all authenticated users
       await loadHealthScore(session.access_token)
@@ -356,11 +385,14 @@ export default function DashboardPage() {
   }
 
 
-  const loadAudits = async (token: string) => {
+  const loadAudits = async (token: string, domain?: string | null) => {
     try {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
+
+      // Use provided domain or fall back to selectedDomain state
+      const domainToFilter = domain !== undefined ? domain : selectedDomain
 
       // Build query with domain filter if selected
       let query = supabase
@@ -368,8 +400,8 @@ export default function DashboardPage() {
         .select('*')
         .eq('user_id', user.id)
       
-      if (selectedDomain) {
-        query = query.eq('domain', selectedDomain)
+      if (domainToFilter) {
+        query = query.eq('domain', domainToFilter)
       }
       
       const { data, error } = await query
@@ -441,7 +473,7 @@ export default function DashboardPage() {
         description: "New audit run started"
       })
 
-      await loadAudits(session.access_token)
+      await loadAudits(session.access_token, selectedDomain)
       
       // Reload health score after rerun
       if (plan === 'pro' || plan === 'enterprise') {
@@ -522,18 +554,50 @@ export default function DashboardPage() {
         throw new Error(error.error || 'Failed to delete domain')
       }
 
+      // Reload domains first to get updated list
+      await loadDomains(session.access_token)
+
+      // If deleted domain was selected, switch to another domain or clear selection
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user && selectedDomain === domainToDelete) {
+        // Get updated domain list
+        const { data: domainData } = await supabase
+          .from('brand_audit_runs')
+          .select('domain')
+          .eq('user_id', user.id)
+          .not('domain', 'is', null)
+        
+        const availableDomains = Array.from(new Set(
+          (domainData || []).map(a => a.domain).filter((d): d is string => d !== null)
+        ))
+        
+        const newSelectedDomain = availableDomains[0] || null
+        setSelectedDomain(newSelectedDomain)
+        if (newSelectedDomain) {
+          localStorage.setItem('selectedDomain', newSelectedDomain)
+          window.dispatchEvent(new Event('domainChanged'))
+        } else {
+          localStorage.removeItem('selectedDomain')
+        }
+        
+        // Reload data with new domain
+        await loadAudits(session.access_token, newSelectedDomain)
+      } else {
+        // Reload data with current domain (which wasn't deleted)
+        await loadAudits(session.access_token, selectedDomain)
+      }
+      await loadUsageInfo(session.access_token)
+      if (plan === 'pro' || plan === 'enterprise') {
+        await loadHealthScore(session.access_token)
+      }
+
+      // Notify domain switcher to reload its list
+      window.dispatchEvent(new Event('domainsReload'))
+
       toast({
         title: "Domain deleted",
         description: "All audits and data for this domain have been removed. You can now add a new domain.",
       })
-
-      // Reload data
-      await loadAudits(session.access_token)
-      await loadUsageInfo(session.access_token)
-      await loadDomains(session.access_token)
-      if (plan === 'pro' || plan === 'enterprise') {
-        await loadHealthScore(session.access_token)
-      }
     } catch (error) {
       toast({
         title: "Error",
@@ -687,7 +751,9 @@ export default function DashboardPage() {
 
             <div className="flex flex-1 flex-col gap-4 py-4 md:gap-6 md:py-6">
                 <div className="flex items-center justify-between px-4 lg:px-6">
-                  <h2 className="font-serif text-2xl font-semibold">Content Audits</h2>
+                  <h2 className="font-serif text-2xl font-semibold">
+                    {selectedDomain || 'Content Audits'}
+                  </h2>
                   <div className="flex items-center gap-3">
                     {usageInfo && (
                       <div className="text-sm text-muted-foreground">
