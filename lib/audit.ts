@@ -10,7 +10,7 @@ import { z } from "zod"
 // Audit tiers for cost/scope control
 // Both tiers use deep research models; o4-mini is faster/cheaper for free tier
 export const AUDIT_TIERS = {
-  FREE: { maxToolCalls: 10, background: true, model: "o4-mini-deep-research" as const },
+  FREE: { maxToolCalls: 3, background: false, model: "o4-mini-deep-research" as const },
   PAID: { maxToolCalls: 25, background: true, model: "o3-deep-research" as const },
   ENTERPRISE: { maxToolCalls: 100, background: true, model: "o3-deep-research" as const },
 } as const
@@ -107,7 +107,7 @@ const AUDIT_JSON_SCHEMA = {
 }
 
 // ============================================================================
-// Mini Audit - Free tier (3 pages max, fast, no background)
+// Mini Audit - Free tier (max 10 tool calls, fast, synchronous execution)
 // ============================================================================
 export async function miniAudit(domain: string): Promise<AuditResult> {
   console.log(`[MiniAudit] Starting free-tier audit for: ${domain}`)
@@ -139,13 +139,11 @@ JSON structure:
 
   try {
     // Use deep research model with tool call limit for cost control
-    // Try o3-deep-research first, fallback to o4-mini if org not verified
-    let modelToUse = tier.model
     const params: any = {
-      model: modelToUse,
+      model: tier.model, // Use model from config (o4-mini-deep-research for FREE)
       input,
       tools: [{ type: "web_search_preview" }],
-      max_tool_calls: tier.maxToolCalls, // Limit to 10 tool calls for FREE tier
+      max_tool_calls: tier.maxToolCalls, // Limit to 3 tool calls for FREE tier
       // Note: o4-mini-deep-research doesn't support json_schema format,
       // so we rely on prompt engineering and parse JSON from output_text
       // The prompt already instructs JSON format, we'll parse it manually
@@ -156,10 +154,13 @@ JSON structure:
     
     // Track model call duration
     const modelStartTime = Date.now()
-    console.log(`[MiniAudit] Calling model ${tier.model} with max_tool_calls=${tier.maxToolCalls}, background=${tier.background}...`)
+    console.log(`[MiniAudit] Using model ${tier.model} with max_tool_calls=${tier.maxToolCalls}, background=${tier.background}...`)
+    
     const response = await openai.responses.create(params)
+    
     const modelDurationMs = Date.now() - modelStartTime
-    console.log(`[MiniAudit] Model responded in ${modelDurationMs}ms (max_tool_calls=${tier.maxToolCalls}, status=${response.status})`)
+    const actualModel = response.model || params.model
+    console.log(`[MiniAudit] Model ${actualModel} responded in ${modelDurationMs}ms (max_tool_calls=${tier.maxToolCalls}, status=${response.status})`)
 
     // Handle background execution (returns response ID for polling)
     // Check both "queued" and "in_progress" states (cast to string for SDK type compat)
@@ -173,7 +174,7 @@ JSON structure:
         responseId: response.id,
         status: "in_progress",
         tier: "FREE",
-        modelDurationMs, // Include initial response time even for background jobs
+        modelDurationMs,
       }
     }
 
@@ -272,7 +273,7 @@ Return your findings as JSON matching this structure:
         responseId: response.id,
         status: "in_progress",
         tier,
-        modelDurationMs, // Include initial response time even for background jobs
+        modelDurationMs,
       }
     }
 
@@ -306,6 +307,15 @@ export async function pollAuditStatus(responseId: string, tier?: AuditTier): Pro
   try {
     // Poll Deep Research response status - supports queued/in_progress/completed states
     const response = await openai.responses.retrieve(responseId)
+
+    // Log full response for debugging
+    console.log(`[Audit] Poll response:`, {
+      status: response.status,
+      has_output_text: !!response.output_text,
+      output_text_length: response.output_text?.length || 0,
+      error: response.error,
+      model: response.model,
+    })
 
     // Check both "queued" and "in_progress" states (cast to string for SDK type compat)
     const status = response.status as string
@@ -343,15 +353,18 @@ export async function pollAuditStatus(responseId: string, tier?: AuditTier): Pro
 
     // Failed or cancelled
     console.error(`[Audit] Job failed or cancelled (${status}): ${responseId}`)
+    console.error(`[Audit] Full response:`, JSON.stringify(response, null, 2))
     
     // Check if failure is due to model requiring verified org
     const error = response.error as any
     if (error?.code === 'model_not_found' || error?.message?.includes('verified')) {
-      console.error(`[Audit] Model requires verified org. Error: ${error?.message}`)
-      throw new Error("This audit tier requires organization verification. Please verify your OpenAI organization or use a different tier.")
+      console.error(`[Audit] Model verification error during execution. Error: ${error?.message}`)
+      // This can happen due to propagation delay even if org is verified
+      // Provide a more helpful error message
+      throw new Error("The audit failed due to a verification check during execution. This may be a temporary propagation delay. Please try again in a few minutes, or the system will automatically fall back to o4-mini on the next attempt.")
     }
     
-    throw new Error("Audit job failed. Please try again.")
+    throw new Error(`Audit job failed with status: ${status}. ${error?.message || 'Please try again.'}`)
   } catch (error) {
     console.error(`[Audit] Poll error:`, error instanceof Error ? error.message : error)
     throw handleAuditError(error)
