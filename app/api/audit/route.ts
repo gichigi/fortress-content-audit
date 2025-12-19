@@ -125,6 +125,15 @@ export async function POST(request: Request) {
     // Check if mock data mode is enabled
     const useMockData = process.env.USE_MOCK_DATA === 'true'
     
+    // Validate environment when using real API calls
+    if (!useMockData && !process.env.OPENAI_API_KEY) {
+      console.error('[API] OPENAI_API_KEY required when USE_MOCK_DATA=false')
+      return NextResponse.json(
+        { error: 'Server configuration error: OpenAI API key not found' },
+        { status: 500 }
+      )
+    }
+    
     let result: AuditResult
 
     if (useMockData) {
@@ -322,6 +331,7 @@ export async function POST(request: Request) {
         pagesScanned: result.pagesScanned,
         auditedUrls: result.auditedUrls || [],
         tier: auditTier,
+        modelDurationMs: result.modelDurationMs, // Time taken for model to respond
       },
     })
   } catch (e) {

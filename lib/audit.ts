@@ -10,7 +10,7 @@ import { z } from "zod"
 // Audit tiers for cost/scope control
 // Both tiers use deep research models; o4-mini is faster/cheaper for free tier
 export const AUDIT_TIERS = {
-  FREE: { maxToolCalls: 5, background: false, model: "o4-mini-deep-research" as const },
+  FREE: { maxToolCalls: 10, background: true, model: "o4-mini-deep-research" as const },
   PAID: { maxToolCalls: 25, background: true, model: "o3-deep-research" as const },
   ENTERPRISE: { maxToolCalls: 100, background: true, model: "o3-deep-research" as const },
 } as const
@@ -18,47 +18,26 @@ export const AUDIT_TIERS = {
 export type AuditTier = keyof typeof AUDIT_TIERS
 
 // Content audit prompt for Deep Research agent
-const AUDIT_PROMPT = `You are a world-class website content auditor.
+const AUDIT_PROMPT = `Do a content audit to find all copy errors like typos, grammar mistakes, punctuation problems, and inconsistencies across numbers, facts/figures.
 
-Your task: Crawl and audit the website for content quality issues.
+Also check for:
+• Broken links (404s, 500s, redirect loops)
+• SEO gaps: missing or duplicate title tags, meta descriptions, H1 tags, image alt text
+• Inconsistent terminology, brand names, or product names
 
-Focus ONLY on objective content errors:
-• Typos and spelling mistakes (only if certain)
-• Grammar errors (incorrect grammar, not style preferences)
-• Punctuation errors (missing periods, commas, apostrophes)
-• Factual contradictions (e.g., "100 users" in one place, "200 users" in another)
-• Inconsistent terminology for the same concept (e.g., "customer" vs "client")
-• Incorrect/inconsistent brand names or product names
-• Duplicate content with conflicting information
-• SEO gaps: missing or duplicate title tags and meta descriptions (check if lengths are appropriate)
-• SEO gaps: missing H1 or multiple H1s on same page, missing image alt text
-• SEO gaps: sitemap coverage issues (pages missing from sitemap or vice versa)
-• Broken links: detect 404s, 500s, and redirect loops (report URL, anchor text, source page, status)
+CRITICAL: Before auditing, verify pages have fully loaded. For JavaScript-rendered sites (React, Next.js, etc.), check the rendered DOM after JavaScript execution, not just the initial HTML.
 
-CRITICAL FORMATTING RULES:
+Ignore anything subjective like tone of voice, SEO optimizations, or style preferences. We want to know where things are plain WRONG.
 
-For POINT issues (typos, grammar, punctuation, broken links, missing SEO elements):
-- Create ONE issue per occurrence
-- Title must be specific and actionable (e.g., "Fix typo: 'suport' → 'support'")
-- Include single location
+For each issue, provide:
+- A specific, actionable title
+- The page URL(s) where found
+- A snippet showing the exact error
+- A suggested fix
+- Category: 'typos', 'grammar', 'punctuation', 'seo', 'factual', 'links', 'terminology'
+- Severity: 'low', 'medium', or 'high'
 
-For RELATIONAL issues (factual contradictions, terminology inconsistencies, duplicate content):
-- Create ONE issue that describes the conflict
-- Title must describe the relationship (e.g., "Pricing conflict: $29 vs $39")
-- Include ALL conflicting locations
-
-Each issue should be something a person can check off a to-do list.
-
-For each issue found, provide:
-1. A specific, actionable title (e.g., "Fix typo: 'suport' → 'support'" or "Pricing conflict: $29 vs $39")
-2. The page URL(s) where the issue was found (one location for point issues, multiple for relational issues)
-3. A short snippet showing the exact error for each location
-4. A suggested fix
-5. Optional category: 'typos', 'grammar', 'seo', 'factual', 'links', 'terminology'
-
-Be thorough but precise. Only report issues you are certain about.
-If you find no issues after a thorough review, return an empty issues array.
-Crawl multiple pages to find cross-site inconsistencies.`
+Return findings as JSON with issues array, pagesScanned count, and auditedUrls array.`
 
 // Zod schemas for structured audit output
 const AuditIssueLocationSchema = z.object({
@@ -88,6 +67,7 @@ export type AuditResult = z.infer<typeof AuditResultSchema> & {
   responseId?: string
   status?: "completed" | "in_progress" | "failed"
   tier?: AuditTier
+  modelDurationMs?: number // Time taken for model to respond (in milliseconds)
 }
 
 // JSON schema for OpenAI structured output
@@ -139,41 +119,70 @@ export async function miniAudit(domain: string): Promise<AuditResult> {
 
   const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
-    timeout: 90000, // 90s timeout for mini audit
+    timeout: 120000, // 120s timeout for mini audit
   })
 
   const input = `${AUDIT_PROMPT}
 
-Website to audit: ${normalizedDomain}
+Audit all public-facing pages on: ${normalizedDomain}
 
-IMPORTANT: This is a quick audit. Analyze up to 3 pages maximum.
-Focus on the homepage and 2 other key pages (pricing, about, or features if available).
-Return high-signal issues only.
+Use "site:${normalizedDomain}" search to discover pages. Prioritize key pages like homepage, pricing, about, and features.
 
-Return your findings as JSON matching this structure:
+Return ONLY valid JSON. Do not wrap in markdown code blocks. Return raw JSON starting with { and ending with }.
+
+JSON structure:
 {
-  "issues": [{ "title": "...", "category": "typos|grammar|seo|factual|links|terminology" (optional), "severity": "low|medium|high", "impact": "...", "fix": "...", "locations": [{"url": "...", "snippet": "..."}] }],
+  "issues": [{ "title": "...", "category": "typos|grammar|punctuation|seo|factual|links|terminology", "severity": "low|medium|high", "impact": "...", "fix": "...", "locations": [{"url": "...", "snippet": "..."}] }],
   "pagesScanned": N,
   "auditedUrls": ["url1", "url2", ...]
 }`
 
   try {
     // Use deep research model with tool call limit for cost control
-    // Note: o4-mini-deep-research doesn't support json_schema format,
-    // so we rely on prompt engineering and parse JSON from output_text
+    // Try o3-deep-research first, fallback to o4-mini if org not verified
+    let modelToUse = tier.model
     const params: any = {
-      model: tier.model,
+      model: modelToUse,
       input,
       tools: [{ type: "web_search_preview" }],
-      max_tool_calls: tier.maxToolCalls,
-      reasoning: { summary: "auto" },
-      // No text.format for o4-mini - it doesn't support structured outputs
+      max_tool_calls: tier.maxToolCalls, // Limit to 10 tool calls for FREE tier
+      // Note: o4-mini-deep-research doesn't support json_schema format,
+      // so we rely on prompt engineering and parse JSON from output_text
       // The prompt already instructs JSON format, we'll parse it manually
     }
+    if (tier.background) {
+      params.background = true
+    }
+    
+    // Track model call duration
+    const modelStartTime = Date.now()
+    console.log(`[MiniAudit] Calling model ${tier.model} with max_tool_calls=${tier.maxToolCalls}, background=${tier.background}...`)
     const response = await openai.responses.create(params)
+    const modelDurationMs = Date.now() - modelStartTime
+    console.log(`[MiniAudit] Model responded in ${modelDurationMs}ms (max_tool_calls=${tier.maxToolCalls}, status=${response.status})`)
+
+    // Handle background execution (returns response ID for polling)
+    // Check both "queued" and "in_progress" states (cast to string for SDK type compat)
+    const status = response.status as string
+    if (tier.background && (status === "queued" || status === "in_progress")) {
+      console.log(`[MiniAudit] Background job started, ID: ${response.id}, status: ${response.status}`)
+      return {
+        issues: [],
+        pagesScanned: 0,
+        auditedUrls: [],
+        responseId: response.id,
+        status: "in_progress",
+        tier: "FREE",
+        modelDurationMs, // Include initial response time even for background jobs
+      }
+    }
 
     console.log(`[MiniAudit] Response received, parsing...`)
-    return parseAuditResponse(response, "FREE")
+    const result = parseAuditResponse(response, "FREE")
+    return {
+      ...result,
+      modelDurationMs,
+    }
   } catch (error) {
     console.error(`[MiniAudit] Error:`, error instanceof Error ? error.message : error)
     throw handleAuditError(error)
@@ -230,7 +239,7 @@ Return your findings as JSON matching this structure:
       model: tierConfig.model,
       input,
       tools: [{ type: "web_search_preview" }],
-      max_tool_calls: tierConfig.maxToolCalls,
+      max_tool_calls: tierConfig.maxToolCalls, // Limit tool calls based on tier
       reasoning: { summary: "auto" },
       text: {
         format: {
@@ -243,7 +252,13 @@ Return your findings as JSON matching this structure:
     if (tierConfig.background) {
       params.background = true
     }
+    
+    // Track model call duration
+    const modelStartTime = Date.now()
+    console.log(`[Audit] Calling model (tier: ${tier}, max_tool_calls=${tierConfig.maxToolCalls}, background=${tierConfig.background})...`)
     const response = await openai.responses.create(params)
+    const modelDurationMs = Date.now() - modelStartTime
+    console.log(`[Audit] Model responded in ${modelDurationMs}ms (tier: ${tier}, max_tool_calls=${tierConfig.maxToolCalls})`)
 
     // Handle background execution (returns response ID for polling)
     // Check both "queued" and "in_progress" states (cast to string for SDK type compat)
@@ -257,11 +272,16 @@ Return your findings as JSON matching this structure:
         responseId: response.id,
         status: "in_progress",
         tier,
+        modelDurationMs, // Include initial response time even for background jobs
       }
     }
 
     console.log(`[Audit] Response received, parsing...`)
-    return parseAuditResponse(response, tier)
+    const result = parseAuditResponse(response, tier)
+    return {
+      ...result,
+      modelDurationMs,
+    }
   } catch (error) {
     console.error(`[Audit] Error:`, error instanceof Error ? error.message : error)
     throw handleAuditError(error)
@@ -323,6 +343,14 @@ export async function pollAuditStatus(responseId: string, tier?: AuditTier): Pro
 
     // Failed or cancelled
     console.error(`[Audit] Job failed or cancelled (${status}): ${responseId}`)
+    
+    // Check if failure is due to model requiring verified org
+    const error = response.error as any
+    if (error?.code === 'model_not_found' || error?.message?.includes('verified')) {
+      console.error(`[Audit] Model requires verified org. Error: ${error?.message}`)
+      throw new Error("This audit tier requires organization verification. Please verify your OpenAI organization or use a different tier.")
+    }
+    
     throw new Error("Audit job failed. Please try again.")
   } catch (error) {
     console.error(`[Audit] Poll error:`, error instanceof Error ? error.message : error)
@@ -357,20 +385,116 @@ function validateIssues(issues: any[]): void {
   })
 }
 
+// Clean JSON response - remove markdown code blocks and extract valid JSON
+// Similar to lib/openai.ts cleanResponse() but optimized for audit responses
+function cleanJsonResponse(text: string): string {
+  // Remove markdown code block syntax if it exists
+  text = text.replace(/```(json|markdown)?\n?/g, "").replace(/```\n?/g, "")
+  
+  // Remove any leading/trailing whitespace
+  text = text.trim()
+  
+  // Find the start of JSON (either [ or {)
+  const jsonStart = Math.min(
+    text.indexOf('[') >= 0 ? text.indexOf('[') : Infinity,
+    text.indexOf('{') >= 0 ? text.indexOf('{') : Infinity
+  )
+  
+  if (jsonStart < Infinity) {
+    // Try to parse from this point
+    let jsonText = text.substring(jsonStart)
+    
+    // Try to find valid JSON by attempting to parse progressively smaller substrings
+    // This handles cases where there's trailing text after the JSON
+    for (let i = jsonText.length; i > 0; i--) {
+      try {
+        const candidate = jsonText.substring(0, i)
+        const parsed = JSON.parse(candidate)
+        // If parse succeeds, re-stringify to clean format
+        return JSON.stringify(parsed)
+      } catch (e) {
+        // Continue trying shorter substrings
+      }
+    }
+    
+    // If we couldn't find valid JSON, fall back to regex extraction
+    const arrayMatch = jsonText.match(/\[[\s\S]*\]/)
+    const objectMatch = jsonText.match(/\{[\s\S]*\}/)
+    
+    if (arrayMatch) {
+      return arrayMatch[0]
+    } else if (objectMatch) {
+      return objectMatch[0]
+    }
+  }
+  
+  // Fallback to original text if no JSON found
+  return text
+}
+
 // Parse and validate audit response from OpenAI
 function parseAuditResponse(response: any, tier: AuditTier): AuditResult {
-  if (!response.output_text) {
+  // Extract output_text - SDK may provide it directly or we need to extract from output array
+  let rawOutput = response.output_text
+  
+  // If output_text not directly available, try to extract from output array
+  // Deep Research responses have structure: output[] -> message -> content[] -> output_text
+  if (!rawOutput && Array.isArray(response.output)) {
+    // Find message items with content
+    const messageItems = response.output.filter((item: any) => item.type === 'message' && Array.isArray(item.content))
+    for (const message of messageItems.reverse()) { // Check from last to first
+      const textItems = message.content.filter((item: any) => item.type === 'output_text' && item.text)
+      if (textItems.length > 0) {
+        // Use the last output_text item from the last message (final response)
+        rawOutput = textItems[textItems.length - 1].text
+        console.log(`[Audit] Extracted output_text from message.content (${textItems.length} text items found)`)
+        break
+      }
+    }
+  }
+  
+  if (!rawOutput) {
     console.error("[Audit] Response missing output_text")
+    console.error("[Audit] Response structure:", JSON.stringify({
+      has_output_text: !!response.output_text,
+      output_array_length: Array.isArray(response.output) ? response.output.length : 0,
+      output_types: Array.isArray(response.output) ? response.output.map((item: any) => item.type).slice(-5) : []
+    }))
     throw new Error("AI model returned empty response. Please try again.")
   }
 
+  const outputLength = rawOutput.length
+  console.log(`[Audit] Parsing response (tier: ${tier}, length: ${outputLength} chars, responseId: ${response.id})`)
+  
+  // Log first/last 200 chars for debugging (if output is long enough)
+  if (outputLength > 400) {
+    console.log(`[Audit] Raw output preview (first 200):`, rawOutput.substring(0, 200))
+    console.log(`[Audit] Raw output preview (last 200):`, rawOutput.substring(outputLength - 200))
+  } else {
+    console.log(`[Audit] Raw output:`, rawOutput)
+  }
+
   let parsed: any
+  let parseAttempt = 1
+  
+  // Attempt 1: Direct JSON parse
   try {
-    parsed = JSON.parse(response.output_text)
+    parsed = JSON.parse(rawOutput)
+    console.log(`[Audit] JSON parse succeeded on attempt ${parseAttempt} (direct parse)`)
   } catch (parseError) {
-    console.error("[Audit] JSON parse error:", parseError instanceof Error ? parseError.message : "Unknown")
-    console.error("[Audit] Raw output (first 500 chars):", response.output_text.substring(0, 500))
-    throw new Error("AI model returned invalid JSON. Please try again.")
+    console.warn(`[Audit] Direct JSON parse failed (attempt ${parseAttempt}), trying cleaned version...`)
+    
+    // Attempt 2: Clean markdown and try again
+    try {
+      const cleaned = cleanJsonResponse(rawOutput)
+      parsed = JSON.parse(cleaned)
+      console.log(`[Audit] JSON parse succeeded on attempt ${++parseAttempt} (after cleaning)`)
+    } catch (secondParseError) {
+      console.error(`[Audit] JSON parse error after cleaning:`, secondParseError instanceof Error ? secondParseError.message : "Unknown")
+      console.error(`[Audit] Raw output (first 500 chars):`, rawOutput.substring(0, 500))
+      console.error(`[Audit] Cleaned output (first 500 chars):`, cleanJsonResponse(rawOutput).substring(0, 500))
+      throw new Error("AI model returned invalid JSON. Please try again.")
+    }
   }
 
   // Validate with Zod schema

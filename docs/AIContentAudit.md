@@ -455,8 +455,8 @@ Benefits:
 - ✅ Test empty domain state (no domains message)
 
 **AI Model Testing (Expensive - Do After Mock Data Works):**
-- ⚠️ **ONLY AFTER:** All mock data tests pass and dashboard renders correctly
-- ⚠️ Set `USE_MOCK_DATA=false` in `.env.local`
+- ✅ **ONLY AFTER:** All mock data tests pass and dashboard renders correctly
+- ✅ Set `USE_MOCK_DATA=false` in `.env.local`
 - ⚠️ Test mini audit via API (curl or Postman - happy path, error cases, timeout)
 - ⚠️ Test mini audit via UI (actual model calls)
 - ⚠️ Test full audit with background execution

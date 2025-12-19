@@ -15,18 +15,20 @@ function getBearer(req: Request) {
 export async function POST(request: Request) {
   try {
     const token = getBearer(request)
-    if (!token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    let userId: string | null = null
+    let isAuthenticated = false
 
-    const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(token)
-    if (userErr || !userData?.user?.id) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
+    // Support both authenticated and unauthenticated requests
+    if (token) {
+      const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(token)
+      if (!userErr && userData?.user?.id) {
+        userId = userData.user.id
+        isAuthenticated = true
+      }
     }
-    const userId = userData.user.id
 
     const body = await request.json().catch(() => ({}))
-    const { responseId, runId } = body || {}
+    const { responseId, runId, session_token } = body || {}
 
     if (!responseId) {
       return NextResponse.json({ error: 'Missing responseId' }, { status: 400 })
@@ -35,12 +37,22 @@ export async function POST(request: Request) {
     // Retrieve tier from database if runId is provided
     let tier: AuditTier | undefined = undefined
     if (runId) {
-      const { data: auditRun } = await supabaseAdmin
+      // Support both authenticated (user_id) and unauthenticated (session_token) lookups
+      let query = supabaseAdmin
         .from('brand_audit_runs')
-        .select('issues_json')
+        .select('issues_json, user_id, session_token')
         .eq('id', runId)
-        .eq('user_id', userId)
-        .maybeSingle()
+      
+      if (isAuthenticated && userId) {
+        query = query.eq('user_id', userId)
+      } else if (session_token) {
+        query = query.eq('session_token', session_token)
+      } else {
+        // If no auth and no session_token, try to find by responseId in issues_json
+        query = query.or(`user_id.is.null,session_token.not.is.null`)
+      }
+      
+      const { data: auditRun } = await query.maybeSingle()
       
       if (auditRun?.issues_json && typeof auditRun.issues_json === 'object' && 'tier' in auditRun.issues_json) {
         const storedTier = (auditRun.issues_json as any).tier
@@ -52,11 +64,12 @@ export async function POST(request: Request) {
       }
     }
 
-    console.log(`[Poll] Checking status for responseId: ${responseId}${tier ? ` (tier: ${tier})` : ''}`)
+    console.log(`[Poll] Checking status for responseId: ${responseId}${tier ? ` (tier: ${tier})` : ''}${isAuthenticated ? ' (authenticated)' : ' (unauthenticated)'}`)
     const result = await pollAuditStatus(responseId, tier)
 
     // If still in progress, return status with progress info
     if (result.status === 'in_progress') {
+      console.log(`[Poll] Audit still in progress: ${responseId}`)
       return NextResponse.json({
         status: 'in_progress',
         responseId,
@@ -72,12 +85,18 @@ export async function POST(request: Request) {
     // Audit completed - update the database record if we have a runId
     if (runId) {
       // Get audit domain and email status for filtering ignored issues and sending email
-      const { data: auditRun } = await supabaseAdmin
+      let query = supabaseAdmin
         .from('brand_audit_runs')
-        .select('domain, completion_email_sent')
+        .select('domain, completion_email_sent, user_id, session_token')
         .eq('id', runId)
-        .eq('user_id', userId)
-        .maybeSingle()
+      
+      if (isAuthenticated && userId) {
+        query = query.eq('user_id', userId)
+      } else if (session_token) {
+        query = query.eq('session_token', session_token)
+      }
+      
+      const { data: auditRun } = await query.maybeSingle()
 
       // Note: For new audits, we don't filter by status yet - issues start as 'active'
       // Status filtering happens when fetching issues from the database
@@ -89,19 +108,26 @@ export async function POST(request: Request) {
         tier: result.tier || tier, // Preserve tier for future lookups
       }
 
-      const { error: updateErr } = await supabaseAdmin
+      let updateQuery = supabaseAdmin
         .from('brand_audit_runs')
         .update({
           pages_scanned: result.pagesScanned,
           issues_json: issuesJson,
         })
         .eq('id', runId)
-        .eq('user_id', userId)
+      
+      if (isAuthenticated && userId) {
+        updateQuery = updateQuery.eq('user_id', userId)
+      } else if (session_token) {
+        updateQuery = updateQuery.eq('session_token', session_token)
+      }
+      
+      const { error: updateErr } = await updateQuery
 
       if (updateErr) {
         console.error('[Poll] Failed to update audit run:', updateErr)
       } else {
-        console.log(`[Poll] Updated audit run: ${runId}`)
+        console.log(`[Poll] ✅ Audit completed and updated: ${runId} (${result.issues?.length || 0} issues, ${result.pagesScanned || 0} pages)`)
         
         // Save issues to issues table
         if (filteredIssues.length > 0) {
@@ -133,9 +159,8 @@ export async function POST(request: Request) {
           }
         }
         
-        // Increment audit usage when audit completes (only once per audit)
-        // Check if we've already incremented by checking if audit was just completed
-        if (auditRun?.domain) {
+        // Increment audit usage when audit completes (only for authenticated users)
+        if (auditRun?.domain && isAuthenticated && userId) {
           try {
             await incrementAuditUsage(userId, auditRun.domain)
           } catch (error) {
@@ -186,12 +211,18 @@ export async function POST(request: Request) {
     // Get filtered issues (or use result.issues if filtering wasn't done)
     let responseIssues = result.issues || []
     if (runId) {
-      const { data: auditRun } = await supabaseAdmin
+      let query = supabaseAdmin
         .from('brand_audit_runs')
         .select('domain, issues_json')
         .eq('id', runId)
-        .eq('user_id', userId)
-        .maybeSingle()
+      
+      if (isAuthenticated && userId) {
+        query = query.eq('user_id', userId)
+      } else if (session_token) {
+        query = query.eq('session_token', session_token)
+      }
+      
+      const { data: auditRun } = await query.maybeSingle()
       
       if (auditRun?.issues_json && typeof auditRun.issues_json === 'object' && 'issues' in auditRun.issues_json) {
         responseIssues = (auditRun.issues_json as any).issues || result.issues || []
@@ -200,7 +231,7 @@ export async function POST(request: Request) {
 
     // Get usage info for response (only for authenticated users)
     let usage = null
-    if (userId && runId) {
+    if (isAuthenticated && userId && runId) {
       try {
         const { data: auditRun } = await supabaseAdmin
           .from('brand_audit_runs')
