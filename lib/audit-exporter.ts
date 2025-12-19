@@ -37,11 +37,14 @@ When fixing issues:
 
 `
 
-  issues.forEach((issue: Issue, index: number) => {
-    const severity = issue.severity || 'low'
-    const severityEmoji = severity === 'high' ? '🔴' : severity === 'medium' ? '🟡' : '🟢'
-    
-    markdown += `### ${index + 1}. ${issue.title || `Issue ${index + 1}`} ${severityEmoji}
+  if (issues.length === 0) {
+    markdown += `\nNo issues found in this audit.\n\n`
+  } else {
+    issues.forEach((issue: Issue, index: number) => {
+      const severity = issue.severity || 'low'
+      const severityEmoji = severity === 'high' ? '🔴' : severity === 'medium' ? '🟡' : '🟢'
+      
+      markdown += `### ${index + 1}. ${issue.title || `Issue ${index + 1}`} ${severityEmoji}
 
 **Severity**: ${severity.toUpperCase()}
 **Impact**: ${issue.impact || 'Not specified'}
@@ -51,17 +54,18 @@ When fixing issues:
 **Pages Found**:
 `
 
-    if (issue.locations && Array.isArray(issue.locations) && issue.locations.length > 0) {
-      issue.locations.forEach((location: any, locIndex: number) => {
-        markdown += `${locIndex + 1}. **URL**: ${location.url || 'Unknown URL'}\n`
-        markdown += `   **Snippet**: "${location.snippet || 'No snippet provided'}"\n\n`
-      })
-    } else {
-      markdown += `   No specific locations captured.\n\n`
-    }
+      if (issue.locations && Array.isArray(issue.locations) && issue.locations.length > 0) {
+        issue.locations.forEach((location: any, locIndex: number) => {
+          markdown += `${locIndex + 1}. **URL**: ${location.url || 'Unknown URL'}\n`
+          markdown += `   **Snippet**: "${location.snippet || 'No snippet provided'}"\n\n`
+        })
+      } else {
+        markdown += `   No specific locations captured.\n\n`
+      }
 
-    markdown += `---\n\n`
-  })
+      markdown += `---\n\n`
+    })
+  }
 
   if (auditedUrls.length > 0) {
     markdown += `## Audited URLs\n\n`
@@ -121,6 +125,13 @@ export async function generateAuditPDF(audit: AuditRun, issues: Issue[]): Promis
   let browser: puppeteer.Browser | null = null
   
   try {
+    // Debug: Log HTML length and issues count
+    console.log('[PDF Export] Generating PDF:', {
+      htmlLength: html.length,
+      issuesCount: issues.length,
+      domain: audit.domain,
+    })
+
     const launchPromise = puppeteer.launch({
       headless: true,
       args: [
@@ -144,16 +155,22 @@ export async function generateAuditPDF(audit: AuditRun, issues: Issue[]): Promis
 
     const page = await browser.newPage()
     
+    // Set viewport for consistent rendering
+    await page.setViewport({ width: 1200, height: 1600 })
+    
     // Set page timeout
     page.setDefaultTimeout(PDF_TIMEOUT_MS)
     
-    // Set content with timeout
+    // Set content with timeout - use 'domcontentloaded' for faster rendering
     await Promise.race([
-      page.setContent(html, { waitUntil: 'networkidle0' }),
+      page.setContent(html, { waitUntil: 'domcontentloaded' }),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('Page content load timeout')), PDF_TIMEOUT_MS)
       ),
     ])
+    
+    // Wait a bit for styles to apply (using Promise-based setTimeout)
+    await new Promise(resolve => setTimeout(resolve, 500))
     
     // Generate PDF with timeout
     const pdfBuffer = await Promise.race([
@@ -166,11 +183,17 @@ export async function generateAuditPDF(audit: AuditRun, issues: Issue[]): Promis
           bottom: '20mm',
           left: '15mm',
         },
+        preferCSSPageSize: false,
       }),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('PDF generation timeout after 45s')), PDF_TIMEOUT_MS)
       ),
     ])
+
+    console.log('[PDF Export] PDF generated successfully:', {
+      bufferSize: pdfBuffer.length,
+      domain: audit.domain,
+    })
 
     return new Blob([pdfBuffer], { type: 'application/pdf' })
   } catch (error) {
@@ -206,6 +229,12 @@ function generateAuditHTML(
   auditedUrls: string[]
 ): string {
   let issuesHTML = ''
+
+  // Validate issues array
+  if (!Array.isArray(issues)) {
+    console.error('[PDF Export] Issues is not an array:', typeof issues)
+    issues = []
+  }
 
   issues.forEach((issue: Issue, index: number) => {
     const severity = issue.severity || 'low'
@@ -245,7 +274,7 @@ function generateAuditHTML(
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>${escapeHtml(title)}</title>
+  <title>${escapeHtml(title)} - Fortress Content Audit</title>
   <style>
     * {
       margin: 0;
@@ -256,12 +285,72 @@ function generateAuditHTML(
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
       line-height: 1.6;
       color: #1a1a1a;
-      padding: 20px;
+      padding: 0;
+      background: #ffffff;
+      margin: 0;
+    }
+    .header {
+      background: #ffffff;
+      border-bottom: 2px solid #e5e5e5;
+      padding: 20px 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0;
+    }
+    .header-brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .header-text {
+      font-size: 24px;
+      font-family: Georgia, 'Times New Roman', serif;
+      font-weight: 600;
+      color: #0f172a;
+      letter-spacing: -0.02em;
+    }
+    .header-tagline {
+      font-size: 12px;
+      color: #666;
+      margin-left: 12px;
+    }
+    .content {
+      padding: 40px;
+    }
+    .footer {
+      margin-top: 60px;
+      padding: 30px 40px;
+      border-top: 1px solid #e5e5e5;
+      text-align: center;
+      color: #666;
+      font-size: 12px;
+    }
+    .footer-brand {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 8px;
+    }
+    .footer-text {
+      font-size: 16px;
+      font-family: Georgia, 'Times New Roman', serif;
+      font-weight: 600;
+      color: #0f172a;
+      letter-spacing: -0.01em;
+    }
+    .footer-link {
+      color: #3B82F6;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .footer-link:hover {
+      text-decoration: underline;
     }
     .cover-page {
       page-break-after: always;
       text-align: center;
-      padding: 60px 20px;
+      padding: 80px 40px 60px 40px;
     }
     .cover-page h1 {
       font-size: 2.5em;
@@ -278,9 +367,10 @@ function generateAuditHTML(
     }
     .summary {
       background: #f5f5f5;
-      padding: 20px;
+      padding: 24px;
       border-radius: 8px;
-      margin: 30px 0;
+      margin: 40px 0;
+      border: 1px solid #e5e5e5;
     }
     .summary h2 {
       margin-bottom: 15px;
@@ -313,6 +403,8 @@ function generateAuditHTML(
       border: 1px solid #e5e5e5;
       border-radius: 8px;
       page-break-inside: avoid;
+      background: #ffffff;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     }
     .issue-header {
       display: flex;
@@ -326,6 +418,8 @@ function generateAuditHTML(
       font-size: 1.3em;
       flex: 1;
       margin-right: 15px;
+      color: #1a1a1a;
+      font-weight: 600;
     }
     .severity-badge {
       padding: 4px 12px;
@@ -339,6 +433,11 @@ function generateAuditHTML(
     }
     .issue-content p {
       margin: 10px 0;
+      color: #333;
+    }
+    .issue-content strong {
+      color: #1a1a1a;
+      font-weight: 600;
     }
     .examples {
       margin-top: 15px;
@@ -377,9 +476,25 @@ function generateAuditHTML(
       padding: 5px 0;
       border-bottom: 1px solid #e5e5e5;
     }
+    h2 {
+      color: #1a1a1a;
+      font-weight: 600;
+      margin-top: 30px;
+      margin-bottom: 15px;
+    }
     @media print {
       body {
         padding: 0;
+      }
+      .header {
+        padding: 15px 20px;
+      }
+      .content {
+        padding: 20px;
+      }
+      .footer {
+        padding: 20px;
+        margin-top: 40px;
       }
       .issue-card {
         page-break-inside: avoid;
@@ -388,17 +503,25 @@ function generateAuditHTML(
   </style>
 </head>
 <body>
-  <div class="cover-page">
-    <h1>${escapeHtml(title)}</h1>
-    <div class="meta">
-      <p><strong>Domain:</strong> ${escapeHtml(domain)}</p>
-      <p><strong>Date:</strong> ${escapeHtml(createdAt)}</p>
-      <p><strong>Pages Scanned:</strong> ${pagesScanned}</p>
-      <p><strong>Total Issues:</strong> ${totalIssues}</p>
+  <div class="header">
+    <div class="header-brand">
+      <span class="header-text">Fortress</span>
+      <span class="header-tagline">Content Audit Report</span>
     </div>
   </div>
 
-  <div class="summary">
+  <div class="content">
+    <div class="cover-page">
+      <h1>${escapeHtml(title)}</h1>
+      <div class="meta">
+        <p><strong>Domain:</strong> ${escapeHtml(domain)}</p>
+        <p><strong>Date:</strong> ${escapeHtml(createdAt)}</p>
+        <p><strong>Pages Scanned:</strong> ${pagesScanned}</p>
+        <p><strong>Total Issues:</strong> ${totalIssues}</p>
+      </div>
+    </div>
+
+    <div class="summary">
     <h2>Audit Summary</h2>
     <div class="summary-grid">
       <div class="summary-item">
@@ -421,7 +544,7 @@ function generateAuditHTML(
   </div>
 
   <h2 style="margin-top: 40px; margin-bottom: 20px;">Issues Found</h2>
-  ${issuesHTML}
+  ${issues.length > 0 ? issuesHTML : '<p style="color: #666; font-style: italic;">No issues found in this audit.</p>'}
 
   ${auditedUrls.length > 0 ? `
     <div class="audited-urls">
@@ -431,6 +554,15 @@ function generateAuditHTML(
       </ul>
     </div>
   ` : ''}
+  </div>
+
+  <div class="footer">
+    <div class="footer-brand">
+      <span class="footer-text">Fortress</span>
+    </div>
+    <p>Generated by <a href="https://aistyleguide.com" class="footer-link">Fortress</a> - Content quality audit platform</p>
+    <p style="margin-top: 8px; color: #999;">This report was automatically generated from your content audit</p>
+  </div>
 </body>
 </html>`
 }

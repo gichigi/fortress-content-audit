@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase-browser"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ArrowLeft, FileText, ExternalLink, RefreshCw, Loader2, TrendingUp, TrendingDown, Minus, CheckCircle2 } from "lucide-react"
+import { ArrowLeft, FileText, ExternalLink, RefreshCw, Loader2, TrendingUp, TrendingDown, Minus, CheckCircle2, Download, FileJson, FileType } from "lucide-react"
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import { useToast } from "@/hooks/use-toast"
 import { PLAN_NAMES } from "@/lib/plans"
@@ -27,6 +27,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 interface AuditRun {
   id: string
@@ -55,6 +61,7 @@ export default function DashboardPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [domainToDelete, setDomainToDelete] = useState<string | null>(null)
   const [authToken, setAuthToken] = useState<string | null>(null)
+  const [exportLoading, setExportLoading] = useState<string | null>(null) // Track which format is loading
   
   // Use shared hook to fetch issues from database
   const mostRecentAudit = audits.length > 0 ? audits[0] : null
@@ -513,6 +520,74 @@ export default function DashboardPage() {
     })
   }
 
+  const handleExport = async (format: 'pdf' | 'json' | 'md') => {
+    if (!mostRecentAudit?.id || !authToken) {
+      toast({
+        title: "Error",
+        description: "No audit available to export",
+        variant: "destructive"
+      })
+      return
+    }
+
+    setExportLoading(format)
+
+    try {
+      const response = await fetch(`/api/audit/${mostRecentAudit.id}/export?format=${format}`, {
+        headers: {
+          'Authorization': `Bearer ${authToken}`
+        }
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        
+
+        throw new Error(errorData.error || `Failed to export as ${format.toUpperCase()}`)
+      }
+
+      // Get filename from Content-Disposition header or generate one
+      const contentDisposition = response.headers.get('Content-Disposition')
+      let filename = `${mostRecentAudit.domain || 'audit'}-audit.${format}`
+      if (contentDisposition) {
+        // Handle both quoted and unquoted filenames
+        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/i)
+        if (filenameMatch && filenameMatch[1]) {
+          // Remove quotes if present
+          filename = filenameMatch[1].replace(/^["']|["']$/g, '')
+        }
+      }
+      
+      // Sanitize filename - remove any invalid characters
+      filename = filename.replace(/[^a-zA-Z0-9._-]/g, '-').replace(/-+/g, '-')
+
+      // Download the file
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+
+      toast({
+        title: "Export successful",
+        description: `Audit exported as ${format.toUpperCase()}`,
+      })
+    } catch (error) {
+      console.error('[Dashboard] Export error:', error)
+      toast({
+        title: "Export failed",
+        description: error instanceof Error ? error.message : "Failed to export audit",
+        variant: "destructive"
+      })
+    } finally {
+      setExportLoading(null)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex flex-1 flex-col">
@@ -591,6 +666,51 @@ export default function DashboardPage() {
                           </span>
                         )}
                       </div>
+                    )}
+                    {mostRecentAudit && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="outline"
+                            disabled={exportLoading !== null}
+                          >
+                            {exportLoading ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Exporting {exportLoading.toUpperCase()}...
+                              </>
+                            ) : (
+                              <>
+                                <Download className="mr-2 h-4 w-4" />
+                                Export
+                              </>
+                            )}
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem 
+                            onClick={() => handleExport('pdf')}
+                            disabled={exportLoading !== null}
+                          >
+                            <FileText className="mr-2 h-4 w-4" />
+                            PDF
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            onClick={() => handleExport('json')}
+                            disabled={exportLoading !== null}
+                          >
+                            <FileJson className="mr-2 h-4 w-4" />
+                            JSON
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            onClick={() => handleExport('md')}
+                            disabled={exportLoading !== null}
+                          >
+                            <FileType className="mr-2 h-4 w-4" />
+                            Markdown
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     )}
                     <Button 
                       asChild

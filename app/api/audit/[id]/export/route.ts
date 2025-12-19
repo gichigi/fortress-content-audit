@@ -1,5 +1,5 @@
 // Export audit in various formats (PDF, JSON, Markdown)
-// Gated to paid users only
+// Available to all authenticated users
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { generateAuditMarkdown, generateAuditJSON, generateAuditPDF } from '@/lib/audit-exporter'
@@ -38,24 +38,7 @@ export async function GET(
       return NextResponse.json({ error: 'Invalid format. Use pdf, json, or md' }, { status: 400 })
     }
 
-    // Get user plan - gate ALL exports to paid users only
-    const { data: profile } = await supabaseAdmin
-      .from('profiles')
-      .select('plan')
-      .eq('user_id', userId)
-      .maybeSingle()
-    const plan = profile?.plan || 'free'
-
-    // Gate exports - only paid/enterprise users can export
-    if (plan === 'free') {
-      return NextResponse.json(
-        { 
-          error: 'Export functionality requires a paid plan. Please upgrade to export audit results.',
-          upgradeRequired: true
-        },
-        { status: 403 }
-      )
-    }
+    // Exports are available to all authenticated users (no plan gating)
 
     // Fetch audit
     const { data: audit, error: fetchErr } = await supabaseAdmin
@@ -74,6 +57,29 @@ export async function GET(
       return NextResponse.json({ error: 'Audit not found' }, { status: 404 })
     }
 
+    // Fetch issues from database (single source of truth)
+    const { data: issues, error: issuesErr } = await (supabaseAdmin as any)
+      .from('issues')
+      .select('*')
+      .eq('audit_id', id)
+      .order('severity', { ascending: false })
+      .order('created_at', { ascending: true })
+
+    if (issuesErr) {
+      console.error('[Export] Error fetching issues:', issuesErr)
+      return NextResponse.json({ error: 'Failed to fetch issues' }, { status: 500 })
+    }
+
+    const issuesList = issues || []
+
+    // Debug: Log issues count
+    console.log('[Export] Exporting audit:', {
+      auditId: id,
+      domain: audit.domain,
+      format,
+      issuesCount: issuesList.length,
+    })
+
     // Generate filename
     const domain = audit.domain || 'audit'
     const sanitizedDomain = domain.replace(/[^a-z0-9]/gi, '-').toLowerCase()
@@ -86,7 +92,7 @@ export async function GET(
     switch (format) {
       case 'md': {
         try {
-          const markdown = generateAuditMarkdown(audit)
+          const markdown = generateAuditMarkdown(audit, issuesList)
           const duration = Date.now() - startTime
           
           // Log successful export
@@ -130,7 +136,7 @@ export async function GET(
 
       case 'json': {
         try {
-          const json = generateAuditJSON(audit)
+          const json = generateAuditJSON(audit, issuesList)
           const duration = Date.now() - startTime
           
           // Log successful export
@@ -175,7 +181,7 @@ export async function GET(
       case 'pdf': {
         const startTime = Date.now()
         try {
-          const pdfBlob = await generateAuditPDF(audit)
+          const pdfBlob = await generateAuditPDF(audit, issuesList)
           const buffer = await pdfBlob.arrayBuffer()
           const duration = Date.now() - startTime
           

@@ -36,8 +36,8 @@
 | Issue History Tracking | ❌ | ✅ | ✅ | ✅ |
 | **Results & Reporting** |
 | Issues Shown | 3 (preview with fade-out) | All issues from mini audit | All issues | All issues |
-| Export Format | None | None | PDF, JSON, Markdown | PDF, JSON, Markdown |
-| Markdown Export | ❌ | ❌ | ✅ (with AI prompt header) | ✅ (with AI prompt header) |
+| Export Format | None | PDF, JSON, Markdown | PDF, JSON, Markdown | PDF, JSON, Markdown |
+| Markdown Export | ❌ | ✅ (with AI prompt header) | ✅ (with AI prompt header) | ✅ (with AI prompt header) |
 | Historical Reports | ❌ | ✅ (limited) | ✅ (30/60/90 days) | ✅ (unlimited) |
 | Health Score | ❌ | ✅ | ✅ | ✅ |
 | Dashboard (Cards, Chart, Table) | ❌ | ✅ | ✅ | ✅ |
@@ -168,9 +168,9 @@ Benefits:
 
 ### Phase 3.5: Export & Reporting Formats ✅ COMPLETED
 
-**Export formats for paid users only**
+**Export formats for all authenticated users**
 
-* ✅ Exports are not available for free (authenticated or unauthenticated) users.
+* ✅ Exports are available to all authenticated users (free, paid, enterprise).
 * ✅ PDF export - Formatted report suitable for sharing with stakeholders.
   * ✅ Uses Puppeteer for HTML to PDF conversion
   * ✅ Includes cover page, summary, and formatted issue details
@@ -190,7 +190,7 @@ Benefits:
   * ✅ Header with AI prompt explaining audit structure.
   * ✅ Structured issue list with URLs, snippets, and suggested fixes.
   * ✅ Format optimized for AI consumption (clear instructions, structured data).
-* ✅ Export UI in audit detail page (gated to paid users only).
+* ✅ Export UI in dashboard (available to all authenticated users).
 * ✅ Monitoring and logging for export failures via PostHog.
 * ✅ Filename format: `{domain}-audit-{date}.{ext}`
 
@@ -409,14 +409,14 @@ Benefits:
 - ✅ Test dashboard audit list display with mock audits (verify 35+ audits visible)
 - ✅ Test health score cards display with mock data (4 cards: Current Score, Trend, Active Issues, Critical Issues)
 - ✅ Test health score line chart rendering with 1+ days of mock time-series data
-- ⚠️ Test issues table displays most recent audit's issue types
-- ⚠️ Test export UI (dropdown menu, loading states, error handling)
-- ⚠️ Test export formats with mock data (PDF formatting, JSON schema, Markdown structure)
-- ⚠️ Test export gating (free users see upgrade prompt, paid users can export)
+- ✅ Test issues table displays most recent audit's issue types
+- ✅ Test export UI (dropdown menu, loading states, error handling)
+- ✅ Test export formats with mock data (PDF formatting, JSON schema, Markdown structure)
+- ✅ Test export for all users
 - ⚠️ Test progress polling UI with mock in-progress states
 - ⚠️ Test empty audit results display
 - ⚠️ Test very large audits display (many issues, pagination)
-- ⚠️ Test severity filtering tabs with mock data
+- ✅ Test severity filtering tabs with mock data
 - ⚠️ Test issue state filtering (active/ignored/resolved) with mock data
 
 **Health Score UI Testing (Mock Data):**
