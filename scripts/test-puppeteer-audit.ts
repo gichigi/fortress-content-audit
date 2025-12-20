@@ -1,50 +1,12 @@
-
-user should be able to group/sort by url
---
-**Testing notes**
-## Homepage
-[Your Audit Results] = [URL Audit Results]
-Remove toolbar [search issues, all issues dropdown, Customise columns], remove 3 dots options to resolve/ignore
-Make "view all x issues" more of a primary CTA
-Add Health score and card components 
-After ignoring issue on homepage, table unresponsive
-side slider when clicking issue name unnecessary
-Transition back to / gracefully with fade in like the fade out to interstitial
-
-## auth
-users should be able to sign in with password too – explore the best UX for this
-footer shouldn't have to exist, useres should be automatically reidrected to their dash if they're authed
-
-## Dashboard page
-instead of each list item being a group, each item should be an instance and find another way to group (maybe column with badge)
-Guides tab not needed
-error not using alert or toast, Nextjs error
-add status column aligned with status
-
-
-
-
-## settings
-Nowhere to be found
-
-## pricing
-will be rewritten
-
-
-
--------
-
-GPT5.2 test prompt
-
 #!/usr/bin/env tsx
 /**
- * Test script for o3 model with web search tools
+ * Test script for content audit using Puppeteer extraction and web search
  * 
  * Usage:
- *   npx tsx scripts/test-o3-websearch.ts <domain>
+ *   npx tsx scripts/test-puppeteer-audit.ts <domain>
  * 
  * Example:
- *   npx tsx scripts/test-o3-websearch.ts vercel.com
+ *   npx tsx scripts/test-puppeteer-audit.ts vercel.com
  */
 
 import { config } from 'dotenv'
@@ -247,41 +209,141 @@ async function fetchWebPage(url: string, targetDomain?: string): Promise<string>
   }
 }
 
-const AUDIT_PROMPT = `You are auditing a website's homepage HTML that has been fully rendered and extracted using Puppeteer. The HTML you receive is the complete, JavaScript-rendered DOM at desktop viewport (1920x1080).
+const AUDIT_PROMPT = `Audit the provided HTML pages for errors and issues.
 
-Find copy errors and technical issues:
+Find:
+• Content errors: typos, grammar, punctuation, factual inconsistencies
+• Technical issues: broken links, SEO gaps, accessibility problems, terminology inconsistencies
 
-CONTENT ERRORS:
-• Typos and spelling mistakes
-• Grammar mistakes (incomplete sentences, missing words, subject-verb agreement, etc.)
-• Punctuation problems
-• Factual inconsistencies (contradictory numbers, dates, or claims)
-
-TECHNICAL ISSUES:
-• Broken or invalid links (check href attributes for malformed URLs, but note: you cannot verify 404s without HTTP requests)
-• SEO issues: missing/duplicate title tags, meta descriptions, H1 tags, image alt text
-• Accessibility issues: missing alt text, duplicate IDs, invalid ARIA attributes
-• Inconsistent terminology, brand names, or product names across the page
-
-CRITICAL RULES:
-- The HTML is already fully rendered - you don't need to verify page load or JavaScript execution
-- Analyze the HTML structure to understand how text is organized (text in separate elements is fine, even if it appears connected when extracted as plain text)
-- Only flag inconsistencies that are actual errors:
-  * Mixing spelled-out and abbreviated forms (e.g., "7 minutes" vs "40s" is wrong; "7m" vs "40s" is fine)
-  * Using different abbreviation styles for the same unit type (e.g., "7m" vs "7 min" is inconsistent)
-  * Do NOT flag different unit types using consistent abbreviation style (e.g., "7m to 40s" is correct)
-- When in doubt, do NOT flag it - only report issues you are CERTAIN are errors
-- Ignore anything subjective like tone of voice or style preferences
+Rules:
+- HTML is fully rendered - analyze structure and content
+- Only report issues you are certain are errors
+- Ignore subjective style preferences
+- For each issue, specify which page URL it was found on
 
 For each issue, provide:
-- A specific, actionable title
-- The page URL where the issue was found
-- A snippet showing the exact error (include relevant HTML)
-- A suggested fix
+- Title, URL, snippet, suggested fix
 - Category: 'typos', 'grammar', 'punctuation', 'seo', 'factual', 'links', 'terminology'
 - Severity: 'low', 'medium', or 'high'`
 
-async function testO3WebSearch(domain: string) {
+// Function to identify key pages using web search with gpt-4o-mini via responses API
+async function identifyKeyPages(targetDomain: string, openai: OpenAI): Promise<string[]> {
+  try {
+    console.log('Searching web for key pages using gpt-4o-mini...')
+    
+    const domainHostname = extractDomainForFilter(targetDomain)
+    // Handle notion.com -> notion.so redirect
+    const searchDomain = domainHostname === 'notion.com' ? 'notion.so' : domainHostname
+    const searchQuery = `site:${searchDomain}`
+    
+    const params: any = {
+      model: "gpt-4o-mini",
+      input: `Search the web for: ${searchQuery}
+
+List the top 3 most important page URLs from the search results. Return ONLY the URLs, one per line.`,
+      tools: [{
+        type: "web_search_preview"
+      }],
+      max_tool_calls: 3, // Limit to keep it fast/cheap
+      max_output_tokens: 2000,
+      include: ["web_search_call.action.sources"], // Request sources to get URLs
+    }
+    
+    const response = await openai.responses.create(params)
+    
+    // Poll for completion (simple synchronous wait)
+    let status = response.status as string
+    let finalResponse = response
+    let attempts = 0
+    const maxAttempts = 30 // 30 seconds max
+    
+    while ((status === "queued" || status === "in_progress") && attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      finalResponse = await openai.responses.retrieve(response.id)
+      status = finalResponse.status as string
+      attempts++
+    }
+    
+    if (status !== "completed") {
+      console.log(`⚠️  Search did not complete (status: ${status}), falling back to homepage only`)
+      return []
+    }
+    
+    // Extract URLs from response output
+    const outputText = finalResponse.output_text || ''
+    
+    // Debug: log the raw output
+    if (!outputText || outputText.trim().length === 0) {
+      console.log('⚠️  Empty output from web search, falling back to homepage only')
+      return []
+    }
+    
+    // Try to extract URLs from the output text (one per line or space-separated)
+    const urlPattern = /https?:\/\/[^\s"<>\)\n]+/g
+    let foundUrls = outputText.match(urlPattern) || []
+    
+    // If no URLs found, try to extract from sources in the response
+    if (foundUrls.length === 0 && finalResponse.output && Array.isArray(finalResponse.output)) {
+      for (const item of finalResponse.output) {
+        if (item.type === 'web_search_call' && item.action?.sources) {
+          const sources = item.action.sources
+          if (Array.isArray(sources)) {
+            sources.forEach((source: any) => {
+              const sourceUrl = typeof source === 'string' ? source : source.url || source
+              if (sourceUrl && typeof sourceUrl === 'string' && sourceUrl.startsWith('http')) {
+                foundUrls.push(sourceUrl)
+              }
+            })
+          }
+        }
+      }
+    }
+    
+    // Filter to same domain and exclude homepage
+    // Handle both .com and .so for notion
+    const normalizedHomepage = normalizeDomain(targetDomain)
+    const allowedHostnames = domainHostname === 'notion.com' 
+      ? ['notion.com', 'notion.so', 'www.notion.com', 'www.notion.so']
+      : [domainHostname, `www.${domainHostname}`]
+    
+    const keyPages = foundUrls
+      .filter((url: string) => {
+        try {
+          const urlObj = new URL(url)
+          const urlHostname = urlObj.hostname
+          return allowedHostnames.some(allowed => 
+            urlHostname === allowed || urlHostname.endsWith(`.${allowed}`)
+          )
+        } catch {
+          return false
+        }
+      })
+      .filter((url: string) => {
+        const normalized = normalizeDomain(url)
+        // Exclude homepage (both .com and .so versions)
+        return normalized !== normalizedHomepage && 
+               normalized !== normalizedHomepage.replace('.com', '.so') &&
+               normalized !== normalizedHomepage.replace('.so', '.com')
+      })
+      .slice(0, 3) // Take top 3
+
+    if (keyPages.length > 0) {
+      console.log(`✓ Found ${keyPages.length} key page(s) from search: ${keyPages.join(', ')}`)
+    } else {
+      console.log(`⚠️  No valid key pages found in search results (found ${foundUrls.length} URLs total), falling back to homepage only`)
+      if (outputText) {
+        console.log(`   Raw output: ${outputText.substring(0, 200)}...`)
+      }
+    }
+    
+    return keyPages
+  } catch (error) {
+    console.log(`⚠️  Error searching for key pages: ${error instanceof Error ? error.message : 'Unknown'}, falling back to homepage only`)
+    return []
+  }
+}
+
+async function testPuppeteerAudit(domain: string) {
   const startTime = Date.now()
   
   console.log(`\n=== Testing GPT-5.2 with Puppeteer-extracted HTML for: ${domain} ===\n`)
@@ -292,74 +354,86 @@ async function testO3WebSearch(domain: string) {
   console.log(`Normalized domain: ${normalizedDomain}`)
   console.log(`Domain filter: ${domainForFilter}\n`)
   
-  // Extract content once upfront using Puppeteer
-  console.log('Extracting page content with Puppeteer...')
-  const extractionStart = Date.now()
-  const pageContent = await fetchWebPage(normalizedDomain, normalizedDomain)
-  const extractionDuration = Date.now() - extractionStart
-  console.log(`Content extracted in ${(extractionDuration / 1000).toFixed(2)}s\n`)
-  
-  // Parse the extracted content to include in prompt
-  let parsedContent
-  try {
-    parsedContent = JSON.parse(pageContent)
-  } catch (e) {
-    console.error('Failed to parse extracted content:', e)
-    console.error('Raw content (first 500 chars):', pageContent.substring(0, 500))
-    process.exit(1)
-  }
-  
-  if (parsedContent.error) {
-    console.error(`Error extracting content: ${parsedContent.error}`)
-    console.error('This might be a JavaScript error on the page. Continuing anyway...')
-    // Don't exit - try to continue with whatever we got
-  }
-  
-  if (!parsedContent.html) {
-    console.error('No HTML extracted from page')
-    process.exit(1)
-  }
-  
-  if (parsedContent.consoleErrors && parsedContent.consoleErrors.length > 0) {
-    console.log(`⚠️  Page has ${parsedContent.consoleErrors.length} console error(s) (continuing anyway)`)
-  }
-  
   const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
     timeout: 300000, // 5min timeout
   })
+  
+  // Step 1: Search web for key pages using cheap model
+  const keyPages = await identifyKeyPages(normalizedDomain, openai)
+  
+  // Step 2: Extract homepage and key pages with Puppeteer
+  console.log(`\nStep 2: Extracting pages with Puppeteer (homepage + ${keyPages.length} key page(s))...`)
+  const extractionStart = Date.now()
+  
+  // Extract homepage
+  const homepageContent = await fetchWebPage(normalizedDomain, normalizedDomain)
+  let homepageParsed
+  try {
+    homepageParsed = JSON.parse(homepageContent)
+  } catch (e) {
+    console.error('Failed to parse homepage content:', e)
+    process.exit(1)
+  }
+  
+  if (homepageParsed.error) {
+    console.error(`Error extracting homepage: ${homepageParsed.error}`)
+    console.error('This might be a JavaScript error on the page. Continuing anyway...')
+  }
+  
+  if (!homepageParsed.html) {
+    console.error('No HTML extracted from homepage')
+    process.exit(1)
+  }
+  
+  const extractionDuration = Date.now() - extractionStart
+  
+  // Extract key pages with Puppeteer
+  const allPages: Array<{url: string, html: string, title: string}> = [
+    {
+      url: homepageParsed.url,
+      html: homepageParsed.html,
+      title: homepageParsed.metadata?.title || 'Homepage'
+    }
+  ]
+  
+  for (const pageUrl of keyPages) {
+    try {
+      const pageContent = await fetchWebPage(pageUrl, normalizedDomain)
+      const parsed = JSON.parse(pageContent)
+      if (parsed.html && !parsed.error) {
+        allPages.push({
+          url: parsed.url,
+          html: parsed.html,
+          title: parsed.metadata?.title || pageUrl
+        })
+        console.log(`✓ Extracted: ${pageUrl}`)
+      } else {
+        console.log(`⚠️  Failed to extract: ${pageUrl}`)
+      }
+    } catch (e) {
+      console.log(`⚠️  Error extracting ${pageUrl}: ${e instanceof Error ? e.message : 'Unknown'}`)
+    }
+  }
+  
+  console.log(`\nTotal pages extracted: ${allPages.length} in ${(extractionDuration / 1000).toFixed(2)}s\n`)
+  
+  // Step 3: Build prompt with all pages for cross-auditing
+  const pagesHtml = allPages.map((page, idx) => {
+    const htmlLimit = 40000 // Limit each page to 40k chars to stay within token limits (all pages at once)
+    return `=== PAGE ${idx + 1}: ${page.title} ===
+URL: ${page.url}
+HTML (cleaned, scripts/styles removed, first ${htmlLimit} chars):
+${page.html.substring(0, htmlLimit)}`
+  }).join('\n\n')
 
   const input = `${AUDIT_PROMPT}
 
-Run a mini content audit on the homepage: ${normalizedDomain}
+Cross-audit the following ${allPages.length} page(s) for errors and inconsistencies:
 
-The page HTML has been fully rendered and extracted using Puppeteer. The cleaned HTML (scripts/styles removed, structure preserved) is provided below.
+${pagesHtml}
 
-ANALYSIS INSTRUCTIONS:
-1. Read through the HTML structure to understand how content is organized
-2. Check for grammar errors by reading complete sentences - look for incomplete sentences, missing words, or grammatical mistakes
-3. Verify SEO elements (title, meta description, H1 tags, image alt attributes)
-4. Check for duplicate IDs, invalid ARIA attributes, or accessibility issues
-5. Look for broken or malformed links (check href attributes)
-6. Identify inconsistencies in terminology, brand names, or product names
-7. Check for typos and spelling mistakes in visible text
-
-IMPORTANT:
-- The HTML structure shows how text is organized - text in separate elements is intentional design, not an error
-- Focus on actual errors: grammar mistakes, typos, missing SEO elements, broken links, duplicate IDs
-- Only report issues you are CERTAIN are real errors
-- Prioritize high-confidence, actionable issues
-
-PAGE METADATA:
-- URL: ${parsedContent.url}
-- Title: ${parsedContent.metadata?.title || 'N/A'}
-- Meta Description: ${parsedContent.metadata?.metaDescription || 'N/A'}
-- HTML Length: ${parsedContent.htmlLength || parsedContent.html.length} chars
-
-CLEANED HTML:
-${parsedContent.html}
-
-Analyze this HTML and report all issues found. Format your response as structured text that can be parsed into the audit format.`
+Report all issues found, specifying the URL for each issue. Check for cross-page inconsistencies in terminology, branding, and factual information.`
 
   try {
     console.log('Sending content to GPT-5.2 for analysis...\n')
@@ -371,6 +445,7 @@ Analyze this HTML and report all issues found. Format your response as structure
         { role: "user", content: input }
       ],
       max_completion_tokens: 16000,
+      reasoning_effort: "high",
     })
     const responseDuration = Date.now() - responseStart
     
@@ -416,12 +491,12 @@ async function main() {
   const domain = process.argv[2]
   
   if (!domain) {
-    console.error('Usage: npx tsx scripts/test-o3-websearch.ts <domain>')
-    console.error('Example: npx tsx scripts/test-o3-websearch.ts vercel.com')
+    console.error('Usage: npx tsx scripts/test-puppeteer-audit.ts <domain>')
+    console.error('Example: npx tsx scripts/test-puppeteer-audit.ts vercel.com')
     process.exit(1)
   }
   
-  await testO3WebSearch(domain)
+  await testPuppeteerAudit(domain)
 }
 
 main().catch(console.error)
