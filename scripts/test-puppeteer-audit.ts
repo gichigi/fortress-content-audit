@@ -217,6 +217,7 @@ Find:
 
 Rules:
 - HTML is fully rendered - analyze structure and content
+- Report ALL issues you're certain about - be thorough and comprehensive
 - Only report issues you are certain are errors
 - Ignore subjective style preferences
 - For each issue, specify which page URL it was found on
