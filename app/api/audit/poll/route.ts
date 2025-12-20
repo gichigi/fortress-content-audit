@@ -34,8 +34,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing responseId' }, { status: 400 })
     }
 
-    // Retrieve tier from database if runId is provided
+    // Retrieve tier and queued_count from database if runId is provided
     let tier: AuditTier | undefined = undefined
+    let queuedCount = 0
     if (runId) {
       // Support both authenticated (user_id) and unauthenticated (session_token) lookups
       let query = supabaseAdmin
@@ -54,22 +55,124 @@ export async function POST(request: Request) {
       
       const { data: auditRun } = await query.maybeSingle()
       
-      if (auditRun?.issues_json && typeof auditRun.issues_json === 'object' && 'tier' in auditRun.issues_json) {
-        const storedTier = (auditRun.issues_json as any).tier
-        // Validate tier is a valid AuditTier
-        if (storedTier === 'FREE' || storedTier === 'PAID' || storedTier === 'ENTERPRISE') {
-          tier = storedTier as AuditTier
-          console.log(`[Poll] Retrieved tier ${tier} from database for runId: ${runId}`)
+      if (auditRun?.issues_json && typeof auditRun.issues_json === 'object') {
+        const issuesJson = auditRun.issues_json as any
+        if ('tier' in issuesJson) {
+          const storedTier = issuesJson.tier
+          // Validate tier is a valid AuditTier
+          if (storedTier === 'FREE' || storedTier === 'PAID' || storedTier === 'ENTERPRISE') {
+            tier = storedTier as AuditTier
+            console.log(`[Poll] Retrieved tier ${tier} from database for runId: ${runId}`)
+          }
+        }
+        // Get queued_count if it exists
+        if (typeof issuesJson.queued_count === 'number') {
+          queuedCount = issuesJson.queued_count
         }
       }
     }
 
-    console.log(`[Poll] Checking status for responseId: ${responseId}${tier ? ` (tier: ${tier})` : ''}${isAuthenticated ? ' (authenticated)' : ' (unauthenticated)'}`)
+    console.log(`[Poll] Checking status for responseId: ${responseId}${tier ? ` (tier: ${tier})` : ''}${isAuthenticated ? ' (authenticated)' : ' (unauthenticated)'}, queued_count: ${queuedCount}`)
     const result = await pollAuditStatus(responseId, tier)
 
-    // If still in progress, return status with progress info
-    if (result.status === 'in_progress') {
-      console.log(`[Poll] Audit still in progress: ${responseId}`)
+    // If still in progress or queued, check for queued timeout
+    if (result.status === 'in_progress' || result.status === 'queued') {
+      // Only increment queued_count if status is actually "queued"
+      const isQueued = result.status === 'queued' || result.rawStatus === 'queued'
+      const newQueuedCount = isQueued ? queuedCount + 1 : 0 // Reset if not queued
+      
+      // Check queued timeout thresholds (generous since user isn't waiting)
+      const QUEUED_THRESHOLDS = {
+        FREE: 30,    // 30 polls × 5s = 150 seconds (2.5 minutes)
+        PAID: 60,   // 60 polls × 5s = 300 seconds (5 minutes)
+        ENTERPRISE: 120, // 120 polls × 5s = 600 seconds (10 minutes)
+      }
+      
+      const threshold = tier ? QUEUED_THRESHOLDS[tier] : QUEUED_THRESHOLDS.PAID
+      
+      // If queued count exceeds threshold, cancel and return error
+      if (isQueued && newQueuedCount >= threshold) {
+        console.warn(`[Poll] Queued timeout exceeded (${newQueuedCount} >= ${threshold}) for ${tier || 'unknown'} tier, cancelling: ${responseId}`)
+        
+        // Try to cancel the response
+        try {
+          const OpenAI = (await import('openai')).default
+          const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+          // Cancel the response (if SDK supports it)
+          await (openai.responses as any).cancel?.(responseId).catch((err: any) => {
+            console.warn(`[Poll] Failed to cancel response (may not be supported): ${err.message}`)
+          })
+        } catch (cancelError) {
+          console.warn(`[Poll] Error cancelling response: ${cancelError instanceof Error ? cancelError.message : 'Unknown'}`)
+        }
+        
+        // Update database to mark as failed
+        if (runId) {
+          const issuesJson = {
+            issues: [],
+            auditedUrls: [],
+            tier: tier || 'PAID',
+            queued_count: newQueuedCount,
+            error: 'queued_timeout',
+          }
+          
+          let updateQuery = supabaseAdmin
+            .from('brand_audit_runs')
+            .update({ issues_json: issuesJson })
+            .eq('id', runId)
+          
+          if (isAuthenticated && userId) {
+            updateQuery = updateQuery.eq('user_id', userId)
+          } else if (session_token) {
+            updateQuery = updateQuery.eq('session_token', session_token)
+          }
+          
+          await updateQuery
+        }
+        
+        return NextResponse.json({
+          status: 'failed',
+          error: 'queued_timeout',
+          message: `Audit was queued for too long. Please try again.`,
+          responseId,
+        }, { status: 200 }) // 200 so frontend can handle it
+      }
+      
+      // Update queued_count in database if runId exists and count changed
+      if (runId && newQueuedCount !== queuedCount) {
+        let query = supabaseAdmin
+          .from('brand_audit_runs')
+          .select('issues_json')
+          .eq('id', runId)
+        
+        if (isAuthenticated && userId) {
+          query = query.eq('user_id', userId)
+        } else if (session_token) {
+          query = query.eq('session_token', session_token)
+        }
+        
+        const { data: auditRun } = await query.maybeSingle()
+        if (auditRun?.issues_json && typeof auditRun.issues_json === 'object') {
+          const issuesJson = { ...auditRun.issues_json as any, queued_count: newQueuedCount }
+          
+          let updateQuery = supabaseAdmin
+            .from('brand_audit_runs')
+            .update({ issues_json: issuesJson })
+            .eq('id', runId)
+          
+          if (isAuthenticated && userId) {
+            updateQuery = updateQuery.eq('user_id', userId)
+          } else if (session_token) {
+            updateQuery = updateQuery.eq('session_token', session_token)
+          }
+          
+          await updateQuery.catch((err) => {
+            console.warn(`[Poll] Failed to update queued_count: ${err.message}`)
+          })
+        }
+      }
+      
+      console.log(`[Poll] Audit still in progress: ${responseId} (queued_count: ${newQueuedCount}/${threshold})`)
       return NextResponse.json({
         status: 'in_progress',
         responseId,
@@ -78,6 +181,7 @@ export async function POST(request: Request) {
           pagesScanned: result.pagesScanned || 0,
           issuesFound: result.issues?.length || 0,
           auditedUrls: result.auditedUrls || [],
+          reasoningSummaries: result.reasoningSummaries || [],
         },
       })
     }
@@ -106,6 +210,7 @@ export async function POST(request: Request) {
         issues: filteredIssues,
         auditedUrls: result.auditedUrls || [],
         tier: result.tier || tier, // Preserve tier for future lookups
+        queued_count: 0, // Reset queued_count on completion
       }
 
       let updateQuery = supabaseAdmin

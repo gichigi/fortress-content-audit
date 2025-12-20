@@ -81,9 +81,10 @@ export default function Home() {
   const [sessionToken, setSessionToken] = useState<string | null>(null)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [authToken, setAuthToken] = useState<string | null>(null)
-  const [progressInfo, setProgressInfo] = useState<{ pagesScanned: number; pagesBeingCrawled: string[] }>({
+  const [progressInfo, setProgressInfo] = useState<{ pagesScanned: number; pagesBeingCrawled: string[]; reasoningSummaries: string[] }>({
     pagesScanned: 0,
-    pagesBeingCrawled: []
+    pagesBeingCrawled: [],
+    reasoningSummaries: []
   })
   
   // For authenticated users, use the hook to fetch from database
@@ -175,13 +176,14 @@ export default function Home() {
           // Update progress info
           setProgressInfo({
             pagesScanned: pollData.progress?.pagesScanned || 0,
-            pagesBeingCrawled: pollData.progress?.auditedUrls || []
+            pagesBeingCrawled: pollData.progress?.auditedUrls || [],
+            reasoningSummaries: pollData.progress?.reasoningSummaries || []
           })
         } else if (pollData.status === 'completed') {
           // Audit completed, update results and stop polling
           setAuditResults(pollData)
           setLoading(false)
-          setProgressInfo({ pagesScanned: 0, pagesBeingCrawled: [] })
+          setProgressInfo({ pagesScanned: 0, pagesBeingCrawled: [], reasoningSummaries: [] })
           if (pollInterval) {
             clearInterval(pollInterval)
           }
@@ -457,6 +459,7 @@ export default function Home() {
         description="Scanning pages and identifying content issues. This may take a moment."
         pagesScanned={progressInfo.pagesScanned}
         pagesBeingCrawled={progressInfo.pagesBeingCrawled}
+        reasoningSummaries={progressInfo.reasoningSummaries}
       />
 
       {/* API Error Message (for errors that occur after submission) */}
