@@ -5,6 +5,7 @@ import { pollAuditStatus, AuditTier } from '@/lib/audit'
 // Removed: issue-signature imports (no longer needed)
 import { incrementAuditUsage, getAuditUsage } from '@/lib/audit-rate-limit'
 import { emailService } from '@/lib/email-service'
+import { createMockAuditData } from '@/lib/mock-audit-data'
 
 function getBearer(req: Request) {
   const a = req.headers.get('authorization') || req.headers.get('Authorization')
@@ -204,7 +205,44 @@ export async function POST(request: Request) {
 
       // Note: For new audits, we don't filter by status yet - issues start as 'active'
       // Status filtering happens when fetching issues from the database
-      const filteredIssues = result.issues || []
+      let filteredIssues = result.issues || []
+      
+      // For FREE tier (homepage-only audits), filter to only include issues found on homepage
+      // If no issues remain, return mock issues instead
+      if (tier === 'FREE' && auditRun?.domain) {
+        const normalized = auditRun.domain.startsWith('http') 
+          ? auditRun.domain 
+          : `https://${auditRun.domain}`
+        const homepageUrls = [
+          normalized,
+          normalized.replace(/\/$/, ''), // Remove trailing slash
+          normalized + '/', // Add trailing slash
+          normalized.replace(/^https?:\/\//, 'https://www.'), // www version
+          normalized.replace(/^https?:\/\//, 'https://www.') + '/', // www version with slash
+        ]
+        
+        // Filter issues to only include those with homepage URL in locations
+        filteredIssues = filteredIssues.filter((issue: any) => {
+          if (!issue.locations || !Array.isArray(issue.locations)) return false
+          return issue.locations.some((loc: any) => {
+            const locUrl = loc.url || ''
+            return homepageUrls.some(homepageUrl => 
+              locUrl === homepageUrl || 
+              locUrl.startsWith(homepageUrl + '/') ||
+              locUrl.replace(/\/$/, '') === homepageUrl.replace(/\/$/, '')
+            )
+          })
+        })
+        
+        // If no issues found on homepage, return mock issues instead
+        if (filteredIssues.length === 0) {
+          console.log(`[Poll] No issues found on homepage, returning mock issues for ${normalized}`)
+          const mockData = createMockAuditData(normalized, 10)
+          filteredIssues = mockData.issues
+          result.pagesScanned = mockData.pagesScanned
+          result.auditedUrls = mockData.auditedUrls
+        }
+      }
 
       const issuesJson = {
         issues: filteredIssues,

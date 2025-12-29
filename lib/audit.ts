@@ -1,39 +1,34 @@
 import OpenAI from "openai"
 import { z } from "zod"
+import Logger from "./logger"
 
 // ============================================================================
-// Deep Research Content Audit
-// Uses OpenAI's Deep Research API with native web search/crawl capabilities.
-// Pass a top-level domain; the agent auto-crawls and synthesizes issues.
+// Content Audit
+// Uses GPT-5 with web_search for FREE tier (opens pages directly)
+// For PAID/ENTERPRISE tiers: Deep Research API with web search/crawl
 // ============================================================================
 
 // Audit tiers for cost/scope control
-// Both tiers use deep research models; o4-mini is faster/cheaper for free tier
+// FREE tier uses GPT-5.1 with web_search (synchronous, opens pages directly)
+// PAID/ENTERPRISE tiers use Deep Research API (background execution)
 export const AUDIT_TIERS = {
-  FREE: { maxToolCalls: 25, background: true, model: "o4-mini-deep-research" as const },
+  FREE: { maxToolCalls: 10, background: false, model: "gpt-5.1-2025-11-13" as const },
   PAID: { maxToolCalls: 50, background: true, model: "o4-mini-deep-research" as const },
   ENTERPRISE: { maxToolCalls: 100, background: true, model: "o3-deep-research" as const },
 } as const
 
 export type AuditTier = keyof typeof AUDIT_TIERS
 
-// Content audit prompt for Deep Research agent
-const AUDIT_PROMPT = `Do a content audit to find copy errors like typos, grammar mistakes, punctuation problems, and inconsistencies across numbers, facts/figures.
+// Content audit prompt - comprehensive and thorough
+const AUDIT_PROMPT = `You're a world-class web content auditor. 
 
-Also check for:
-• Broken links (404s, 500s, redirect loops)
-• SEO gaps: missing or duplicate title tags, meta descriptions, H1 tags, image alt text
-• Inconsistent terminology, brand names, or product names
+Find and report ALL content-related issues you can identify. Be thorough and comprehensive.
+Don't limit yourself — report every issue you find, including minor ones.
 
-CRITICAL: Before auditing, verify the page has fully loaded. For JavaScript-rendered sites (React, Next.js, etc.), check the rendered DOM after JavaScript execution, not just the initial HTML.
+If you find no issues, return an empty array.
 
-Ignore anything subjective like tone of voice, or style preferences. We want to know where things are plain WRONG.
-
-For each issue, describe:
-- A specific, actionable title
-- The page URL where the issue was found
-- A snippet showing the exact error
-- A suggested fix
+For each issue, provide:
+- Title, URL, snippet, suggested fix
 - Category: 'typos', 'grammar', 'punctuation', 'seo', 'factual', 'links', 'terminology'
 - Severity: 'low', 'medium', or 'high'
 
@@ -109,130 +104,182 @@ const AUDIT_JSON_SCHEMA = {
 }
 
 // ============================================================================
-// Mini Audit - Free tier (max 10 tool calls, fast, synchronous execution)
+// Helper functions
+// ============================================================================
+
+// Extract domain hostname for filtering
+function extractDomainHostname(domain: string): string {
+  try {
+    const url = new URL(domain.startsWith('http') ? domain : `https://${domain}`)
+    return url.hostname
+  } catch {
+    return domain.replace(/^https?:\/\//, '').replace(/\/$/, '')
+  }
+}
+
+// ============================================================================
+// Mini Audit - Free tier (GPT-5 with web_search)
 // ============================================================================
 export async function miniAudit(domain: string): Promise<AuditResult> {
   const tier = AUDIT_TIERS.FREE
 
   // Normalize domain URL
   const normalizedDomain = normalizeDomain(domain)
-  const domainForFilter = extractDomainForFilter(normalizedDomain)
+  const domainHostname = extractDomainHostname(normalizedDomain)
 
   const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
-    timeout: 120000, // 120s timeout for mini audit
+    timeout: 300000, // 5min timeout
   })
 
-  const input = `${AUDIT_PROMPT}
-
-Run a mini content audit on: ${normalizedDomain}
-
-CRITICAL: Audit ONLY the homepage (${normalizedDomain} or ${normalizedDomain}/). Do NOT visit other pages.
-
-The goal is to help the user kick off a larger audit with initial findings from the homepage.
-
-CRITICAL INSTRUCTIONS:
-- Prioritize DEPTH and HIGH CONFIDENCE over breadth
-- Only report issues you are CERTAIN are real errors (typos, grammar mistakes, broken links, SEO issues)
-- Do NOT make up issues or report subjective style preferences
-- Focus on finding a few critical, high-confidence issues rather than many low-quality ones
-- Stay on the homepage - do not navigate to other pages
-
-You have exactly ${tier.maxToolCalls} tool calls available. Use them efficiently to deeply investigate the homepage.`
-
   try {
-    // Use deep research model with tool call limit for cost control
+    Logger.info(`[MiniAudit] Starting GPT-5 web_search audit for ${normalizedDomain}`)
+    const modelStartTime = Date.now()
+    
+    const input = `${AUDIT_PROMPT}
+
+Website to audit: ${normalizedDomain}
+
+Instructions:
+1. Open ONLY the homepage at ${normalizedDomain}
+2. From the homepage, identify and open EXACTLY ONE key page (e.g., /about, /pricing, /product, /features, /docs)
+3. Do NOT open any other pages - only homepage + 1 key page
+4. Audit both pages and compare them for cross-page inconsistencies
+
+Return your audit results as a JSON object with this structure:
+{
+  "issues": [
+    {
+      "title": "Issue title",
+      "category": "typos|grammar|punctuation|seo|factual|links|terminology",
+      "severity": "low|medium|high",
+      "impact": "Impact description",
+      "fix": "Suggested fix",
+      "locations": [
+        {
+          "url": "<actual URL where issue was found>",
+          "snippet": "<actual text/HTML showing the issue>"
+        }
+      ]
+    }
+  ],
+  "pagesScanned": 2,
+  "auditedUrls": ["<homepage URL>", "<key page URL>"]
+}
+
+Return ONLY valid JSON, no markdown code blocks.`
+
+    Logger.debug(`[MiniAudit] Sending request to GPT-5.1 with web_search`)
     const params: any = {
-      model: tier.model, // Use model from config (o3-deep-research for FREE)
-      input,
+      model: "gpt-5.1-2025-11-13",
+      input: input,
       tools: [{
-        type: "web_search_preview",
+        type: "web_search",
         filters: {
-          allowed_domains: [domainForFilter] // Restrict to target domain only
+          allowed_domains: [domainHostname]
         }
       }],
-      max_tool_calls: tier.maxToolCalls, // Limit tool calls for cost control
-      background: true, // Enable background execution
-      store: true, // Required when background=true
-      stream: false, // Disable streaming for background mode
-      max_output_tokens: 30000, // Increased to 30k to account for reasoning tokens (18k reasoning + 12k output)
-      reasoning: { summary: "auto" }, // Enable reasoning summary for better accuracy
-      include: ["web_search_call.action.sources"], // Include sources to get all URLs consulted
-      // Note: We use plain text output and transform to structured JSON using GPT-4.1
+      max_tool_calls: tier.maxToolCalls, // Allow opening homepage + key pages
+      max_output_tokens: 20000, // Increased for full JSON response
+      include: ["web_search_call.action.sources"], // Include sources to get URLs
     }
     
-    const modelStartTime = Date.now()
     const response = await openai.responses.create(params)
+    
+    // Poll for completion if needed
+    let status = response.status as string
+    let finalResponse = response
+    let attempts = 0
+    const maxAttempts = 60 // 60 seconds max
+    
+    while ((status === "queued" || status === "in_progress") && attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      finalResponse = await openai.responses.retrieve(response.id)
+      status = finalResponse.status as string
+      attempts++
+      if (attempts % 10 === 0) {
+        Logger.debug(`[MiniAudit] Status: ${status} (${attempts}s)`)
+      }
+    }
+    
     const modelDurationMs = Date.now() - modelStartTime
     
-    const actualModel = response.model || params.model
-    if (actualModel !== tier.model) {
-      console.error(`[MiniAudit] ⚠️ MODEL MISMATCH: requested ${tier.model}, got ${actualModel}`)
+    if (status !== "completed" && status !== "incomplete") {
+      throw new Error(`Audit failed with status: ${status}`)
     }
-
-    const status = response.status as string
     
-    // If background job is queued or in progress, return response ID for polling
-    if (status === "queued" || status === "in_progress") {
-      return {
-        issues: [],
-        pagesScanned: 0,
-        auditedUrls: [],
-        responseId: response.id,
-        status: "in_progress",
-        tier: "FREE",
-        modelDurationMs,
-      }
-    }
-
-    // If completed or incomplete (max_output_tokens), process immediately with tight pipeline
-    if (status === "completed" || (status === "incomplete" && response.incomplete_details?.reason === "max_output_tokens")) {
-      const isIncomplete = status === "incomplete"
-      
-      // Extract output text immediately
-      let outputText = response.output_text || ''
-      
-      // Transform to structured JSON immediately (tight pipeline)
-      if (outputText && !outputText.trim().startsWith('{')) {
-        try {
-          outputText = await transformToStructuredJSON(outputText, normalizedDomain)
-        } catch (transformError) {
-          console.error(`[MiniAudit] Transformation failed:`, transformError)
-          throw new Error(`Failed to transform audit output: ${transformError instanceof Error ? transformError.message : 'Unknown error'}`)
+    // Extract output text
+    let outputText = finalResponse.output_text || ''
+    
+    // If output_text not directly available, try to extract from output array
+    if (!outputText && Array.isArray(finalResponse.output)) {
+      const messageItems = finalResponse.output.filter((item: any) => item.type === 'message' && (item as any).content && Array.isArray((item as any).content))
+      for (const message of messageItems.reverse()) {
+        const content = (message as any).content
+        const textItems = content.filter((item: any) => item.type === 'output_text' && item.text)
+        if (textItems.length > 0) {
+          outputText = textItems[textItems.length - 1].text
+          break
         }
-      } else if (!outputText && isIncomplete) {
-        // If incomplete with no output_text, create empty structure but still extract URLs from output array
-        outputText = JSON.stringify({ issues: [], pagesScanned: 0, auditedUrls: [] })
-      }
-      
-      // Update response with transformed text for parsing
-      response.output_text = outputText
-      
-      // Parse immediately
-      const result = parseAuditResponse(response, "FREE")
-      
-      // Extract actual crawled URLs from response output (even if incomplete)
-      const actualCrawledUrls = extractCrawledUrls(response)
-      if (actualCrawledUrls.length > 0) {
-        result.auditedUrls = actualCrawledUrls
-      }
-      
-      // Extract reasoning summaries
-      const reasoningSummaries = extractReasoningSummaries(response)
-      result.reasoningSummaries = reasoningSummaries
-      
-      console.log(`[MiniAudit] ✅ Complete: ${result.issues.length} issues, ${result.pagesScanned} pages, ${actualCrawledUrls.length} URLs audited`)
-      return {
-        ...result,
-        modelDurationMs,
       }
     }
     
-    // Handle other statuses
-    console.error(`[MiniAudit] Unexpected status: ${status}`)
-    throw new Error(`Unexpected response status: ${status}`)
+    if (!outputText) {
+      throw new Error("GPT-5.1 returned empty response")
+    }
+    
+    // Extract opened pages for auditedUrls and count tool calls
+    const openedPages: string[] = []
+    let toolCallsUsed = 0
+    if (finalResponse.output && Array.isArray(finalResponse.output)) {
+      const webSearchCalls = finalResponse.output.filter((item: any) => item.type === 'web_search_call')
+      toolCallsUsed = webSearchCalls.length
+      webSearchCalls.forEach((call: any) => {
+        if (call.action?.type === 'open_page' && call.action.url) {
+          openedPages.push(call.action.url)
+        }
+      })
+    }
+    
+    Logger.info(`[MiniAudit] Tool calls used: ${toolCallsUsed}/${tier.maxToolCalls} (${openedPages.length} pages opened)`)
+    
+    // Try to parse JSON from output
+    let parsed: any
+    try {
+      const jsonMatch = outputText.match(/\{[\s\S]*\}/)
+      if (jsonMatch) {
+        parsed = JSON.parse(jsonMatch[0])
+      } else {
+        // Fallback: transform plain text to JSON
+        Logger.debug(`[MiniAudit] Transforming output to structured JSON`)
+        const structuredOutput = await transformToStructuredJSON(outputText, normalizedDomain)
+        parsed = JSON.parse(structuredOutput)
+      }
+    } catch (parseError) {
+      // Transform plain text to JSON
+      Logger.debug(`[MiniAudit] Transforming output to structured JSON`)
+      const structuredOutput = await transformToStructuredJSON(outputText, normalizedDomain)
+      parsed = JSON.parse(structuredOutput)
+    }
+    
+    // Validate with Zod schema
+    const validated = AuditResultSchema.parse(parsed)
+    
+    // Use opened pages for auditedUrls if available, otherwise use parsed URLs
+    const auditedUrls = openedPages.length > 0 ? openedPages : (validated.auditedUrls || [])
+    
+    Logger.info(`[MiniAudit] ✅ Complete: ${validated.issues.length} issues, ${validated.pagesScanned} pages, ${auditedUrls.length} URLs audited`)
+    
+    return {
+      issues: validated.issues,
+      pagesScanned: validated.pagesScanned,
+      auditedUrls,
+      status: "completed",
+      tier: "FREE",
+      modelDurationMs,
+    }
   } catch (error) {
-    console.error(`[MiniAudit] Error:`, error instanceof Error ? error.message : error)
+    Logger.error(`[MiniAudit] Error`, error instanceof Error ? error : undefined)
     throw handleAuditError(error)
   }
 }

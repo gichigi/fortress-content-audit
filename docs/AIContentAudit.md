@@ -6,23 +6,14 @@
 |---------|----------------------|---------------------|------|------------|
 | **Audit Limits** |
 | Domains | 1 domain | 1 domain | 5 domains | Unlimited |
-| Audits per Domain | 1 per day | 1 per day | 1 per day | Unlimited |
-| **Audit Engine** |
-| Model | `o4-mini-deep-research` | `o4-mini-deep-research` | `o3-deep-research` | `o3-deep-research` |
-| Max Tool Calls | 5 | 5 | 25 | 100 |
-| Execution Mode | Synchronous | Synchronous | Background | Background (default) |
-| Timeout | ~90 seconds | ~90 seconds | Up to 1 hour | Up to 1 hour |
 | **Page Coverage** |
 | Pages Analyzed | 3 pages (homepage + 2 key) | 3 pages (homepage + 2 key) | 10-20 important pages | Full-site analysis |
 | Page Selection | Homepage + pricing/about/features | Homepage + pricing/about/features | Homepage, pricing, features, about, key product pages | All pages |
 | **Issue Detection** |
 | Issue Categories | High-signal only | High-signal only | All categories | All categories + custom |
-| Typos & Spelling | ✅ | ✅ | ✅ | ✅ |
-| Grammar Errors | ✅ | ✅ | ✅ | ✅ |
-| Punctuation Errors | ✅ | ✅ | ✅ | ✅ |
+| Typos, Grammar & Punctuation | ✅ | ✅ | ✅ | ✅ |
 | Factual Contradictions | ✅ | ✅ | ✅ | ✅ |
 | Inconsistent Terminology | ✅ | ✅ | ✅ | ✅ |
-| Brand/Product Name Inconsistencies | ✅ | ✅ | ✅ | ✅ |
 | Duplicate Content Conflicts | ✅ | ✅ | ✅ | ✅ |
 | SEO Gaps | ✅ | ✅ | ✅ | Advanced SEO |
 | Broken Links Detection | ✅ | ✅ | ✅ | ✅ |
@@ -30,34 +21,20 @@
 | Custom Audit Requests | ❌ | ❌ | ❌ | ✅ |
 | IA/Taxonomy Recommendations | ❌ | ❌ | ❌ | ✅ |
 | **Issue Management** |
-| Issue Suppression | ❌ | ✅ | ✅ | ✅ |
 | Issue Lifecycle (Active/Ignored/Resolved) | ❌ | ✅ | ✅ | ✅ |
-| Stable Issue Signatures | ❌ | ✅ | ✅ | ✅ |
-| Issue History Tracking | ❌ | ✅ | ✅ | ✅ |
 | **Results & Reporting** |
 | Issues Shown | 3 (preview with fade-out) | All issues from mini audit | All issues | All issues |
 | Export Format | None | PDF, JSON, Markdown | PDF, JSON, Markdown | PDF, JSON, Markdown |
 | Markdown Export | ❌ | ✅ (with AI prompt header) | ✅ (with AI prompt header) | ✅ (with AI prompt header) |
-| Historical Reports | ❌ | ✅ (limited) | ✅ (30/60/90 days) | ✅ (unlimited) |
 | Health Score | ❌ | ✅ | ✅ | ✅ |
 | Dashboard (Cards, Chart, Table) | ❌ | ✅ | ✅ | ✅ |
 | **Monitoring** |
-| Continuous Monitoring | ❌ | ❌ | ✅ (Weekly digest) | ✅ (Real-time alerts) |
-| Page Change Detection | ❌ | ❌ | ✅ | ✅ |
 | Weekly Digest | ❌ | ❌ | ✅ | ✅ |
-| Real-time Alerts | ❌ | ❌ | ❌ | ✅ (Slack/Email/Webhook) |
-| Page Fingerprinting | ❌ | ❌ | ✅ | ✅ |
 | **Storage & Access** |
 | Audit Storage | Local (session token) | Supabase (user account) | Supabase (user account) | Supabase (team account) |
 | Claim Later | ✅ (via session token) | N/A | N/A | N/A |
-| Audit History | ❌ | ✅ | ✅ | ✅ |
-| Team Sharing | ❌ | ❌ | ❌ | ✅ |
 | **API & Integration** |
 | API Access | Limited | Limited | Full | Full + webhooks |
-| Background Polling | ❌ | ❌ | ✅ | ✅ |
-| Webhook Support | ❌ | ❌ | ❌ | ✅ |
-| **Support** |
-| Support Level | Community | Community | Email | Priority + dedicated |
 
 ---
 
