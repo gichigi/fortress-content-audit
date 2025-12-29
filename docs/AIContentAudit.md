@@ -2,39 +2,28 @@
 
 ## Feature Comparison by Plan
 
-| Feature | Free (Unauthenticated) | Free (Authenticated) | Paid | Enterprise |
-|---------|----------------------|---------------------|------|------------|
+| Feature | Free | Paid | Enterprise |
+|---------|------|------|------------|
 | **Audit Limits** |
-| Domains | 1 domain | 1 domain | 5 domains | Unlimited |
+| Domains | 1 | 5 | Unlimited |
+| Audits per day | 1 per domain | 1 per domain | Unlimited |
 | **Page Coverage** |
-| Pages Analyzed | 3 pages (homepage + 2 key) | 3 pages (homepage + 2 key) | 10-20 important pages | Full-site analysis |
-| Page Selection | Homepage + pricing/about/features | Homepage + pricing/about/features | Homepage, pricing, features, about, key product pages | All pages |
+| Pages Analyzed | 2 pages (homepage + 1 key) | 10-20 important pages | Full-site analysis |
 | **Issue Detection** |
-| Issue Categories | High-signal only | High-signal only | All categories | All categories + custom |
-| Typos, Grammar & Punctuation | ✅ | ✅ | ✅ | ✅ |
-| Factual Contradictions | ✅ | ✅ | ✅ | ✅ |
-| Inconsistent Terminology | ✅ | ✅ | ✅ | ✅ |
-| Duplicate Content Conflicts | ✅ | ✅ | ✅ | ✅ |
-| SEO Gaps | ✅ | ✅ | ✅ | Advanced SEO |
-| Broken Links Detection | ✅ | ✅ | ✅ | ✅ |
-| Competitor Analysis | ❌ | ❌ | ❌ | ✅ |
-| Custom Audit Requests | ❌ | ❌ | ❌ | ✅ |
-| IA/Taxonomy Recommendations | ❌ | ❌ | ❌ | ✅ |
+| All Categories | ✅ | ✅ | ✅ |
+| Competitor Analysis | ❌ | ❌ | ✅ |
+| Custom Audit Requests | ❌ | ❌ | ✅ |
+| IA/Taxonomy Recommendations | ❌ | ❌ | ✅ |
 | **Issue Management** |
-| Issue Lifecycle (Active/Ignored/Resolved) | ❌ | ✅ | ✅ | ✅ |
+| Issue Lifecycle (Active/Ignored/Resolved) | ✅ | ✅ | ✅ |
 | **Results & Reporting** |
-| Issues Shown | 3 (preview with fade-out) | All issues from mini audit | All issues | All issues |
-| Export Format | None | PDF, JSON, Markdown | PDF, JSON, Markdown | PDF, JSON, Markdown |
-| Markdown Export | ❌ | ✅ (with AI prompt header) | ✅ (with AI prompt header) | ✅ (with AI prompt header) |
-| Health Score | ❌ | ✅ | ✅ | ✅ |
-| Dashboard (Cards, Chart, Table) | ❌ | ✅ | ✅ | ✅ |
+| Export Formats | PDF, JSON, Markdown | PDF, JSON, Markdown | PDF, JSON, Markdown |
+| Health Score | ✅ | ✅ | ✅ |
+| Dashboard | ✅ | ✅ | ✅ |
 | **Monitoring** |
-| Weekly Digest | ❌ | ❌ | ✅ | ✅ |
-| **Storage & Access** |
-| Audit Storage | Local (session token) | Supabase (user account) | Supabase (user account) | Supabase (team account) |
-| Claim Later | ✅ (via session token) | N/A | N/A | N/A |
+| Weekly Digest | ❌ | ✅ | ✅ |
 | **API & Integration** |
-| API Access | Limited | Limited | Full | Full + webhooks |
+| API Access | Full | Full | Full + webhooks |
 
 ---
 
@@ -833,15 +822,16 @@ This is what makes it subscription-worthy and enterprise-grade.
 Two audit functions in `/lib/audit.ts`:
 
 **`miniAudit(domain)`**
-- For free/unauthenticated users
-- Uses `o4-mini-deep-research` with `web_search_preview` tool
-- Limited to 5 tool calls via `max_tool_calls` parameter
-- Fast execution (~90s timeout)
-- Returns high-signal issues only
+- For free tier users
+- Uses `gpt-5.1-2025-11-13` with `web_search` tool
+- Opens homepage + 1 key page directly (no Puppeteer)
+- Limited to 10 tool calls via `max_tool_calls` parameter
+- Synchronous execution (~2-3 minutes)
+- Comprehensive issue detection across all categories
 
 **`auditSite(domain, tier)`**
 - For paid/enterprise users
-- Uses `o3-deep-research` model with `web_search_preview` tool
+- Uses `o4-mini-deep-research` (paid) or `o3-deep-research` (enterprise) with `web_search_preview` tool
 - Auto-crawls domain up to tier limit (controlled by `max_tool_calls`)
 - Background execution for long-running audits
 - Supports polling via `pollAuditStatus(responseId)`
@@ -850,8 +840,8 @@ Two audit functions in `/lib/audit.ts`:
 
 ```typescript
 AUDIT_TIERS = {
-  FREE: { maxToolCalls: 5, background: false, model: "o4-mini-deep-research" },
-  PAID: { maxToolCalls: 25, background: true, model: "o3-deep-research" },
+  FREE: { maxToolCalls: 10, background: false, model: "gpt-5.1-2025-11-13" },
+  PAID: { maxToolCalls: 50, background: true, model: "o4-mini-deep-research" },
   ENTERPRISE: { maxToolCalls: 100, background: true, model: "o3-deep-research" },
 }
 ```

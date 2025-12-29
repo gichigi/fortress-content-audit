@@ -1,17 +1,13 @@
-- remove transformer when implementing test
-
 --
 **Testing notes**
 
 
 ## Homepage
 [Your Audit Results] = [URL Audit Results]
-Remove toolbar [search issues, all issues dropdown, Customise columns], remove 3 dots options to resolve/ignore
-Make "view all x issues" more of a primary CTA
-Add Health score and card components 
 After ignoring issue on homepage, table unresponsive
 side slider when clicking issue name unnecessary
 Transition back to / gracefully with fade in like the fade out to interstitial
+- auto scroll to audit results section
 
 ## auth
 users should be able to sign in with password too – explore the best UX for this
@@ -24,7 +20,6 @@ error not using alert or toast, Nextjs error
 add status column aligned with status
 - auto run in place of run audit
 - if firewall return msg to user
-
 
 
 ## settings
