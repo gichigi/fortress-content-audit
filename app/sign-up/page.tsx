@@ -46,8 +46,24 @@ function SignUpForm() {
   }
 
   // Centralized error message mapping for better UX
-  const getAuthErrorMessage = (error: AuthError | Error): string => {
-    const message = error.message.toLowerCase()
+  // Handles both URL query params and Supabase AuthError objects
+  const getAuthErrorMessage = (error: AuthError | Error | string | null): string => {
+    // Handle URL query param errors
+    if (typeof error === 'string') {
+      const errorMap: Record<string, string> = {
+        'invalid_reset_link': 'Your password reset link has expired or is invalid. Please request a new one.',
+        'auth_failed': 'Authentication failed. Please try again.',
+      }
+      return errorMap[error] || 'Authentication failed. Please try again.'
+    }
+    
+    // Handle null/undefined
+    if (!error) {
+      return 'Authentication failed. Please try again.'
+    }
+    
+    // Handle AuthError or Error objects
+    const message = error.message?.toLowerCase() || ''
     
     if (message.includes('email_not_confirmed') || message.includes('email not confirmed')) {
       return "Please check your email and confirm your account."
@@ -121,6 +137,14 @@ function SignUpForm() {
         
         if (signUpError) {
           throw new Error(getAuthErrorMessage(signUpError))
+        }
+        
+        // Check for duplicate email signup (user exists but no identities)
+        if (!signUpData.session && signUpData.user?.identities?.length === 0) {
+          // User already exists - prompt to sign in
+          setError("An account with this email already exists. Please sign in instead.")
+          setMode("sign-in")
+          return
         }
         
         // New user - check if email confirmation is required
@@ -215,7 +239,7 @@ function SignUpForm() {
         <Alert variant="destructive" className="mb-6">
           <AlertTitle>Authentication failed</AlertTitle>
           <AlertDescription>
-            There was a problem signing you in. Please try again.
+            {getAuthErrorMessage(authError)}
           </AlertDescription>
         </Alert>
       )}

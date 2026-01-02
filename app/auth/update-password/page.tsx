@@ -20,22 +20,56 @@ export default function UpdatePasswordPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  const [isVerifying, setIsVerifying] = useState(true)
   const router = useRouter()
   const { toast } = useToast()
 
   useEffect(() => {
-    // Check if user has a valid session (from password reset link)
-    const checkSession = async () => {
+    // Handle password reset flow per Supabase SDK best practices
+    // User arrives here from /auth/confirm which verifies token_hash via verifyOtp
+    // and creates a session before redirecting with ?recovery=true
+    const handleRecoveryFlow = async () => {
+      setIsVerifying(true)
       const supabase = createClient()
+      const params = new URLSearchParams(window.location.search)
+      const recoveryParam = params.get('recovery')
+      
+      // Check if we're in recovery flow (from sessionStorage or query param)
+      const storedFlag = sessionStorage.getItem('password_recovery_in_progress')
+      const isRecoveryFlow = storedFlag === 'true' || recoveryParam === 'true'
+      
+      // If recovery param is present, set sessionStorage flag and clean URL
+      if (recoveryParam === 'true') {
+        sessionStorage.setItem('password_recovery_in_progress', 'true')
+        router.replace(window.location.pathname, { scroll: false })
+      }
+      
+      // Check for existing session (created by /auth/confirm via verifyOtp)
       const { data: { session } } = await supabase.auth.getSession()
       
       if (!session) {
-        router.push("/sign-up?error=invalid_reset_link")
+        // No session - user didn't come through proper recovery flow
+        setIsVerifying(false)
+        sessionStorage.removeItem('password_recovery_in_progress')
+        router.push('/sign-up?error=invalid_reset_link')
+        return
       }
+      
+      // If user has a session but didn't come from recovery flow, redirect to dashboard
+      // This prevents authenticated users from accessing this page directly
+      if (!isRecoveryFlow) {
+        setIsVerifying(false)
+        router.push('/dashboard')
+        return
+      }
+      
+      // Valid recovery flow - allow access
+      setIsVerifying(false)
     }
     
-    checkSession()
-  }, [router])
+    handleRecoveryFlow()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const validatePassword = (password: string) => {
     return password.length >= 8 && /[A-Za-z]/.test(password) && /[0-9]/.test(password)
@@ -73,6 +107,9 @@ export default function UpdatePasswordPage() {
         description: "Your password has been successfully updated.",
       })
       
+      // Clear recovery flow marker
+      sessionStorage.removeItem('password_recovery_in_progress')
+      
       // Redirect to dashboard after a short delay
       setTimeout(() => {
         router.push("/dashboard")
@@ -87,6 +124,20 @@ export default function UpdatePasswordPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // Show loading state while verifying session
+  if (isVerifying) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <main className="flex-1 flex items-center justify-center px-6 py-16">
+          <div className="w-full max-w-sm text-center">
+            <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground mb-4" />
+            <p className="text-muted-foreground">Verifying reset link...</p>
+          </div>
+        </main>
+      </div>
+    )
   }
 
   return (

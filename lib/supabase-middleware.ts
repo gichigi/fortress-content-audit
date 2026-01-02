@@ -31,6 +31,10 @@ const PUBLIC_ROUTES = [
   '/auth',
 ]
 
+// Routes that authenticated users should be redirected away from
+// Note: /auth/update-password is NOT included - users need recovery session to update password
+const AUTH_ROUTES_FOR_UNAUTHENTICATED = ['/sign-up', '/auth/reset-password']
+
 // Check if path matches any public route (including nested paths)
 function isPublicRoute(pathname: string): boolean {
   return PUBLIC_ROUTES.some(route => {
@@ -74,6 +78,18 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   const pathname = request.nextUrl.pathname
+
+  // Redirect authenticated users away from auth pages (except update-password which needs recovery session)
+  if (user && AUTH_ROUTES_FOR_UNAUTHENTICATED.some(route => pathname.startsWith(route))) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/dashboard'
+    const redirectResponse = NextResponse.redirect(url)
+    // Preserve cookies from supabaseResponse to maintain session
+    supabaseResponse.cookies.getAll().forEach(cookie => {
+      redirectResponse.cookies.set(cookie.name, cookie.value, cookie)
+    })
+    return redirectResponse
+  }
 
   // Protected routes: redirect unauthenticated users to sign-up
   if (!user && !isPublicRoute(pathname)) {

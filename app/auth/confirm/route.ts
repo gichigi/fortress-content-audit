@@ -55,16 +55,25 @@ export async function GET(request: NextRequest) {
     if (!error && data.session) {
       console.log('[Auth Confirm] OTP verified successfully, user:', data.session.user.email)
       
+      // For password recovery, add recovery flag to redirect URL
+      // This allows update-password page to verify user came from recovery flow
+      const redirectUrl = new URL(next, origin)
+      if (type === 'recovery') {
+        redirectUrl.searchParams.set('recovery', 'true')
+      }
+      
       // Handle forwarded host for production
       const forwardedHost = request.headers.get('x-forwarded-host')
       const isLocalEnv = process.env.NODE_ENV === 'development'
       
       if (isLocalEnv) {
-        return NextResponse.redirect(`${origin}${next}`)
+        return NextResponse.redirect(redirectUrl.toString())
       } else if (forwardedHost) {
-        return NextResponse.redirect(`https://${forwardedHost}${next}`)
+        redirectUrl.host = forwardedHost
+        redirectUrl.protocol = 'https:'
+        return NextResponse.redirect(redirectUrl.toString())
       } else {
-        return NextResponse.redirect(`${origin}${next}`)
+        return NextResponse.redirect(redirectUrl.toString())
       }
     }
 
