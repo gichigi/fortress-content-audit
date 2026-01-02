@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -126,6 +126,32 @@ export default function Home() {
   // Calculate metrics using shared hook
   const metrics = useHealthScoreMetrics(tableRows)
 
+  // Ref for results section to enable scrolling
+  const resultsRef = useRef<HTMLDivElement>(null)
+
+  // Extract domain for display (remove protocol, trailing slashes)
+  const displayDomain = React.useMemo(() => {
+    if (!url) return null
+    try {
+      // Use the normalized URL if available from validation, otherwise parse the input
+      const validation = validateUrlClient(url)
+      if (validation.normalizedUrl) {
+        const urlObj = new URL(validation.normalizedUrl)
+        return urlObj.hostname
+      }
+      // Fallback: try to extract hostname from input
+      let urlString = url.trim()
+      if (!urlString.startsWith('http://') && !urlString.startsWith('https://')) {
+        urlString = 'https://' + urlString
+      }
+      const urlObj = new URL(urlString)
+      return urlObj.hostname
+    } catch {
+      // If parsing fails, return the input as-is (cleaned)
+      return url.replace(/^https?:\/\//, '').replace(/\/$/, '')
+    }
+  }, [url])
+
   useEffect(() => {
     const checkAuth = async () => {
       const supabase = createClient()
@@ -203,6 +229,19 @@ export default function Home() {
       }
     }
   }, [auditResults?.responseId, auditResults?.meta?.responseId, auditResults?.runId, loading, authToken])
+
+  // Scroll to results when audit completes
+  useEffect(() => {
+    if (!loading && auditResults?.runId && resultsRef.current) {
+      // Small delay to ensure DOM is updated
+      setTimeout(() => {
+        resultsRef.current?.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'start' 
+        })
+      }, 100)
+    }
+  }, [loading, auditResults?.runId])
 
   // Validate on blur for better UX
   const handleBlur = () => {
@@ -473,8 +512,20 @@ export default function Home() {
 
       {/* Audit Results Preview */}
       {!loading && auditResults && auditResults.runId && (
-        <div className="@container/main flex flex-1 flex-col gap-2">
+        <div 
+          ref={resultsRef}
+          className="@container/main flex flex-1 flex-col gap-2 animate-in fade-in duration-500"
+        >
           <div className="flex flex-1 flex-col gap-4 py-4 md:gap-6 md:py-6">
+            {/* Results Heading with URL */}
+            {displayDomain && (
+              <div className="px-4 lg:px-6">
+                <h2 className="font-serif text-3xl md:text-4xl font-light tracking-tight">
+                  {displayDomain}
+                </h2>
+              </div>
+            )}
+            
             {/* Health Score Cards */}
             <HealthScoreCards
               currentScore={!isLoading ? {

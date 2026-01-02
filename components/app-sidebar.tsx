@@ -24,7 +24,6 @@ import { NavMain } from "@/components/nav-main"
 import { NavSecondary } from "@/components/nav-secondary"
 import { NavUser } from "@/components/nav-user"
 import { DomainSwitcher } from "@/components/domain-switcher"
-import { BrandVoiceSidebar } from "@/components/brand-voice-sidebar"
 import {
   Sidebar,
   SidebarContent,
@@ -173,7 +172,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <SidebarContent>
         <NavMain items={data.navMain} />
         <DomainSwitcher />
-        <BrandVoiceSidebar />
         <NavDocuments items={data.documents} />
         <NavSecondary items={data.navSecondary} className="mt-auto" />
       </SidebarContent>

@@ -29,6 +29,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
     }
     const userId = userData.user.id
+    const userEmail = userData.user.email || null
 
     // Get plan
     const { data: profile } = await supabaseAdmin
@@ -42,8 +43,8 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const domainParam = searchParams.get('domain')
 
-    // Get usage info
-    const usage = await getAuditUsage(userId, domainParam || null, plan)
+    // Get usage info (pass email for test account exception)
+    const usage = await getAuditUsage(userId, domainParam || null, plan, userEmail)
 
     return NextResponse.json(usage)
   } catch (e) {

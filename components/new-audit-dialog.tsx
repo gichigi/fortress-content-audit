@@ -169,7 +169,7 @@ export function NewAuditDialog({ open, onOpenChange, onSuccess }: NewAuditDialog
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle className="font-serif text-2xl font-semibold">New Audit</DialogTitle>
+          <DialogTitle className="font-serif text-2xl font-semibold">New Domain</DialogTitle>
           <DialogDescription>
             Start a new content audit for a domain. {plan === 'enterprise' ? 'Unlimited domains.' : `You can audit up to ${domainLimit} domain${domainLimit === 1 ? '' : 's'}.`}
           </DialogDescription>

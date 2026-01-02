@@ -22,6 +22,7 @@ export async function POST(
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
     }
     const userId = userData.user.id
+    const userEmail = userData.user.email || null
     const { id } = await params
 
     // Check plan
@@ -45,8 +46,8 @@ export async function POST(
     if (runErr) throw runErr
     if (!run?.domain) return NextResponse.json({ error: 'Run not found' }, { status: 404 })
 
-    // Check daily audit limit for this domain
-    const dailyCheck = await checkDailyLimit(userId, run.domain, plan)
+    // Check daily audit limit for this domain (pass email for test account exception)
+    const dailyCheck = await checkDailyLimit(userId, run.domain, plan, userEmail)
     if (!dailyCheck.allowed) {
       return NextResponse.json(
         {

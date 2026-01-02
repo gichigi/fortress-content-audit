@@ -147,7 +147,7 @@ export default function PricingPage() {
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">1 audit per day, 1 domain</span>
+                  <span className="text-sm">1 audit per day</span>
                 </li>
               </ul>
               <Button variant="outline" className="w-full" asChild>
@@ -209,7 +209,15 @@ export default function PricingPage() {
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">1 audit per day per domain, 5 domains</span>
+                  <span className="text-sm">1 audit per day</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">Auto weekly audits</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">5 domains</span>
                 </li>
               </ul>
               <Button 
@@ -272,6 +280,14 @@ export default function PricingPage() {
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">Custom audit requests</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">1 audit per day</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">Auto weekly audits</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />

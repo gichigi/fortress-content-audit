@@ -27,10 +27,12 @@ export async function POST(request: Request) {
     let isAuthenticated = false
 
     // Support both authenticated and unauthenticated requests
+    let userEmail: string | null = null
     if (token) {
       const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(token)
       if (!userErr && userData?.user?.id) {
         userId = userData.user.id
+        userEmail = userData.user.email || null
         isAuthenticated = true
       }
     }
@@ -105,8 +107,9 @@ export async function POST(request: Request) {
         }
       }
 
-      // Check daily audit limit for this domain
-      const dailyCheck = await checkDailyLimit(userId, normalized, plan)
+      // Check daily audit limit for this domain (pass email for test account exception)
+      // Use storageDomain to match database format (no protocol)
+      const dailyCheck = await checkDailyLimit(userId, storageDomain, plan, userEmail)
       if (!dailyCheck.allowed) {
         return NextResponse.json(
           {

@@ -35,6 +35,8 @@ export const PLAN_FEATURES = {
     teamSharing: false,
     webhookSupport: false,
     realTimeAlerts: false,
+    auditsPerDay: '1 audit per day',
+    autoWeeklyAudits: false,
   },
   pro: {
     model: 'o3-deep-research',
@@ -54,6 +56,8 @@ export const PLAN_FEATURES = {
     teamSharing: false,
     webhookSupport: false,
     realTimeAlerts: false,
+    auditsPerDay: '1 audit per day',
+    autoWeeklyAudits: true,
   },
   enterprise: {
     model: 'o3-deep-research',
@@ -73,6 +77,8 @@ export const PLAN_FEATURES = {
     teamSharing: true,
     webhookSupport: true,
     realTimeAlerts: true,
+    auditsPerDay: '1 audit per day',
+    autoWeeklyAudits: true,
   },
 }
 

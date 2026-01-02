@@ -45,12 +45,7 @@ export function SiteHeader() {
           </Link>
         </div>
         <div className="flex items-center gap-4">
-          {isAuthenticated ? (
-            <>
-              <Button variant="ghost" onClick={() => router.push('/')}>Home</Button>
-              <Button variant="ghost" onClick={() => router.push('/pricing')}>Pricing</Button>
-            </>
-          ) : (
+          {isAuthenticated ? null : (
             <>
               <Button variant="ghost" onClick={() => router.push('/sign-up')}>Sign In</Button>
               <Button onClick={() => router.push('/sign-up')}>Get Started</Button>

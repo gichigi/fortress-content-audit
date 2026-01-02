@@ -48,12 +48,12 @@ interface HealthScoreChartProps {
 const chartConfig = {
   score: {
     label: "Health Score",
-    color: "hsl(var(--chart-1))",
+    color: "rgb(22 163 74)", // green-600, matches health score cards
   },
 } satisfies ChartConfig
 
-// CSS variable for chart color
-const chartColor = "hsl(var(--chart-1))"
+// Chart color - green-600 to match health score cards
+const chartColor = "rgb(22 163 74)"
 
 export function HealthScoreChart({ data, domain }: HealthScoreChartProps) {
   const isMobile = useMobile()

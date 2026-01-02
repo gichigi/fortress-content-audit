@@ -1,14 +1,14 @@
 // fortress v1
 "use client"
 
-import { useState, useEffect, useRef, useMemo } from "react"
+import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase-browser"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ArrowLeft, FileText, ExternalLink, RefreshCw, Loader2, TrendingUp, TrendingDown, Minus, CheckCircle2, Download, FileJson, FileType } from "lucide-react"
+import { ArrowLeft, FileText, ExternalLink, RefreshCw, Loader2, TrendingUp, TrendingDown, Minus, CheckCircle2, Download, FileJson, FileType, Clock } from "lucide-react"
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import { useToast } from "@/hooks/use-toast"
 import { PLAN_NAMES } from "@/lib/plans"
@@ -35,6 +35,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Switch } from "@/components/ui/switch"
 
 interface AuditRun {
   id: string
@@ -64,6 +65,11 @@ export default function DashboardPage() {
   const [domainToDelete, setDomainToDelete] = useState<string | null>(null)
   const [authToken, setAuthToken] = useState<string | null>(null)
   const [exportLoading, setExportLoading] = useState<string | null>(null) // Track which format is loading
+  const [scheduledAudits, setScheduledAudits] = useState<any[]>([])
+  const [scheduledAuditsLoading, setScheduledAuditsLoading] = useState(false)
+  const [auditPolling, setAuditPolling] = useState(false)
+  const [auditResponseId, setAuditResponseId] = useState<string | null>(null)
+  const [auditRunId, setAuditRunId] = useState<string | null>(null)
   
   // Use shared hook to fetch issues from database
   const mostRecentAudit = audits.length > 0 ? audits[0] : null
@@ -305,7 +311,155 @@ export default function DashboardPage() {
     }
   }
 
+  // Define load functions BEFORE checkAuthAndLoad to avoid initialization order issues
+  const loadAudits = useCallback(async (token: string, domain?: string | null) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/46d3112f-6e93-4e4c-a7bb-bc54c7690dac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard/page.tsx:451',message:'loadAudits called',data:{hasToken:!!token,domain},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      // Use provided domain or fall back to selectedDomain state
+      const domainToFilter = domain !== undefined ? domain : selectedDomain
+
+      // Build query with domain filter if selected
+      let query = supabase
+        .from('brand_audit_runs')
+        .select('*')
+        .eq('user_id', user.id)
+      
+      if (domainToFilter) {
+        query = query.eq('domain', domainToFilter)
+      }
+      
+      const { data, error } = await query
+        .order('created_at', { ascending: false })
+        .limit(50)
+
+      if (error) throw error
+      setAudits(data || [])
+      
+      // Issues are now loaded via useAuditIssues hook when mostRecentAudit changes
+    } catch (error) {
+      console.error("Error loading audits:", error)
+    }
+  }, [selectedDomain])
+
+  const loadHealthScore = useCallback(async (token: string) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/46d3112f-6e93-4e4c-a7bb-bc54c7690dac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard/page.tsx:483',message:'loadHealthScore called',data:{hasToken:!!token,selectedDomain},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    // Load health score for all authenticated users
+    if (!selectedDomain) {
+      setHealthScoreData(null)
+      return
+    }
+    
+    setHealthScoreLoading(true)
+    try {
+      const response = await fetch(`/api/health-score?days=30&domain=${encodeURIComponent(selectedDomain)}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      
+      if (!response.ok) {
+        // Don't show error - health score is optional
+        console.warn('[Dashboard] Failed to load health score, response not ok')
+        setHealthScoreData(null)
+        return
+      }
+      
+      const data = await response.json()
+      setHealthScoreData(data)
+    } catch (error) {
+      console.warn("Error loading health score:", error)
+      setHealthScoreData(null)
+    } finally {
+      setHealthScoreLoading(false)
+    }
+  }, [selectedDomain])
+
+  const loadUsageInfo = useCallback(async (token: string) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/46d3112f-6e93-4e4c-a7bb-bc54c7690dac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard/page.tsx:507',message:'loadUsageInfo called',data:{hasToken:!!token},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    try {
+      const response = await fetch('/api/audit/usage', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        setUsageInfo(data)
+      }
+    } catch (error) {
+      console.error("Error loading usage info:", error)
+    }
+  }, [])
+
+  // Poll for audit progress when audit is in progress (defined after load functions)
+  useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/46d3112f-6e93-4e4c-a7bb-bc54c7690dac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard/page.tsx:249',message:'Polling useEffect entry',data:{auditPolling,hasResponseId:!!auditResponseId,hasAuthToken:!!authToken,loadAuditsType:typeof loadAudits},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    if (!auditPolling || !auditResponseId || !authToken) return
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const pollResponse = await fetch('/api/audit/poll', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
+          },
+          body: JSON.stringify({
+            responseId: auditResponseId,
+            runId: auditRunId
+          })
+        })
+
+        if (!pollResponse.ok) {
+          console.error('[Dashboard Poll] Failed to poll status')
+          return
+        }
+
+        const pollData = await pollResponse.json()
+
+        if (pollData.status === 'completed') {
+          setAuditPolling(false)
+          setAuditResponseId(null)
+          setAuditRunId(null)
+
+          // Refresh all dashboard data
+          await Promise.all([
+            loadAudits(authToken, selectedDomain),
+            loadHealthScore(authToken),
+            loadUsageInfo(authToken),
+            refetch()
+          ])
+
+          toast({
+            title: "Audit completed",
+            description: "Your audit results have been updated.",
+          })
+        }
+      } catch (error) {
+        console.error('[Dashboard Poll] Error:', error)
+      }
+    }, 5000)
+
+    return () => clearInterval(pollInterval)
+  }, [auditPolling, auditResponseId, auditRunId, authToken, selectedDomain, loadAudits, loadHealthScore, loadUsageInfo, refetch, toast])
+
   const checkAuthAndLoad = async () => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/46d3112f-6e93-4e4c-a7bb-bc54c7690dac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard/page.tsx:365',message:'checkAuthAndLoad entry',data:{loadAuditsType:typeof loadAudits,loadHealthScoreType:typeof loadHealthScore,loadUsageInfoType:typeof loadUsageInfo},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     try {
       const supabase = createClient()
       
@@ -366,6 +520,9 @@ export default function DashboardPage() {
         localStorage.setItem('selectedDomain', initialDomain)
       }
 
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/46d3112f-6e93-4e4c-a7bb-bc54c7690dac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard/page.tsx:427',message:'About to call loadAudits',data:{loadAuditsType:typeof loadAudits,initialDomain},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       // Load audits (now with domain set)
       await loadAudits(session.access_token, initialDomain)
       
@@ -375,6 +532,12 @@ export default function DashboardPage() {
       // Load usage info
       await loadUsageInfo(session.access_token)
       
+      // Load scheduled audits for paid users
+      const userPlan = profile?.plan || 'free'
+      if (userPlan === 'pro' || userPlan === 'enterprise') {
+        await loadScheduledAudits(session.access_token)
+      }
+      
       // Issues are now loaded via useAuditIssues hook
     } catch (error) {
       console.error("Error loading dashboard:", error)
@@ -383,72 +546,6 @@ export default function DashboardPage() {
       setLoading(false)
     }
   }
-
-
-  const loadAudits = async (token: string, domain?: string | null) => {
-    try {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-
-      // Use provided domain or fall back to selectedDomain state
-      const domainToFilter = domain !== undefined ? domain : selectedDomain
-
-      // Build query with domain filter if selected
-      let query = supabase
-        .from('brand_audit_runs')
-        .select('*')
-        .eq('user_id', user.id)
-      
-      if (domainToFilter) {
-        query = query.eq('domain', domainToFilter)
-      }
-      
-      const { data, error } = await query
-        .order('created_at', { ascending: false })
-        .limit(50)
-
-      if (error) throw error
-      setAudits(data || [])
-      
-      // Issues are now loaded via useAuditIssues hook when mostRecentAudit changes
-    } catch (error) {
-      console.error("Error loading audits:", error)
-    }
-  }
-
-  const loadHealthScore = async (token: string) => {
-    // Load health score for all authenticated users
-    if (!selectedDomain) {
-      setHealthScoreData(null)
-      return
-    }
-    
-    setHealthScoreLoading(true)
-    try {
-      const response = await fetch(`/api/health-score?days=30&domain=${encodeURIComponent(selectedDomain)}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      
-      if (!response.ok) {
-        // Don't show error - health score is optional
-        console.warn('[Dashboard] Failed to load health score, response not ok')
-        setHealthScoreData(null)
-        return
-      }
-      
-      const data = await response.json()
-      setHealthScoreData(data)
-    } catch (error) {
-      console.warn("Error loading health score:", error)
-      setHealthScoreData(null)
-    } finally {
-      setHealthScoreLoading(false)
-    }
-  }
-
 
   const handleRerunAudit = async (auditId: string, domain: string) => {
     try {
@@ -492,20 +589,162 @@ export default function DashboardPage() {
     }
   }
 
-  const loadUsageInfo = async (token: string) => {
+  const loadScheduledAudits = async (token: string) => {
+    // Only load for paid users
+    if (plan !== 'pro' && plan !== 'enterprise') {
+      return
+    }
+
+    setScheduledAuditsLoading(true)
     try {
-      const response = await fetch('/api/audit/usage', {
+      const response = await fetch('/api/audit/scheduled/settings', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
       })
-      
       if (response.ok) {
         const data = await response.json()
-        setUsageInfo(data)
+        setScheduledAudits(data.scheduledAudits || [])
       }
     } catch (error) {
-      console.error("Error loading usage info:", error)
+      console.error("Error loading scheduled audits:", error)
+    } finally {
+      setScheduledAuditsLoading(false)
+    }
+  }
+
+  const toggleAutoAudit = async (domain: string, enabled: boolean) => {
+    if (!authToken) return
+
+    try {
+      const response = await fetch('/api/audit/scheduled/settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ domain, enabled })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        // Update local state
+        setScheduledAudits((prev) => {
+          const existing = prev.find(sa => sa.domain === domain)
+          if (existing) {
+            return prev.map(sa => sa.domain === domain ? data.scheduledAudit : sa)
+          } else {
+            return [...prev, data.scheduledAudit]
+          }
+        })
+        toast({
+          title: enabled ? "Auto weekly audits enabled" : "Auto weekly audits disabled",
+          description: enabled 
+            ? "Your domain will be audited automatically every week."
+            : "Auto weekly audits have been disabled for this domain.",
+        })
+      } else {
+        let errorMessage = 'Failed to update auto audit settings'
+        try {
+          const errorData = await response.json()
+          errorMessage = errorData.error || errorData.message || errorMessage
+          // Log the full error for debugging
+          console.error('[ToggleAutoAudit] API Error:', {
+            status: response.status,
+            statusText: response.statusText,
+            error: errorData
+          })
+        } catch {
+          // If JSON parsing fails, use status text
+          errorMessage = response.statusText || errorMessage
+          console.error('[ToggleAutoAudit] Failed to parse error response:', response.status, response.statusText)
+        }
+        throw new Error(errorMessage)
+      }
+    } catch (error) {
+      console.error("Error toggling auto audit:", error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to update auto audit settings",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleStartAudit = async () => {
+    if (!selectedDomain || !authToken) {
+      toast({
+        title: "No domain selected",
+        description: "Please select a domain to audit.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Check if daily limit reached
+    if (usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit) {
+      toast({
+        title: "Daily limit reached",
+        description: `You've reached your daily limit of ${usageInfo.limit} audit${usageInfo.limit === 1 ? '' : 's'}. Try again tomorrow${plan === 'free' ? ' or upgrade to Pro for 5 domains' : ''}.`,
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      const response = await fetch('/api/audit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ domain: selectedDomain })
+      })
+
+      if (!response.ok) {
+        // Handle errors (429, 400, etc.)
+        let errorMessage = 'Failed to start audit'
+        try {
+          const errorData = await response.json()
+          errorMessage = errorData.error || errorData.message || errorMessage
+        } catch {
+          errorMessage = response.statusText || errorMessage
+        }
+        throw new Error(errorMessage)
+      }
+
+      const data = await response.json()
+
+      if (data.status === 'in_progress' && data.responseId) {
+        setAuditResponseId(data.responseId)
+        setAuditRunId(data.runId)
+        setAuditPolling(true)
+        // Reload usage info to update count
+        await loadUsageInfo(authToken)
+        toast({
+          title: "Audit started",
+          description: "Your audit is running in the background. The dashboard will refresh when complete.",
+        })
+      } else if (data.status === 'completed') {
+        // Immediate completion (unlikely for paid tiers)
+        await Promise.all([
+          loadAudits(authToken, selectedDomain),
+          loadHealthScore(authToken),
+          loadUsageInfo(authToken),
+          refetch()
+        ])
+        toast({
+          title: "Audit completed",
+          description: "Your audit results are ready.",
+        })
+      }
+    } catch (error) {
+      console.error("Error starting audit:", error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to start audit",
+        variant: "destructive",
+      })
     }
   }
 
@@ -755,18 +994,35 @@ export default function DashboardPage() {
                     {selectedDomain || 'Content Audits'}
                   </h2>
                   <div className="flex items-center gap-3">
-                    {usageInfo && (
-                      <div className="text-sm text-muted-foreground">
-                        {usageInfo.limit > 0 && (
-                          <span>
-                            {usageInfo.today}/{usageInfo.limit} audit{usageInfo.limit === 1 ? '' : 's'} today
-                          </span>
-                        )}
-                        {usageInfo.domainLimit > 0 && (
-                          <span className="ml-3">
-                            {usageInfo.domains}/{usageInfo.domainLimit} domain{usageInfo.domainLimit === 1 ? '' : 's'}
-                          </span>
-                        )}
+                    {/* Auto Audit Status for Paid Users */}
+                    {(plan === 'pro' || plan === 'enterprise') && selectedDomain && (
+                      <div className="flex items-center gap-2 text-sm">
+                        {scheduledAuditsLoading ? (
+                          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                        ) : (() => {
+                          const scheduled = scheduledAudits.find(sa => sa.domain === selectedDomain)
+                          const isEnabled = scheduled?.enabled || false
+                          const nextRun = scheduled?.next_run
+                          
+                          return (
+                            <div className="flex items-center gap-2">
+                              <Switch
+                                checked={isEnabled}
+                                onCheckedChange={(checked) => toggleAutoAudit(selectedDomain, checked)}
+                                disabled={scheduledAuditsLoading}
+                              />
+                              <span className="text-muted-foreground">
+                                Auto weekly
+                              </span>
+                              {isEnabled && nextRun && (
+                                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                  <Clock className="h-3 w-3" />
+                                  {new Date(nextRun).toLocaleDateString()}
+                                </span>
+                              )}
+                            </div>
+                          )
+                        })()}
                       </div>
                     )}
                     {mostRecentAudit && (
@@ -815,15 +1071,20 @@ export default function DashboardPage() {
                       </DropdownMenu>
                     )}
                     <Button 
-                      asChild
-                      disabled={usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit}
-                      title={
-                        usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit
-                          ? `Daily limit reached. Try again tomorrow${plan === 'free' ? ' or upgrade to Pro for 5 domains' : ''}.`
-                          : undefined
-                      }
+                      onClick={handleStartAudit}
+                      disabled={(usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit) || auditPolling}
+                      variant={usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit ? "outline" : "default"}
                     >
-                      <Link href="/">Rerun Audit</Link>
+                      {auditPolling ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Running audit...
+                        </>
+                      ) : usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit ? (
+                        "Daily limit reached"
+                      ) : (
+                        "Run new audit"
+                      )}
                     </Button>
                   </div>
                 </div>

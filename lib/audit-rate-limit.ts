@@ -16,34 +16,27 @@ export interface AuditUsage {
 
 /**
  * Get audit limits for a plan tier
- * TEMPORARILY DISABLED: All limits set to Infinity for testing
+ * All users get 1 audit per day (cooldown)
  */
 export function getAuditLimits(plan: string): AuditLimits {
-  // TEMPORARY: Disable all limits for testing
-  return {
-    maxDomains: Infinity,
-    maxAuditsPerDay: Infinity,
+  switch (plan) {
+    case 'pro':
+      return {
+        maxDomains: 5,
+        maxAuditsPerDay: 1, // per domain
+      }
+    case 'enterprise':
+      return {
+        maxDomains: Infinity,
+        maxAuditsPerDay: 1, // per domain - one audit per day cooldown
+      }
+    case 'free':
+    default:
+      return {
+        maxDomains: 1,
+        maxAuditsPerDay: 1, // per domain
+      }
   }
-  
-  // Original limits (commented out temporarily)
-  // switch (plan) {
-  //   case 'pro':
-  //     return {
-  //       maxDomains: 5,
-  //       maxAuditsPerDay: 1, // per domain
-  //     }
-  //   case 'enterprise':
-  //     return {
-  //       maxDomains: Infinity,
-  //       maxAuditsPerDay: Infinity,
-  //     }
-  //   case 'free':
-  //   default:
-  //     return {
-  //       maxDomains: 1,
-  //       maxAuditsPerDay: 1, // per domain
-  //     }
-  // }
 }
 
 /**
@@ -69,16 +62,32 @@ function getNextResetTime(): string {
 }
 
 /**
+ * Test account email that gets unlimited audits
+ */
+const TEST_ACCOUNT_EMAIL = 'l.gichigi@gmail.com'
+
+/**
  * Check if user has exceeded daily audit limit for a domain
  */
 export async function checkDailyLimit(
   userId: string,
   domain: string,
-  plan: string
+  plan: string,
+  userEmail?: string | null
 ): Promise<{ allowed: boolean; used: number; limit: number; resetAt: string }> {
+  // Test account exception: unlimited audits
+  if (userEmail === TEST_ACCOUNT_EMAIL) {
+    return {
+      allowed: true,
+      used: 0,
+      limit: Infinity,
+      resetAt: getNextResetTime(),
+    }
+  }
+
   const limits = getAuditLimits(plan)
   
-  // Enterprise users have unlimited audits
+  // Enterprise users have unlimited audits (legacy check, but now all users have 1 per day)
   if (limits.maxAuditsPerDay === Infinity) {
     return {
       allowed: true,
@@ -266,8 +275,20 @@ export async function incrementAuditUsage(
 export async function getAuditUsage(
   userId: string,
   domain: string | null,
-  plan: string
+  plan: string,
+  userEmail?: string | null
 ): Promise<AuditUsage> {
+  // Test account exception: unlimited audits
+  if (userEmail === TEST_ACCOUNT_EMAIL) {
+    return {
+      today: 0,
+      limit: 0, // 0 means unlimited in UI
+      domains: 0,
+      domainLimit: 0,
+      resetAt: getNextResetTime(),
+    }
+  }
+
   const limits = getAuditLimits(plan)
   const today = getTodayUTC()
 

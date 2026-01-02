@@ -25,6 +25,8 @@ export function DomainSwitcher() {
   const [selectedDomain, setSelectedDomain] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [newAuditDialogOpen, setNewAuditDialogOpen] = React.useState(false)
+  const [plan, setPlan] = React.useState<string>("free")
+  const [usageInfo, setUsageInfo] = React.useState<any>(null)
   const { isMobile } = useSidebar()
 
   const handleDeleteDomain = (domain: string, e: React.MouseEvent) => {
@@ -37,8 +39,36 @@ export function DomainSwitcher() {
     const loadDomains = async () => {
       try {
         const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
+        const { data: { user, session } } = await supabase.auth.getUser()
         if (!user) return
+
+        // Load plan
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('plan')
+          .eq('user_id', user.id)
+          .maybeSingle()
+        
+        if (profile) {
+          setPlan(profile.plan || 'free')
+        }
+
+        // Load usage info
+        if (session) {
+          try {
+            const response = await fetch('/api/audit/usage', {
+              headers: {
+                'Authorization': `Bearer ${session.access_token}`
+              }
+            })
+            if (response.ok) {
+              const data = await response.json()
+              setUsageInfo(data)
+            }
+          } catch (error) {
+            console.error("Error loading usage info:", error)
+          }
+        }
 
         const { data: audits } = await supabase
           .from('brand_audit_runs')
@@ -76,8 +106,25 @@ export function DomainSwitcher() {
     const handleDomainsReload = async () => {
       console.log('[DomainSwitcher] Reloading domains after deletion')
       const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { user, session } } = await supabase.auth.getUser()
       if (!user) return
+
+      // Reload usage info
+      if (session) {
+        try {
+          const response = await fetch('/api/audit/usage', {
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`
+            }
+          })
+          if (response.ok) {
+            const data = await response.json()
+            setUsageInfo(data)
+          }
+        } catch (error) {
+          console.error("Error loading usage info:", error)
+        }
+      }
 
       const { data: audits } = await supabase
         .from('brand_audit_runs')
@@ -129,12 +176,29 @@ export function DomainSwitcher() {
   }
 
   const handleNewAuditSuccess = () => {
-    // Reload domains after new audit
+    // Reload domains and usage info after new audit
     const loadDomains = async () => {
       try {
         const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
+        const { data: { user, session } } = await supabase.auth.getUser()
         if (!user) return
+
+        // Reload usage info
+        if (session) {
+          try {
+            const response = await fetch('/api/audit/usage', {
+              headers: {
+                'Authorization': `Bearer ${session.access_token}`
+              }
+            })
+            if (response.ok) {
+              const data = await response.json()
+              setUsageInfo(data)
+            }
+          } catch (error) {
+            console.error("Error loading usage info:", error)
+          }
+        }
 
         const { data: audits } = await supabase
           .from('brand_audit_runs')
@@ -154,6 +218,10 @@ export function DomainSwitcher() {
     }
     loadDomains()
   }
+
+  // Check if free user has reached domain limit
+  const isAtDomainLimit = plan === 'free' && usageInfo && usageInfo.domainLimit > 0 && usageInfo.domains >= usageInfo.domainLimit
+  const isNewDomainDisabled = plan === 'free' && isAtDomainLimit
 
   if (loading) {
     return null
@@ -206,10 +274,11 @@ export function DomainSwitcher() {
         <SidebarMenuItem>
           <SidebarMenuButton
             onClick={() => setNewAuditDialogOpen(true)}
-            tooltip="New Audit"
+            tooltip={isNewDomainDisabled ? "Domain limit reached. Upgrade to Pro for 5 domains." : "New Domain"}
+            disabled={isNewDomainDisabled}
           >
             <Plus className="h-4 w-4" />
-            <span>New Audit</span>
+            <span>New Domain</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>

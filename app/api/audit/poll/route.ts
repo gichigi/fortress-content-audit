@@ -42,7 +42,7 @@ export async function POST(request: Request) {
       // Support both authenticated (user_id) and unauthenticated (session_token) lookups
       let query = supabaseAdmin
         .from('brand_audit_runs')
-        .select('issues_json, user_id, session_token')
+        .select('issues_json, user_id, session_token, scheduled_audit_id, domain')
         .eq('id', runId)
       
       if (isAuthenticated && userId) {
@@ -302,6 +302,32 @@ export async function POST(request: Request) {
           }
         }
         
+        // Update scheduled_audits.last_run if this was a scheduled audit
+        if (auditRun?.scheduled_audit_id) {
+          try {
+            const now = new Date()
+            const nextRun = new Date(now)
+            nextRun.setDate(nextRun.getDate() + 7) // Schedule next run in 7 days
+            
+            const { error: scheduledErr } = await supabaseAdmin
+              .from('scheduled_audits')
+              .update({
+                last_run: now.toISOString(),
+                next_run: nextRun.toISOString(),
+              })
+              .eq('id', auditRun.scheduled_audit_id)
+
+            if (scheduledErr) {
+              console.error('[Poll] Failed to update scheduled_audits.last_run:', scheduledErr)
+            } else {
+              console.log(`[Poll] Updated scheduled_audits.last_run for scheduled_audit_id: ${auditRun.scheduled_audit_id}`)
+            }
+          } catch (error) {
+            console.error('[Poll] Error updating scheduled_audits:', error)
+            // Don't fail the request - scheduled audit tracking is non-critical
+          }
+        }
+
         // Increment audit usage when audit completes (only for authenticated users)
         if (auditRun?.domain && isAuthenticated && userId) {
           try {
