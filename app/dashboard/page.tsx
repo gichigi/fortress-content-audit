@@ -70,6 +70,8 @@ export default function DashboardPage() {
   const [auditPolling, setAuditPolling] = useState(false)
   const [auditResponseId, setAuditResponseId] = useState<string | null>(null)
   const [auditRunId, setAuditRunId] = useState<string | null>(null)
+  const [startingAudit, setStartingAudit] = useState(false)
+  const [rerunningAuditId, setRerunningAuditId] = useState<string | null>(null)
   
   // Use shared hook to fetch issues from database
   const mostRecentAudit = audits.length > 0 ? audits[0] : null
@@ -424,7 +426,21 @@ export default function DashboardPage() {
         })
 
         if (!pollResponse.ok) {
-          console.error('[Dashboard Poll] Failed to poll status')
+          let errorMessage = 'Failed to check audit status'
+          try {
+            const errorData = await pollResponse.json()
+            errorMessage = errorData.error || errorMessage
+          } catch {
+            errorMessage = pollResponse.statusText || errorMessage
+          }
+          setAuditPolling(false)
+          setAuditResponseId(null)
+          setAuditRunId(null)
+          toast({
+            title: "Audit error",
+            description: errorMessage,
+            variant: "destructive",
+          })
           return
         }
 
@@ -447,9 +463,31 @@ export default function DashboardPage() {
             title: "Audit completed",
             description: "Your audit results have been updated.",
           })
+        } else if (pollData.status === 'failed' || pollData.error) {
+          // Handle failed audits (including bot protection errors)
+          setAuditPolling(false)
+          setAuditResponseId(null)
+          setAuditRunId(null)
+
+          const errorMessage = pollData.error || pollData.message || 'Audit failed'
+          toast({
+            title: "Audit failed",
+            description: errorMessage,
+            variant: "destructive",
+          })
         }
       } catch (error) {
         console.error('[Dashboard Poll] Error:', error)
+        // Show user-friendly error message
+        toast({
+          title: "Error checking audit status",
+          description: error instanceof Error ? error.message : "Failed to check audit progress. Please refresh the page.",
+          variant: "destructive",
+        })
+        // Stop polling on error
+        setAuditPolling(false)
+        setAuditResponseId(null)
+        setAuditRunId(null)
       }
     }, 5000)
 
@@ -548,6 +586,7 @@ export default function DashboardPage() {
   }
 
   const handleRerunAudit = async (auditId: string, domain: string) => {
+    setRerunningAuditId(auditId) // Set loading state
     try {
       const supabase = createClient()
       const { data: { session } } = await supabase.auth.getSession()
@@ -586,6 +625,8 @@ export default function DashboardPage() {
         description: error instanceof Error ? error.message : "Failed to rerun audit",
         variant: "destructive"
       })
+    } finally {
+      setRerunningAuditId(null) // Clear loading state
     }
   }
 
@@ -691,6 +732,9 @@ export default function DashboardPage() {
       return
     }
 
+    // Set loading state immediately for user feedback
+    setStartingAudit(true)
+
     try {
       const response = await fetch('/api/audit', {
         method: 'POST',
@@ -714,6 +758,9 @@ export default function DashboardPage() {
       }
 
       const data = await response.json()
+
+      // Clear starting state immediately - we have a response
+      setStartingAudit(false)
 
       if (data.status === 'in_progress' && data.responseId) {
         setAuditResponseId(data.responseId)
@@ -740,11 +787,42 @@ export default function DashboardPage() {
       }
     } catch (error) {
       console.error("Error starting audit:", error)
+      
+      // Clear starting state on error
+      setStartingAudit(false)
+      
+      // Extract user-friendly error message
+      let errorMessage = "Failed to start audit. Please try again."
+      if (error instanceof Error) {
+        errorMessage = error.message
+        // Map common error messages to user-friendly versions
+        if (error.message.includes("Audit generation failed") || error.message.includes("generation failed")) {
+          errorMessage = "The audit could not be started. This might be due to a temporary service issue. Please try again in a moment."
+        } else if (error.message.includes("rate limit") || error.message.includes("429") || error.message.includes("Daily limit")) {
+          // Keep the original message for rate limits as it's already user-friendly
+          errorMessage = error.message
+        } else if (error.message.includes("network") || error.message.includes("fetch") || error.message.includes("Network")) {
+          errorMessage = "Network error. Please check your connection and try again."
+        } else if (error.message.includes("Unauthorized") || error.message.includes("401")) {
+          errorMessage = "Your session has expired. Please sign in again."
+        } else if (error.message.includes("Forbidden") || error.message.includes("403")) {
+          errorMessage = "You don't have permission to perform this action."
+        }
+      }
+      
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to start audit",
+        description: errorMessage,
         variant: "destructive",
       })
+      // Reset polling state on error
+      setAuditPolling(false)
+      setAuditResponseId(null)
+      setAuditRunId(null)
+    } finally {
+      // Always clear starting state in finally as a safety net
+      // (should already be cleared above, but this ensures cleanup)
+      setStartingAudit(false)
     }
   }
 
@@ -774,11 +852,13 @@ export default function DashboardPage() {
   const handleDeleteDomain = async () => {
     if (!domainToDelete) return
 
-    setDeletingDomain(domainToDelete)
     try {
       const supabase = createClient()
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) return
+
+      // Set loading state after validation checks
+      setDeletingDomain(domainToDelete)
 
       const encodedDomain = encodeURIComponent(domainToDelete)
       const response = await fetch(`/api/domains/${encodedDomain}`, {
@@ -1070,12 +1150,17 @@ export default function DashboardPage() {
                         </DropdownMenuContent>
                       </DropdownMenu>
                     )}
-                    <Button 
+                    <Button
                       onClick={handleStartAudit}
-                      disabled={(usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit) || auditPolling}
+                      disabled={(usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit) || auditPolling || startingAudit}
                       variant={usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit ? "outline" : "default"}
                     >
-                      {auditPolling ? (
+                      {startingAudit ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Starting...
+                        </>
+                      ) : auditPolling ? (
                         <>
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                           Running audit...
@@ -1165,8 +1250,16 @@ export default function DashboardPage() {
             <AlertDialogAction
               onClick={handleDeleteDomain}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deletingDomain !== null}
             >
-              Delete
+              {deletingDomain ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete"
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
