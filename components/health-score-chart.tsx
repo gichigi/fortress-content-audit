@@ -167,7 +167,7 @@ export function HealthScoreChart({ data, domain }: HealthScoreChartProps) {
         >
           <AreaChart 
             data={chartData}
-            margin={{ top: 5, right: 10, left: 10, bottom: 5 }}
+            margin={{ top: 30, right: 10, left: 10, bottom: 5 }}
           >
             <defs>
               <linearGradient id="fillScore" x1="0" y1="0" x2="0" y2="1">

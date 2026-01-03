@@ -8,7 +8,7 @@
 - user should be able to disable auto audits
 - auto run in place of run audit
 - if firewall return msg to user
-
+- health chart height not reflecting score
 
 ## settings
 Nowhere to be found
