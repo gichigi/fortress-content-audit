@@ -54,9 +54,9 @@ export default function ResetPasswordPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to send reset email.")
       toast({
-        title: "Error",
-        description: e instanceof Error ? e.message : "Failed to send reset email.",
-        variant: "destructive",
+        title: "Unable to send reset email",
+        description: e instanceof Error ? e.message : "Please try again or contact support if the issue persists.",
+        variant: "error",
       })
     } finally {
       setLoading(false)

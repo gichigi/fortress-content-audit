@@ -46,8 +46,7 @@ export default function ApiTestPage() {
     if (!extractUrl) {
       toast({
         title: "URL required",
-        description: "Please enter a URL to test the extraction API",
-        variant: "destructive",
+        description: "Please enter a URL to test the extraction API.",
       })
       return
     }
@@ -77,9 +76,8 @@ export default function ApiTestPage() {
       if (!response.ok || !data.success) {
         setExtractError(data.error || `API returned status ${response.status}`)
         toast({
-          title: "API test failed",
+          title: "API test did not succeed",
           description: data.error || `Status: ${response.status} ${response.statusText}`,
-          variant: "destructive",
         })
       } else {
         toast({
@@ -94,9 +92,9 @@ export default function ApiTestPage() {
       setExtractResponse(JSON.stringify({ error: "Failed to fetch API", message: errorMessage }, null, 2))
 
       toast({
-        title: "API test failed",
-        description: "There was an error connecting to the API",
-        variant: "destructive",
+        title: "Unable to connect to API",
+        description: "Please check your connection and try again.",
+        variant: "error",
       })
     } finally {
       setExtractLoading(false)
@@ -118,8 +116,7 @@ export default function ApiTestPage() {
         setGenerateError(errorMessage)
         toast({
           title: "Invalid JSON",
-          description: "Please enter valid JSON for brand info",
-          variant: "destructive",
+          description: "Please enter valid JSON for brand info.",
         })
         setGenerateLoading(false)
         return
@@ -153,9 +150,8 @@ export default function ApiTestPage() {
       if (!response.ok || !data.success) {
         setGenerateError(data.error || `API returned status ${response.status}`)
         toast({
-          title: "API test failed",
+          title: "API test did not succeed",
           description: data.error || `Status: ${response.status} ${response.statusText}`,
-          variant: "destructive",
         })
       } else {
         toast({
@@ -170,9 +166,9 @@ export default function ApiTestPage() {
       setGenerateResponse(JSON.stringify({ error: "Failed to fetch API", message: errorMessage }, null, 2))
 
       toast({
-        title: "API test failed",
-        description: "There was an error connecting to the API",
-        variant: "destructive",
+        title: "Unable to connect to API",
+        description: "Please check your connection and try again.",
+        variant: "error",
       })
     } finally {
       setGenerateLoading(false)

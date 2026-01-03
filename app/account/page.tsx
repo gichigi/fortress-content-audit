@@ -101,9 +101,9 @@ export default function AccountPage() {
     } catch (error) {
       console.error("Error loading profile:", error)
       toast({
-        title: "Error",
-        description: "Failed to load profile",
-        variant: "destructive"
+        title: "Unable to load profile",
+        description: "Please refresh the page to try again.",
+        variant: "error",
       })
     } finally {
       setLoading(false)
@@ -179,9 +179,9 @@ export default function AccountPage() {
       }))
     } catch (error) {
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to update profile",
-        variant: "destructive"
+        title: "Unable to update profile",
+        description: error instanceof Error ? error.message : "Please try again or contact support if the issue persists.",
+        variant: "error",
       })
     } finally {
       setSaving(false)
@@ -223,9 +223,9 @@ export default function AccountPage() {
       }
     } catch (error) {
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to start checkout",
-        variant: "destructive"
+        title: "Unable to start checkout",
+        description: error instanceof Error ? error.message : "Please try again or contact support if the issue persists.",
+        variant: "error",
       })
     }
   }
@@ -261,9 +261,9 @@ export default function AccountPage() {
     } catch (error) {
       console.error('[Account] Error opening billing portal:', error)
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to open billing portal",
-        variant: "destructive"
+        title: "Unable to open billing portal",
+        description: error instanceof Error ? error.message : "Please try again or contact support if the issue persists.",
+        variant: "error",
       })
     }
   }
@@ -275,9 +275,8 @@ export default function AccountPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
         toast({
-          title: "Error",
-          description: "You must be logged in to delete your account",
-          variant: "destructive"
+          title: "Please sign in",
+          description: "You must be logged in to delete your account.",
         })
         return
       }
@@ -285,9 +284,8 @@ export default function AccountPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
         toast({
-          title: "Error",
-          description: "Session expired. Please log in again",
-          variant: "destructive"
+          title: "Session expired",
+          description: "Please sign in again to continue.",
         })
         return
       }
@@ -317,9 +315,9 @@ export default function AccountPage() {
       router.push('/')
     } catch (error) {
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to delete account",
-        variant: "destructive"
+        title: "Unable to delete account",
+        description: error instanceof Error ? error.message : "Please try again or contact support if the issue persists.",
+        variant: "error",
       })
     } finally {
       setDeleting(false)

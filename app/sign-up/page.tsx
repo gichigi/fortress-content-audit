@@ -173,9 +173,9 @@ function SignUpForm() {
       const errorMessage = e instanceof Error ? getAuthErrorMessage(e) : "Authentication failed."
       setError(errorMessage)
       toast({
-        title: "Error",
-        description: errorMessage,
-        variant: "destructive",
+        title: "Unable to sign up",
+        description: errorMessage || "Please try again or contact support if the issue persists.",
+        variant: "error",
       })
     } finally {
       setLoading(false)
@@ -199,9 +199,9 @@ function SignUpForm() {
         setError(getAuthErrorMessage(error))
         setLoading(false)
         toast({
-          title: "Error",
-          description: getAuthErrorMessage(error),
-          variant: "destructive",
+          title: "Unable to sign in",
+          description: getAuthErrorMessage(error) || "Please try again or contact support if the issue persists.",
+          variant: "error",
         })
       }
       // User will be redirected to Google, then back to callback
@@ -211,9 +211,9 @@ function SignUpForm() {
       setError(errorMessage)
       setLoading(false)
       toast({
-        title: "Error",
-        description: errorMessage,
-        variant: "destructive",
+        title: "Unable to sign in",
+        description: errorMessage || "Please try again or contact support if the issue persists.",
+        variant: "error",
       })
     }
   }

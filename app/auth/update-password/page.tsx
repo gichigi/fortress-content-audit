@@ -117,9 +117,9 @@ export default function UpdatePasswordPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update password.")
       toast({
-        title: "Error",
-        description: e instanceof Error ? e.message : "Failed to update password.",
-        variant: "destructive",
+        title: "Unable to update password",
+        description: e instanceof Error ? e.message : "Please try again or contact support if the issue persists.",
+        variant: "error",
       })
     } finally {
       setLoading(false)

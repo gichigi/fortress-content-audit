@@ -454,9 +454,9 @@ export default function DashboardPage() {
           setAuditResponseId(null)
           setAuditRunId(null)
           toast({
-            title: "Audit error",
-            description: errorMessage,
-            variant: "destructive",
+            title: "Unable to check audit status",
+            description: errorMessage || "Please refresh the page to see the latest status.",
+            variant: "error",
           })
           return
         }
@@ -488,18 +488,18 @@ export default function DashboardPage() {
 
           const errorMessage = pollData.error || pollData.message || 'Audit failed'
           toast({
-            title: "Audit failed",
-            description: errorMessage,
-            variant: "destructive",
+            title: "Audit could not be completed",
+            description: errorMessage || "Please try running the audit again.",
+            variant: "error",
           })
         }
       } catch (error) {
         console.error('[Dashboard Poll] Error:', error)
         // Show user-friendly error message
         toast({
-          title: "Error checking audit status",
-          description: error instanceof Error ? error.message : "Failed to check audit progress. Please refresh the page.",
-          variant: "destructive",
+          title: "Unable to check audit status",
+          description: error instanceof Error ? error.message : "Please refresh the page to see the latest status.",
+          variant: "error",
         })
         // Stop polling on error
         setAuditPolling(false)
@@ -638,9 +638,9 @@ export default function DashboardPage() {
       }
     } catch (error) {
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to rerun audit",
-        variant: "destructive"
+        title: "Unable to rerun audit",
+        description: error instanceof Error ? error.message : "Please try again in a moment.",
+        variant: "error",
       })
     } finally {
       setRerunningAuditId(null) // Clear loading state
@@ -695,45 +695,81 @@ export default function DashboardPage() {
             return [...prev, data.scheduledAudit]
           }
         })
+        const nextRunDate = data.scheduledAudit?.next_run 
+          ? new Date(data.scheduledAudit.next_run).toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric'
+            })
+          : null
+        
         toast({
-          title: enabled ? "Auto weekly audits enabled" : "Auto weekly audits disabled",
+          title: enabled 
+            ? `Auto weekly audits enabled for ${domain}`
+            : `Auto weekly audits disabled for ${domain}`,
           description: enabled 
-            ? "Your domain will be audited automatically every week."
-            : "Auto weekly audits have been disabled for this domain.",
+            ? nextRunDate 
+              ? `Next audit scheduled for ${nextRunDate}.`
+              : "Your domain will be audited automatically every week."
+            : "Auto weekly audits have been disabled.",
         })
       } else {
         let errorMessage = 'Failed to save scheduled audit settings'
         let errorData: any = null
         
+        // Check content type before parsing
+        const contentType = response.headers.get('content-type')
+        const isJson = contentType?.includes('application/json')
+        
         try {
-          // Try to parse error response as JSON
-          const text = await response.text()
-          if (text) {
-            try {
-              errorData = JSON.parse(text)
-              errorMessage = errorData.error || errorData.message || errorMessage
-            } catch (parseError) {
-              // If JSON parsing fails, use the raw text if available
-              if (text.trim()) {
-                errorMessage = text
+          if (isJson) {
+            // Clone response to avoid consuming the body
+            const clonedResponse = response.clone()
+            errorData = await clonedResponse.json()
+            // Extract error message - prioritize details (often more user-friendly), then error, then message
+            if (errorData && typeof errorData === 'object') {
+              const extractedMessage = errorData.details || errorData.error || errorData.message
+              if (extractedMessage && typeof extractedMessage === 'string') {
+                errorMessage = extractedMessage
               }
             }
+          } else {
+            // Try to read as text for non-JSON responses
+            const clonedResponse = response.clone()
+            const text = await clonedResponse.text()
+            if (text && text.trim()) {
+              errorMessage = text.substring(0, 200) // Limit length
+            }
           }
-        } catch (textError) {
-          // If reading response body fails, use status text
-          console.error('[ToggleAutoAudit] Failed to read error response:', textError)
+        } catch (parseError) {
+          // If parsing fails, use status text
+          console.error('[ToggleAutoAudit] Failed to parse error response:', parseError)
         }
         
-        // Log the full error for debugging
+        // Map technical errors to user-friendly messages
+        if (errorMessage.includes('PGRST205') || errorMessage.includes('schema cache') || errorMessage.includes('Could not find the table')) {
+          errorMessage = 'The service is temporarily unavailable. Please try again in a moment.'
+        } else if (errorMessage.includes('PGRST') || errorMessage.includes('PostgREST')) {
+          errorMessage = 'A database error occurred. Please try again or contact support if the issue persists.'
+        } else if (errorMessage.includes('Unauthorized') || errorMessage.includes('401')) {
+          errorMessage = 'Your session has expired. Please sign in again.'
+        } else if (errorMessage.includes('Forbidden') || errorMessage.includes('403')) {
+          errorMessage = 'You don\'t have permission to perform this action.'
+        } else if (errorMessage.includes('rate limit') || errorMessage.includes('429')) {
+          errorMessage = 'Too many requests. Please try again in a moment.'
+        }
+        
+        // Log the full error for debugging (but never show raw JSON to users)
         console.error('[ToggleAutoAudit] API Error:', {
           status: response.status,
           statusText: response.statusText,
+          contentType,
           error: errorData || 'No error data available'
         })
         
         // Use status text as fallback if no error message found
         if (errorMessage === 'Failed to save scheduled audit settings' && response.statusText) {
-          errorMessage = `${errorMessage}: ${response.statusText}`
+          errorMessage = 'Unable to save settings. Please try again.'
         }
         
         throw new Error(errorMessage)
@@ -741,9 +777,9 @@ export default function DashboardPage() {
     } catch (error) {
       console.error("Error toggling auto audit:", error)
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to update auto audit settings",
-        variant: "destructive",
+        title: "Unable to update auto audit settings",
+        description: error instanceof Error ? error.message : "Please try again or contact support if the issue persists.",
+        variant: "error",
       })
     }
   }
@@ -753,7 +789,6 @@ export default function DashboardPage() {
       toast({
         title: "No domain selected",
         description: "Please select a domain to audit.",
-        variant: "destructive",
       })
       return
     }
@@ -763,7 +798,6 @@ export default function DashboardPage() {
       toast({
         title: "Daily limit reached",
         description: `You've reached your daily limit of ${usageInfo.limit} audit${usageInfo.limit === 1 ? '' : 's'}. Try again tomorrow${plan === 'free' ? ' or upgrade to Pro for 5 domains' : ''}.`,
-        variant: "destructive",
       })
       return
     }
@@ -797,7 +831,6 @@ export default function DashboardPage() {
           toast({
             title: "Daily limit reached",
             description: errorData.message || errorMessage || `You've reached your daily limit. Try again tomorrow.`,
-            variant: "destructive",
           })
           return
         }
@@ -859,9 +892,9 @@ export default function DashboardPage() {
       }
       
       toast({
-        title: "Error",
-        description: errorMessage,
-        variant: "destructive",
+        title: "Unable to start audit",
+        description: errorMessage || "Please try again in a moment.",
+        variant: "error",
       })
       // Reset polling state on error
       setAuditPolling(false)
@@ -967,9 +1000,9 @@ export default function DashboardPage() {
       })
     } catch (error) {
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to delete domain",
-        variant: "destructive"
+        title: "Unable to delete domain",
+        description: error instanceof Error ? error.message : "Please try again or contact support if the issue persists.",
+        variant: "error",
       })
     } finally {
       setDeletingDomain(null)
@@ -990,9 +1023,9 @@ export default function DashboardPage() {
   const handleExport = async (format: 'pdf' | 'json' | 'md') => {
     if (!mostRecentAudit?.id || !authToken) {
       toast({
-        title: "Error",
-        description: "No audit available to export",
-        variant: "destructive"
+        title: "No audit available",
+        description: "Please run an audit first before exporting.",
+        variant: "error",
       })
       return
     }
@@ -1046,9 +1079,9 @@ export default function DashboardPage() {
     } catch (error) {
       console.error('[Dashboard] Export error:', error)
       toast({
-        title: "Export failed",
-        description: error instanceof Error ? error.message : "Failed to export audit",
-        variant: "destructive"
+        title: "Unable to export audit",
+        description: error instanceof Error ? error.message : "Please try again or contact support if the issue persists.",
+        variant: "error",
       })
     } finally {
       setExportLoading(null)
@@ -1130,7 +1163,6 @@ export default function DashboardPage() {
                         ) : (() => {
                           const scheduled = scheduledAudits.find(sa => sa.domain === selectedDomain)
                           const isEnabled = scheduled?.enabled || false
-                          const nextRun = scheduled?.next_run
                           
                           return (
                             <div className="flex items-center gap-2">
@@ -1142,12 +1174,6 @@ export default function DashboardPage() {
                               <span className="text-muted-foreground">
                                 Auto weekly
                               </span>
-                              {isEnabled && nextRun && (
-                                <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                  <Clock className="h-3 w-3" />
-                                  {new Date(nextRun).toLocaleDateString()}
-                                </span>
-                              )}
                             </div>
                           )
                         })()}
@@ -1316,4 +1342,5 @@ export default function DashboardPage() {
     </>
   )
 }
+
 

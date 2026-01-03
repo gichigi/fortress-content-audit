@@ -63,9 +63,9 @@ export default function PricingPage() {
       }
     } catch (error) {
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to start checkout",
-        variant: "destructive",
+        title: "Unable to start checkout",
+        description: error instanceof Error ? error.message : "Please try again or contact support if the issue persists.",
+        variant: "error",
       })
       setCheckoutLoading(false)
     }

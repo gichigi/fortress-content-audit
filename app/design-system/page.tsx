@@ -10,6 +10,8 @@ import { Toaster } from "@/components/ui/toaster"
 import { Progress } from "@/components/ui/progress"
 import { StickyBottomBar } from "@/components/ui/sticky-bottom-bar"
 import { InterstitialLoaderDemo } from "@/components/ui/interstitial-loader-demo"
+import { ToastDemo } from "@/components/ui/toast-demo"
+import { X } from "lucide-react"
 import fs from 'fs'
 import path from 'path'
 
@@ -282,31 +284,50 @@ export default function DesignSystemPage() {
               <h3 className="font-serif text-2xl font-semibold mb-6">Toast</h3>
               <p className="text-sm text-muted-foreground mb-4">
                 Toast notifications appear at the bottom right of the screen and automatically dismiss after a few seconds. 
-                Use toasts for success messages, quick confirmations, and non-critical status updates.
+                Use toasts for success messages, quick confirmations, and non-critical status updates. All toasts use a clean white design that matches the brand aesthetic.
               </p>
               <p className="text-sm text-muted-foreground mb-4">
-                <strong>When to use Toast:</strong> Success messages (e.g., "Export successful"), quick confirmations, non-critical updates.
+                <strong>When to use Toast:</strong> Success messages (e.g., "Export successful"), quick confirmations, non-critical updates, and user-friendly error messages.
                 <br />
-                <strong>When to use Alert:</strong> Errors requiring attention, permission issues, critical failures that need user action.
+                <strong>When to use Alert:</strong> Errors requiring immediate attention, permission issues, critical failures that need user action.
               </p>
-              <div className="p-4 bg-muted/50 border border-border">
-                <p className="text-xs text-muted-foreground font-mono mb-2">Usage example (using sonner/toast):</p>
+              <div className="p-4 bg-muted/50 border border-border mb-4">
+                <p className="text-xs text-muted-foreground font-mono mb-2">Usage example (using useToast hook):</p>
                 <p className="text-xs text-muted-foreground font-mono">
-                  {'import { toast } from "sonner"'}
+                  {'import { useToast } from "@/hooks/use-toast"'}
+                  <br />
+                  <br />
+                  {'const { toast } = useToast()'}
                   <br />
                   <br />
                   {'// Success toast'}
                   <br />
-                  {'toast.success("Export successful")'}
+                  {'toast({'}
+                  <br />
+                  {'  title: "Export successful",'}
+                  <br />
+                  {'  description: "Your audit has been exported as PDF."'}
+                  <br />
+                  {'})'}
                   <br />
                   <br />
-                  {'// Error toast (for non-critical errors)'}
+                  {'// User-friendly error message'}
                   <br />
-                  {'toast.error("Failed to export")'}
+                  {'toast({'}
+                  <br />
+                  {'  title: "Unable to export",'}
+                  <br />
+                  {'  description: "Please try again or contact support if the issue persists."'}
+                  <br />
+                  {'})'}
                 </p>
               </div>
-              <p className="text-sm text-muted-foreground mt-4">
-                Toasts are displayed via the Toaster component which should be mounted in your root layout.
+              <div className="p-4 bg-background border border-border mb-4">
+                <p className="text-xs text-muted-foreground mb-4">Interactive demo:</p>
+                <ToastDemo />
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Toasts are displayed via the Toaster component which is mounted in the root layout. All toasts use the default white variant - never use destructive (red) variants as they don't align with the brand aesthetic.
               </p>
             </div>
             {/* Card */}

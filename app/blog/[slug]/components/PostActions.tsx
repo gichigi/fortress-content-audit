@@ -54,9 +54,9 @@ export default function PostActions({ slug, isPublished }: PostActionsProps) {
     } catch (error) {
       console.error('Error publishing post:', error)
       toast({
-        title: 'Publish failed',
-        description: error instanceof Error ? error.message : 'An unexpected error occurred',
-        variant: 'destructive',
+        title: 'Unable to publish',
+        description: error instanceof Error ? error.message : 'Please try again or contact support if the issue persists.',
+        variant: 'error',
       })
     } finally {
       setIsPublishing(false)
@@ -85,9 +85,9 @@ export default function PostActions({ slug, isPublished }: PostActionsProps) {
     } catch (error) {
       console.error('Error deleting post:', error)
       toast({
-        title: 'Delete failed',
-        description: error instanceof Error ? error.message : 'An unexpected error occurred',
-        variant: 'destructive',
+        title: 'Unable to delete',
+        description: error instanceof Error ? error.message : 'Please try again or contact support if the issue persists.',
+        variant: 'error',
       })
     } finally {
       setIsDeleting(false)
