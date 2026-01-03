@@ -132,6 +132,10 @@ max_frequency = "1s"
 # sender_name = "Admin"
 
 # Customize email templates
+[auth.email.template.confirmation]
+subject = "Confirm your email"
+content_path = "./supabase/templates/confirmation.html"
+
 [auth.email.template.magic_link]
 subject = "Sign in to Fortress"
 content_path = "./supabase/templates/magic_link.html"

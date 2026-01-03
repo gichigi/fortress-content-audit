@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Area, AreaChart, CartesianGrid, XAxis } from "recharts"
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
 
 import { useMobile } from "@/hooks/use-mobile"
 import {
@@ -198,6 +198,13 @@ export function HealthScoreChart({ data, domain }: HealthScoreChartProps) {
                   day: "numeric",
                 })
               }}
+            />
+            <YAxis
+              domain={[0, 100]}
+              tickLine={false}
+              axisLine={false}
+              tickMargin={8}
+              hide
             />
             <ChartTooltip
               cursor={false}

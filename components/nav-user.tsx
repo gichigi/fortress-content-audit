@@ -1,8 +1,8 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
-  BellIcon,
   CreditCardIcon,
   LogOutIcon,
   MoreVerticalIcon,
@@ -31,17 +31,62 @@ import {
 } from "@/components/ui/sidebar"
 import { createClient } from "@/lib/supabase-browser"
 
-export function NavUser({
-  user,
-}: {
-  user: {
-    name: string
-    email: string
-    avatar: string
-  }
-}) {
+export function NavUser() {
   const { isMobile } = useSidebar()
   const router = useRouter()
+  const [user, setUser] = useState<{
+    name: string
+    email: string
+    avatar: string | null
+  } | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const loadUser = async () => {
+      try {
+        const supabase = createClient()
+        // Use getUser() instead of getSession() for security (validates with server)
+        const { data: { user }, error: userError } = await supabase.auth.getUser()
+        
+        if (userError || !user) {
+          setLoading(false)
+          return
+        }
+
+        // Get user name from profile or use email
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('name')
+          .eq('user_id', user.id)
+          .maybeSingle()
+
+        const userName = profile?.name || user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'User'
+        const userEmail = user.email || ''
+
+        setUser({
+          name: userName,
+          email: userEmail,
+          avatar: user.user_metadata?.avatar_url || user.user_metadata?.picture || null,
+        })
+      } catch (error) {
+        console.error('[NavUser] Error loading user:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadUser()
+
+    // Listen for auth changes
+    const supabase = createClient()
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
+      loadUser()
+    })
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [])
 
   const handleLogout = async () => {
     const supabase = createClient()
@@ -49,6 +94,76 @@ export function NavUser({
     router.push('/')
     router.refresh()
   }
+
+  const handleManageBilling = async () => {
+    try {
+      const supabase = createClient()
+      // Use getUser() for security, then getSession() for access token
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        console.error('[NavUser] No user found')
+        return
+      }
+
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        console.error('[NavUser] No session found')
+        return
+      }
+
+      const response = await fetch('/api/portal', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+        throw new Error(errorData.error || `Failed to create portal session (${response.status})`)
+      }
+
+      const { url } = await response.json()
+      if (url) {
+        window.location.href = url
+      } else {
+        throw new Error('No portal URL returned')
+      }
+    } catch (error) {
+      console.error('[NavUser] Error opening billing portal:', error)
+      // Show user-friendly error message
+      alert(error instanceof Error ? error.message : 'Failed to open billing portal. Please try again or contact support.')
+    }
+  }
+
+  if (loading || !user) {
+    return (
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            size="lg"
+            className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+          >
+            <Avatar className="h-8 w-8 rounded-lg">
+              <AvatarFallback className="rounded-lg">...</AvatarFallback>
+            </Avatar>
+            <div className="grid flex-1 text-left text-sm leading-tight">
+              <span className="truncate font-medium">Loading...</span>
+            </div>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    )
+  }
+
+  // Get initials for avatar fallback
+  const initials = user.name
+    .split(' ')
+    .map(n => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2)
 
   return (
     <SidebarMenu>
@@ -59,9 +174,9 @@ export function NavUser({
               size="lg"
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
-              <Avatar className="h-8 w-8 rounded-lg grayscale">
-                <AvatarImage src={user.avatar} alt={user.name} />
-                <AvatarFallback className="rounded-lg">CN</AvatarFallback>
+              <Avatar className="h-8 w-8 rounded-lg">
+                <AvatarImage src={user.avatar || undefined} alt={user.name} />
+                <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
               </Avatar>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium">{user.name}</span>
@@ -81,8 +196,8 @@ export function NavUser({
             <DropdownMenuLabel className="p-0 font-normal">
               <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                 <Avatar className="h-8 w-8 rounded-lg">
-                  <AvatarImage src={user.avatar} alt={user.name} />
-                  <AvatarFallback className="rounded-lg">CN</AvatarFallback>
+                  <AvatarImage src={user.avatar || undefined} alt={user.name} />
+                  <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-medium">{user.name}</span>
@@ -94,22 +209,18 @@ export function NavUser({
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem>
-                <UserCircleIcon />
+              <DropdownMenuItem onClick={() => router.push('/account')}>
+                <UserCircleIcon className="mr-2 h-4 w-4" />
                 Account
               </DropdownMenuItem>
-              <DropdownMenuItem>
-                <CreditCardIcon />
+              <DropdownMenuItem onClick={handleManageBilling}>
+                <CreditCardIcon className="mr-2 h-4 w-4" />
                 Billing
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <BellIcon />
-                Notifications
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogout}>
-              <LogOutIcon />
+              <LogOutIcon className="mr-2 h-4 w-4" />
               Log out
             </DropdownMenuItem>
           </DropdownMenuContent>

@@ -16,7 +16,6 @@ export default function PricingPage() {
   const router = useRouter()
   const { toast } = useToast()
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [loading, setLoading] = useState(true)
   const [checkoutLoading, setCheckoutLoading] = useState(false)
 
   useEffect(() => {
@@ -24,7 +23,6 @@ export default function PricingPage() {
       const supabase = createClient()
       const { data: { session } } = await supabase.auth.getSession()
       setIsAuthenticated(!!session)
-      setLoading(false)
     }
     checkAuth()
   }, [])
@@ -71,18 +69,6 @@ export default function PricingPage() {
       })
       setCheckoutLoading(false)
     }
-  }
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background">
-        <div className="container mx-auto px-6 py-16 max-w-4xl">
-          <div className="flex items-center justify-center py-24">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-        </div>
-      </div>
-    )
   }
 
   return (

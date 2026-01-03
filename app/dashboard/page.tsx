@@ -219,7 +219,7 @@ export default function DashboardPage() {
       return
     }
     
-    if (selectedDomain) {
+    if (selectedDomain && authToken) {
       console.log('[Dashboard] Reloading data for domain:', selectedDomain)
       const reloadData = async () => {
         const supabase = createClient()
@@ -229,11 +229,24 @@ export default function DashboardPage() {
             loadAudits(session.access_token, selectedDomain),
             loadHealthScore(session.access_token)
           ])
+          // Also reload usage info for the new domain
+          try {
+            const url = `/api/audit/usage?domain=${encodeURIComponent(selectedDomain)}`
+            const response = await fetch(url, {
+              headers: { 'Authorization': `Bearer ${session.access_token}` }
+            })
+            if (response.ok) {
+              const data = await response.json()
+              setUsageInfo(data)
+            }
+          } catch (error) {
+            console.error("Error loading usage info:", error)
+          }
         }
       }
       reloadData()
     }
-  }, [selectedDomain])
+  }, [selectedDomain, authToken])
 
   useEffect(() => {
     // Check for payment success query param
@@ -384,12 +397,16 @@ export default function DashboardPage() {
     }
   }, [selectedDomain])
 
-  const loadUsageInfo = useCallback(async (token: string) => {
+  const loadUsageInfo = useCallback(async (token: string, domain?: string | null) => {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/46d3112f-6e93-4e4c-a7bb-bc54c7690dac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard/page.tsx:507',message:'loadUsageInfo called',data:{hasToken:!!token},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/46d3112f-6e93-4e4c-a7bb-bc54c7690dac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard/page.tsx:507',message:'loadUsageInfo called',data:{hasToken:!!token,domain},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
     // #endregion
     try {
-      const response = await fetch('/api/audit/usage', {
+      // Pass domain to get domain-specific usage
+      const url = domain 
+        ? `/api/audit/usage?domain=${encodeURIComponent(domain)}`
+        : '/api/audit/usage'
+      const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -455,7 +472,7 @@ export default function DashboardPage() {
           await Promise.all([
             loadAudits(authToken, selectedDomain),
             loadHealthScore(authToken),
-            loadUsageInfo(authToken),
+            loadUsageInfo(authToken, selectedDomain),
             refetch()
           ])
 
@@ -567,8 +584,8 @@ export default function DashboardPage() {
       // Load health score for all authenticated users
       await loadHealthScore(session.access_token)
       
-      // Load usage info
-      await loadUsageInfo(session.access_token)
+      // Load usage info for the initial domain
+      await loadUsageInfo(session.access_token, initialDomain)
       
       // Load scheduled audits for paid users
       const userPlan = profile?.plan || 'free'
@@ -748,12 +765,24 @@ export default function DashboardPage() {
       if (!response.ok) {
         // Handle errors (429, 400, etc.)
         let errorMessage = 'Failed to start audit'
+        let errorData: any = {}
         try {
-          const errorData = await response.json()
-          errorMessage = errorData.error || errorData.message || errorMessage
+          errorData = await response.json()
+          errorMessage = errorData.message || errorData.error || errorMessage
         } catch {
           errorMessage = response.statusText || errorMessage
         }
+        
+        // If it's a daily limit error, show toast immediately and return
+        if (response.status === 429 && (errorData.error === 'Daily limit reached' || errorMessage.includes('Daily limit'))) {
+          toast({
+            title: "Daily limit reached",
+            description: errorData.message || errorMessage || `You've reached your daily limit. Try again tomorrow.`,
+            variant: "destructive",
+          })
+          return
+        }
+        
         throw new Error(errorMessage)
       }
 
@@ -766,8 +795,8 @@ export default function DashboardPage() {
         setAuditResponseId(data.responseId)
         setAuditRunId(data.runId)
         setAuditPolling(true)
-        // Reload usage info to update count
-        await loadUsageInfo(authToken)
+        // Reload usage info to update count for this domain
+        await loadUsageInfo(authToken, selectedDomain)
         toast({
           title: "Audit started",
           description: "Your audit is running in the background. The dashboard will refresh when complete.",
@@ -777,7 +806,7 @@ export default function DashboardPage() {
         await Promise.all([
           loadAudits(authToken, selectedDomain),
           loadHealthScore(authToken),
-          loadUsageInfo(authToken),
+          loadUsageInfo(authToken, selectedDomain),
           refetch()
         ])
         toast({
@@ -905,7 +934,7 @@ export default function DashboardPage() {
         // Reload data with current domain (which wasn't deleted)
         await loadAudits(session.access_token, selectedDomain)
       }
-      await loadUsageInfo(session.access_token)
+      await loadUsageInfo(session.access_token, selectedDomain)
       if (plan === 'pro' || plan === 'enterprise') {
         await loadHealthScore(session.access_token)
       }
@@ -1154,6 +1183,7 @@ export default function DashboardPage() {
                       onClick={handleStartAudit}
                       disabled={(usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit) || auditPolling || startingAudit}
                       variant={usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit ? "outline" : "default"}
+                      className={usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit ? "opacity-70 cursor-not-allowed border-muted-foreground/50" : ""}
                     >
                       {startingAudit ? (
                         <>

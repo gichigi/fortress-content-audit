@@ -171,34 +171,18 @@ export function NewAuditDialog({ open, onOpenChange, onSuccess }: NewAuditDialog
         <DialogHeader>
           <DialogTitle className="font-serif text-2xl font-semibold">New Domain</DialogTitle>
           <DialogDescription>
-            Start a new content audit for a domain. {plan === 'enterprise' ? 'Unlimited domains.' : `You can audit up to ${domainLimit} domain${domainLimit === 1 ? '' : 's'}.`}
+            Start a new content audit for a domain.
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit}>
           <div className="space-y-4 py-4">
-            {/* Usage Info */}
-            {usageInfo && (
-              <div className="text-sm text-muted-foreground space-y-1">
-                {usageInfo.domainLimit > 0 && (
-                  <div>
-                    Domains: {usageInfo.domains}/{usageInfo.domainLimit}
-                  </div>
-                )}
-                {usageInfo.limit > 0 && (
-                  <div>
-                    Audits today: {usageInfo.today}/{usageInfo.limit}
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* Domain Limit Warning */}
             {isAtDomainLimit && plan !== 'enterprise' && (
-              <Alert>
+              <Alert variant="outline">
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>
-                  You've reached your domain limit ({domainLimit} domain{domainLimit === 1 ? '' : 's'}). 
+                  Domain limit reached ({domainLimit} domain{domainLimit === 1 ? '' : 's'}). 
                   {plan === 'free' && ' Upgrade to Pro to audit up to 5 domains.'}
                   {plan === 'pro' && ' Upgrade to Enterprise for unlimited domains.'}
                 </AlertDescription>

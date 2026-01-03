@@ -182,6 +182,9 @@ Return ONLY valid JSON, no markdown code blocks.`
       max_tool_calls: tier.maxToolCalls, // Allow opening homepage + key pages
       max_output_tokens: 20000, // Increased for full JSON response
       include: ["web_search_call.action.sources"], // Include sources to get URLs
+      text: {
+        verbosity: "low"
+      },
     }
     
     const response = await openai.responses.create(params)
@@ -334,6 +337,9 @@ Look for:
       max_tool_calls: tierConfig.maxToolCalls, // Limit tool calls based on tier
       reasoning: { summary: "auto" },
       include: ["web_search_call.action.sources"], // Include sources to get all URLs consulted
+      text: {
+        verbosity: "low"
+      },
     }
     if (tierConfig.background) {
       params.store = true
@@ -558,6 +564,7 @@ CRITICAL RULES:
       temperature: 0.1, // Lower temperature for more consistent transformation
       response_format: { type: "json_object" },
       max_tokens: 4000, // Limit to ensure fast response
+      verbosity: "low",
     })
 
     const transformed = response.choices[0]?.message?.content
@@ -736,6 +743,35 @@ function extractReasoningSummaries(response: any): string[] {
   return summaries
 }
 
+// Check if response indicates bot protection/firewall
+function detectBotProtection(text: string): boolean {
+  if (!text) return false
+  
+  const lowerText = text.toLowerCase()
+  const botProtectionIndicators = [
+    'cloudflare',
+    'checking your browser',
+    'please verify you are human',
+    'verify you are human',
+    'access denied',
+    'bot protection',
+    'firewall',
+    'challenge page',
+    'security check',
+    'ddos protection',
+    'just a moment',
+    'ray id',
+    'cf-ray',
+    'unusual traffic',
+    'automated access',
+    'captcha',
+    'recaptcha',
+    'hcaptcha',
+  ]
+  
+  return botProtectionIndicators.some(indicator => lowerText.includes(indicator))
+}
+
 // Parse and validate audit response from OpenAI
 function parseAuditResponse(response: any, tier: AuditTier): AuditResult {
   // Extract output_text - SDK may provide it directly or we need to extract from output array
@@ -764,6 +800,11 @@ function parseAuditResponse(response: any, tier: AuditTier): AuditResult {
       output_types: Array.isArray(response.output) ? response.output.map((item: any) => item.type).slice(-5) : []
     }))
     throw new Error("AI model returned empty response. Please try again.")
+  }
+
+  // Check for bot protection indicators in response
+  if (detectBotProtection(rawOutput)) {
+    throw new Error("This site has bot protection enabled. The audit couldn't access the content. Try a different URL or contact support for assistance.")
   }
 
   let parsed: any
@@ -818,7 +859,12 @@ function handleAuditError(error: unknown): Error {
     return new Error("Audit generation failed. Please try again.")
   }
 
-  const msg = error.message
+  const msg = error.message.toLowerCase()
+
+  // Bot protection detection (check first before other errors)
+  if (detectBotProtection(msg)) {
+    return new Error("This site has bot protection enabled. The audit couldn't access the content. Try a different URL or contact support for assistance.")
+  }
 
   // Rate limits
   if (msg.includes("rate_limit") || msg.includes("429")) {
@@ -832,12 +878,12 @@ function handleAuditError(error: unknown): Error {
   }
 
   // Timeout
-  if (msg.includes("timeout") || msg.includes("ETIMEDOUT") || msg.includes("aborted")) {
+  if (msg.includes("timeout") || msg.includes("etimedout") || msg.includes("aborted")) {
     return new Error("Request timed out. The site may be too large. Please try again.")
   }
 
   // Network
-  if (msg.includes("ECONNREFUSED") || msg.includes("ENOTFOUND") || msg.includes("network")) {
+  if (msg.includes("econnrefused") || msg.includes("enotfound") || msg.includes("network")) {
     return new Error("Network error connecting to AI service. Please check your connection.")
   }
 
@@ -851,8 +897,8 @@ function handleAuditError(error: unknown): Error {
     return new Error("AI model is temporarily unavailable. Please try again in a few minutes.")
   }
 
-  // Pass through our custom errors
-  if (msg.includes("AI model") || msg.includes("AI service") || msg.includes("Invalid domain")) {
+  // Pass through our custom errors (including bot protection error)
+  if (msg.includes("bot protection") || msg.includes("ai model") || msg.includes("ai service") || msg.includes("invalid domain")) {
     return error
   }
 

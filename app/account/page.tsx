@@ -4,7 +4,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { supabase } from "@/lib/supabase"
+import { createClient } from "@/lib/supabase-browser"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -47,6 +47,16 @@ export default function AccountPage() {
 
   const loadProfile = async () => {
     try {
+      const supabase = createClient()
+      // Use getUser() instead of getSession() for security (validates with server)
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      
+      if (userError || !user) {
+        router.push(`/sign-up?next=${encodeURIComponent('/account')}`)
+        return
+      }
+
+      // Get session for access token if needed
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
         router.push(`/sign-up?next=${encodeURIComponent('/account')}`)
@@ -57,18 +67,18 @@ export default function AccountPage() {
       const { data: profileData } = await supabase
         .from('profiles')
         .select('name, plan, stripe_customer_id')
-        .eq('user_id', session.user.id)
+        .eq('user_id', user.id)
         .maybeSingle()
 
       setProfile({
         name: profileData?.name || null,
-        email: session.user.email || null,
+        email: user.email || null,
         plan: profileData?.plan || 'free'
       })
 
       setFormData({
         name: profileData?.name || "",
-        email: session.user.email || "",
+        email: user.email || "",
         currentPassword: "",
         newPassword: "",
         confirmPassword: "",
@@ -85,28 +95,54 @@ export default function AccountPage() {
     }
   }
 
+  const validatePassword = (password: string) => {
+    return password.length >= 8 && /[A-Za-z]/.test(password) && /[0-9]/.test(password)
+  }
+
   const handleSaveProfile = async () => {
     setSaving(true)
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
 
       // Update name in profile
       if (formData.name !== profile?.name) {
         const { error } = await supabase
           .from('profiles')
           .update({ name: formData.name || null })
-          .eq('user_id', session.user.id)
+          .eq('user_id', user.id)
 
         if (error) throw error
       }
 
       // Update password if provided
       if (formData.newPassword) {
+        // Validate password format
+        if (!validatePassword(formData.newPassword)) {
+          throw new Error("Password must be at least 8 characters and include both letters and numbers")
+        }
+
         if (formData.newPassword !== formData.confirmPassword) {
           throw new Error("Passwords do not match")
         }
 
+        // Verify current password before allowing change
+        if (!formData.currentPassword) {
+          throw new Error("Current password is required to change your password")
+        }
+
+        // Verify current password by attempting sign-in
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: user.email!,
+          password: formData.currentPassword
+        })
+
+        if (signInError) {
+          throw new Error("Current password is incorrect")
+        }
+
+        // Update password
         const { error } = await supabase.auth.updateUser({
           password: formData.newPassword
         })
@@ -139,6 +175,13 @@ export default function AccountPage() {
 
   const handleUpgrade = async () => {
     try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        router.push(`/sign-up?next=${encodeURIComponent('/account')}`)
+        return
+      }
+
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
         router.push(`/sign-up?next=${encodeURIComponent('/account')}`)
@@ -174,6 +217,10 @@ export default function AccountPage() {
 
   const handleManageBilling = async () => {
     try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) return
 
@@ -185,14 +232,22 @@ export default function AccountPage() {
         }
       })
 
-      if (!response.ok) throw new Error('Failed to create portal session')
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+        throw new Error(errorData.error || `Failed to create portal session (${response.status})`)
+      }
 
       const { url } = await response.json()
+      if (!url) {
+        throw new Error('No portal URL returned')
+      }
+      
       window.location.href = url
     } catch (error) {
+      console.error('[Account] Error opening billing portal:', error)
       toast({
         title: "Error",
-        description: "Failed to open billing portal",
+        description: error instanceof Error ? error.message : "Failed to open billing portal",
         variant: "destructive"
       })
     }
@@ -201,18 +256,42 @@ export default function AccountPage() {
   const handleDeleteAccount = async () => {
     setDeleting(true)
     try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        toast({
+          title: "Error",
+          description: "You must be logged in to delete your account",
+          variant: "destructive"
+        })
+        return
+      }
+
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return
+      if (!session) {
+        toast({
+          title: "Error",
+          description: "Session expired. Please log in again",
+          variant: "destructive"
+        })
+        return
+      }
 
-      // Delete user data
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .delete()
-        .eq('user_id', session.user.id)
+      // Call API endpoint to delete account
+      const response = await fetch('/api/account/delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      })
 
-      if (profileError) throw profileError
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+        throw new Error(errorData.error || `Failed to delete account (${response.status})`)
+      }
 
-      // Sign out
+      // Sign out locally
       await supabase.auth.signOut()
 
       toast({
@@ -224,7 +303,7 @@ export default function AccountPage() {
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to delete account",
+        description: error instanceof Error ? error.message : "Failed to delete account",
         variant: "destructive"
       })
     } finally {
@@ -311,6 +390,16 @@ export default function AccountPage() {
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-2">
+                <Label htmlFor="currentPassword">Current Password</Label>
+                <Input
+                  id="currentPassword"
+                  type="password"
+                  value={formData.currentPassword}
+                  onChange={(e) => setFormData(prev => ({ ...prev, currentPassword: e.target.value }))}
+                  placeholder="Enter your current password"
+                />
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="newPassword">New Password</Label>
                 <Input
                   id="newPassword"
@@ -319,6 +408,9 @@ export default function AccountPage() {
                   onChange={(e) => setFormData(prev => ({ ...prev, newPassword: e.target.value }))}
                   placeholder="Enter new password"
                 />
+                <p className="text-xs text-muted-foreground">
+                  Must be at least 8 characters and include both letters and numbers
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="confirmPassword">Confirm Password</Label>
@@ -330,7 +422,7 @@ export default function AccountPage() {
                   placeholder="Confirm new password"
                 />
               </div>
-              <Button onClick={handleSaveProfile} disabled={saving || !formData.newPassword}>
+              <Button onClick={handleSaveProfile} disabled={saving || !formData.newPassword || !formData.currentPassword}>
                 {saving ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -349,13 +441,19 @@ export default function AccountPage() {
               <CardTitle className="font-serif text-2xl font-semibold">Billing</CardTitle>
               <CardDescription>
                 Current plan: <span className="font-medium">{PLAN_NAMES[profile?.plan as keyof typeof PLAN_NAMES] || 'Outpost'}</span>
+                {profile?.plan === 'free' && <span className="text-muted-foreground"> (free plan)</span>}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {profile?.plan === 'free' ? (
-                <Button onClick={handleUpgrade} className="w-full">
-                  Upgrade to {PLAN_NAMES.pro}
-                </Button>
+                <div className="flex gap-3">
+                  <Button onClick={handleUpgrade} className="flex-1">
+                    Upgrade to {PLAN_NAMES.pro}
+                  </Button>
+                  <Button asChild variant="outline" className="flex-1">
+                    <Link href="/pricing">View Pricing</Link>
+                  </Button>
+                </div>
               ) : (
                 <>
                   <Button onClick={handleManageBilling} variant="outline" className="w-full">

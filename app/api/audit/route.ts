@@ -317,9 +317,10 @@ export async function POST(request: Request) {
       }
       
       // Increment audit usage (only for authenticated users, only on successful save)
+      // Use storageDomain to match the format used in checkDailyLimit
       if (isAuthenticated && userId && runId) {
         try {
-          await incrementAuditUsage(userId, normalized)
+          await incrementAuditUsage(userId, storageDomain)
         } catch (error) {
           console.error('[Audit] Failed to increment audit usage:', error)
           // Don't fail the request - usage tracking is non-critical
@@ -333,15 +334,12 @@ export async function POST(request: Request) {
     let preview = false
     
     if (!isAuthenticated) {
-      // Unauthenticated preview: show 5-7 issues with fade-out
-      gatedIssues = issues.slice(0, 7)
-      preview = true
-    } else if (plan === 'free') {
-      // Authenticated free: show 5 issues
+      // Unauthenticated preview: show first 5 issues
       gatedIssues = issues.slice(0, 5)
       preview = true
     } else {
-      // Pro/Enterprise: show all issues
+      // Authenticated users (all plans): show all issues
+      gatedIssues = issues
       preview = false
     }
 

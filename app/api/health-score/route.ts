@@ -78,6 +78,17 @@ export async function GET(request: Request) {
     // Normalize domain (remove protocol, www, trailing slash)
     const normalizedDomain = domain.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '')
 
+    // Fetch earliest audit for this domain to calculate baseline date
+    const { data: earliestAudit } = await supabaseAdmin
+      .from('brand_audit_runs')
+      .select('created_at')
+      .eq('user_id', userId)
+      .eq('domain', normalizedDomain)
+      .not('created_at', 'is', null)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+
     // Fetch audits for domain within time range
     const { data: audits, error: auditsError } = await supabaseAdmin
       .from('brand_audit_runs')
@@ -137,6 +148,34 @@ export async function GET(request: Request) {
     const data = Array.from(scoresByDate.values()).sort((a, b) => 
       a.date.localeCompare(b.date)
     )
+
+    // Inject persistent baseline (day before earliest audit)
+    if (earliestAudit?.created_at && data.length > 0) {
+      const earliestDate = new Date(earliestAudit.created_at)
+      const baselineDate = new Date(earliestDate)
+      baselineDate.setUTCDate(baselineDate.getUTCDate() - 1)
+      baselineDate.setUTCHours(0, 0, 0, 0)
+      const baselineDateKey = baselineDate.toISOString().split('T')[0] // YYYY-MM-DD
+
+      // Only add baseline if it's within the time range and not already in data
+      const now = new Date()
+      if (baselineDate >= startDate && baselineDate <= now && !scoresByDate.has(baselineDateKey)) {
+        data.unshift({
+          date: baselineDateKey,
+          score: 100,
+          metrics: {
+            totalActive: 0,
+            totalCritical: 0,
+            bySeverity: { low: 0, medium: 0, high: 0 },
+            criticalPages: 0,
+            pagesWithIssues: 0,
+          },
+          isBaseline: true,
+        })
+        // Re-sort after adding baseline
+        data.sort((a, b) => a.date.localeCompare(b.date))
+      }
+    }
 
     // Calculate current score (most recent audit or aggregated if multiple on same day)
     const latestDate = data.length > 0 ? data[data.length - 1].date : null

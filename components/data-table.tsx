@@ -33,7 +33,7 @@ import {
   XIcon,
   RotateCcwIcon,
 } from "lucide-react"
-import { toast } from "sonner"
+import { useToast } from "@/hooks/use-toast"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -242,15 +242,23 @@ function IssueActionsDropdown({
 }) {
   const [ignoreDialogOpen, setIgnoreDialogOpen] = React.useState(false)
   const [isUpdating, setIsUpdating] = React.useState(false)
+  const { toast } = useToast()
 
   const handleIgnore = async () => {
     setIsUpdating(true)
     try {
       await onUpdateStatus(issueId, 'ignored')
       setIgnoreDialogOpen(false)
-      toast.success('Issue ignored')
+      toast({
+        title: "Issue ignored",
+        description: "The issue has been moved to ignored.",
+      })
     } catch (error) {
-      toast.error('Failed to ignore issue')
+      toast({
+        title: "Error",
+        description: "Failed to ignore issue. Please try again.",
+        variant: "destructive",
+      })
     } finally {
       setIsUpdating(false)
     }
@@ -260,9 +268,16 @@ function IssueActionsDropdown({
     setIsUpdating(true)
     try {
       await onUpdateStatus(issueId, 'resolved')
-      toast.success('Issue marked as resolved')
+      toast({
+        title: "Issue resolved",
+        description: "The issue has been marked as resolved.",
+      })
     } catch (error) {
-      toast.error('Failed to resolve issue')
+      toast({
+        title: "Error",
+        description: "Failed to resolve issue. Please try again.",
+        variant: "destructive",
+      })
     } finally {
       setIsUpdating(false)
     }
@@ -272,9 +287,16 @@ function IssueActionsDropdown({
     setIsUpdating(true)
     try {
       await onUpdateStatus(issueId, 'active')
-      toast.success('Issue restored')
+      toast({
+        title: "Issue restored",
+        description: "The issue has been restored to active.",
+      })
     } catch (error) {
-      toast.error('Failed to restore issue')
+      toast({
+        title: "Error",
+        description: "Failed to restore issue. Please try again.",
+        variant: "destructive",
+      })
     } finally {
       setIsUpdating(false)
     }
@@ -397,22 +419,24 @@ function ExpandableRow({ row }: { row: Row<AuditTableRow> }) {
       {isOpen && isMultiLocation && (
         <TableRow>
           <TableCell colSpan={row.getVisibleCells().length} className="bg-muted/30 pl-8">
-            <ul className="space-y-2 py-2">
-              {row.original.locations.map((loc, i) => (
-                <li key={i} className="text-sm">
-                  <a
-                    href={loc.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-mono text-primary hover:underline break-all"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {loc.url}
-                  </a>
-                  <span className="ml-2 italic text-foreground/80">"{loc.snippet}"</span>
-                </li>
-              ))}
-            </ul>
+            <div className="max-w-4xl">
+              <ul className="space-y-2 py-2">
+                {row.original.locations.map((loc, i) => (
+                  <li key={i} className="text-sm">
+                    <a
+                      href={loc.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-mono text-primary hover:underline break-all"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {loc.url}
+                    </a>
+                    <span className="ml-2 italic text-foreground/80">"{loc.snippet}"</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </TableCell>
         </TableRow>
       )}
@@ -437,6 +461,7 @@ export function DataTable({
   readOnly?: boolean
   onStatusUpdate?: () => void
 }) {
+  const { toast } = useToast()
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({})
   const [columnVisibility, setColumnVisibility] =
     React.useState<VisibilityState>({})
@@ -718,10 +743,17 @@ export function DataTable({
     try {
       await handleBulkUpdateStatus(activeIssueIds, 'resolved')
       const count = activeIssueIds.length
-      toast.success(`${count} ${count === 1 ? 'issue' : 'issues'} marked as resolved`)
+      toast({
+        title: "Issues resolved",
+        description: `${count} ${count === 1 ? 'issue' : 'issues'} marked as resolved.`,
+      })
       table.resetRowSelection()
     } catch (error) {
-      toast.error(`Failed to resolve issues`)
+      toast({
+        title: "Error",
+        description: "Failed to resolve issues. Please try again.",
+        variant: "destructive",
+      })
     } finally {
       setIsBulkProcessing(false)
     }
@@ -739,10 +771,17 @@ export function DataTable({
     try {
       await handleBulkUpdateStatus(activeIssueIds, 'ignored')
       const count = activeIssueIds.length
-      toast.success(`${count} ${count === 1 ? 'issue' : 'issues'} ignored`)
+      toast({
+        title: "Issues ignored",
+        description: `${count} ${count === 1 ? 'issue' : 'issues'} ignored.`,
+      })
       table.resetRowSelection()
     } catch (error) {
-      toast.error(`Failed to ignore issues`)
+      toast({
+        title: "Error",
+        description: "Failed to ignore issues. Please try again.",
+        variant: "destructive",
+      })
     } finally {
       setIsBulkProcessing(false)
     }
@@ -760,10 +799,17 @@ export function DataTable({
     try {
       await handleBulkUpdateStatus(restorableIssueIds, 'active')
       const count = restorableIssueIds.length
-      toast.success(`${count} ${count === 1 ? 'issue' : 'issues'} restored`)
+      toast({
+        title: "Issues restored",
+        description: `${count} ${count === 1 ? 'issue' : 'issues'} restored.`,
+      })
       table.resetRowSelection()
     } catch (error) {
-      toast.error(`Failed to restore issues`)
+      toast({
+        title: "Error",
+        description: "Failed to restore issues. Please try again.",
+        variant: "destructive",
+      })
     } finally {
       setIsBulkProcessing(false)
     }

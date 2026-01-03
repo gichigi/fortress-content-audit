@@ -70,13 +70,14 @@ export async function GET(
       })
     }
 
-    // Apply gating for free plan
-    const gatedIssues = plan === 'free' ? issues.slice(0, 5) : issues
+    // Authenticated users see all issues (no gating)
+    // Gating only applies to unauthenticated homepage preview
+    const gatedIssues = issues
 
     // Return issues from database (single source of truth)
     return NextResponse.json({
       runId: run.id,
-      preview: plan === 'free',
+      preview: false, // Authenticated users always see full results
       domain: run.domain,
       issues: gatedIssues,
       totalIssues: issues.length,

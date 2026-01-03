@@ -21,7 +21,6 @@ function SignUpForm() {
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
   const [isCheckingAuth, setIsCheckingAuth] = useState(true)
-  const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in")
   const router = useRouter()
   const searchParams = useSearchParams()
   const { toast } = useToast()
@@ -29,12 +28,23 @@ function SignUpForm() {
   // Default to dashboard after auth, or use provided next param
   const next = searchParams.get("next") || "/dashboard"
   const authError = searchParams.get("error")
+  const modeParam = searchParams.get("mode") as "sign-in" | "sign-up" | null
+  
+  // Default to sign-up mode (since this is the sign-up page), but allow mode query param to override
+  const [mode, setMode] = useState<"sign-in" | "sign-up">(modeParam || "sign-up")
 
   // Rely on middleware for auth state management
   // Remove client-side session check to avoid security issues
   useEffect(() => {
     setIsCheckingAuth(false)
   }, [])
+
+  // Update mode if query param changes
+  useEffect(() => {
+    if (modeParam && (modeParam === "sign-in" || modeParam === "sign-up")) {
+      setMode(modeParam)
+    }
+  }, [modeParam])
 
   const validateEmail = (email: string) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)

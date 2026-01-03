@@ -60,8 +60,9 @@ export function HealthScoreCards({ currentScore, previousScore, loading }: Healt
         <CardHeader className="relative">
           <CardDescription>Health Score</CardDescription>
           <CardTitle className={`@[250px]/card:text-3xl text-2xl font-semibold tabular-nums ${
-            score >= 80 ? 'text-green-600' :
-            score >= 50 ? 'text-yellow-600' :
+            score >= 95 ? 'text-green-600' :
+            score >= 80 ? 'text-yellow-600' :
+            score >= 50 ? 'text-orange-600' :
             'text-destructive'
           }`}>
             {score}/100
@@ -77,9 +78,10 @@ export function HealthScoreCards({ currentScore, previousScore, loading }: Healt
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1 text-sm">
           <div className="line-clamp-1 flex gap-2 font-medium">
-            {score >= 80 ? 'Excellent content quality' :
-             score >= 50 ? 'Good content quality' :
-             'Needs improvement'}
+            {score >= 95 ? 'Excellent content quality' :
+             score >= 80 ? 'Good content quality' :
+             score >= 50 ? 'Needs work' :
+             'Poor content quality'}
             {trend > 0 && <TrendingUpIcon className="size-4" />}
             {trend < 0 && <TrendingDownIcon className="size-4" />}
           </div>

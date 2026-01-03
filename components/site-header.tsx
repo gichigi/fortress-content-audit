@@ -40,15 +40,15 @@ export function SiteHeader() {
             orientation="vertical"
             className="mx-2 data-[orientation=vertical]:h-4"
           />
-          <Link href="/" className="text-2xl font-serif font-semibold tracking-tight hover:opacity-80 transition-opacity">
-            Fortress
+          <Link href="/dashboard" className="text-2xl font-serif font-semibold tracking-tight hover:opacity-80 transition-opacity">
+            Dashboard
           </Link>
         </div>
         <div className="flex items-center gap-4">
           {isAuthenticated ? null : (
             <>
-              <Button variant="ghost" onClick={() => router.push('/sign-up')}>Sign In</Button>
-              <Button onClick={() => router.push('/sign-up')}>Get Started</Button>
+              <Button variant="ghost" onClick={() => router.push('/sign-up?mode=sign-in')}>Sign In</Button>
+              <Button onClick={() => router.push('/sign-up?mode=sign-up')}>Sign Up</Button>
             </>
           )}
         </div>
