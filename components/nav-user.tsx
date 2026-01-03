@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
-  CreditCardIcon,
   LogOutIcon,
   MoreVerticalIcon,
   UserCircleIcon,
@@ -95,48 +94,6 @@ export function NavUser() {
     router.refresh()
   }
 
-  const handleManageBilling = async () => {
-    try {
-      const supabase = createClient()
-      // Use getUser() for security, then getSession() for access token
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        console.error('[NavUser] No user found')
-        return
-      }
-
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        console.error('[NavUser] No session found')
-        return
-      }
-
-      const response = await fetch('/api/portal', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
-        }
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
-        throw new Error(errorData.error || `Failed to create portal session (${response.status})`)
-      }
-
-      const { url } = await response.json()
-      if (url) {
-        window.location.href = url
-      } else {
-        throw new Error('No portal URL returned')
-      }
-    } catch (error) {
-      console.error('[NavUser] Error opening billing portal:', error)
-      // Show user-friendly error message
-      alert(error instanceof Error ? error.message : 'Failed to open billing portal. Please try again or contact support.')
-    }
-  }
-
   if (loading || !user) {
     return (
       <SidebarMenu>
@@ -212,10 +169,6 @@ export function NavUser() {
               <DropdownMenuItem onClick={() => router.push('/account')}>
                 <UserCircleIcon className="mr-2 h-4 w-4" />
                 Account
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleManageBilling}>
-                <CreditCardIcon className="mr-2 h-4 w-4" />
-                Billing
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />

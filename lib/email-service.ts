@@ -190,15 +190,15 @@ class EmailService {
           
           <p style="margin-bottom: 20px;">Hey ${firstName},</p>
           
-          <p style="margin-bottom: 15px;">I'm Tahi — I built Fortress because I kept wasting hours piecing together brand-voice docs for clients.</p>
+          <p style="margin-bottom: 15px;">I'm Tahi — I built Fortress to make content audits faster and more actionable.</p>
           
-          <p style="margin-bottom: 15px;">Seeing your order come through today honestly made my week. 🙌</p>
+          <p style="margin-bottom: 15px;">Seeing your subscription come through today honestly made my week. 🙌</p>
           
           <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin: 25px 0;">
             <p style="margin: 0 0 15px 0; font-weight: 500;">If you have 2 minutes:</p>
             <ol style="margin: 0; padding-left: 20px;">
-              <li style="margin-bottom: 8px;">What problem were you hoping AI Style Guide would solve?</li>
-              <li style="margin-bottom: 8px;">What nearly stopped you from buying?</li>
+              <li style="margin-bottom: 8px;">What problem were you hoping Fortress would solve?</li>
+              <li style="margin-bottom: 8px;">What nearly stopped you from subscribing?</li>
               <li style="margin-bottom: 0;">Anything else you wanna share :)</li>
             </ol>
           </div>
@@ -236,13 +236,13 @@ class EmailService {
     
     return `Hey ${firstName},
 
-I'm Tahi — I built Fortress because I kept wasting hours piecing together brand-voice docs for clients.
+I'm Tahi — I built Fortress to make content audits faster and more actionable.
 
-Seeing your order come through today honestly made my week. 🙌
+Seeing your subscription come through today honestly made my week. 🙌
 
 If you have 2 minutes:
-1. What problem were you hoping AI Style Guide would solve?
-2. What nearly stopped you from buying?
+1. What problem were you hoping Fortress would solve?
+2. What nearly stopped you from subscribing?
 3. Anything else you wanna share :)
 
 And if you've got questions about Fortress, here's my direct Calendly link (15 min, no pitch): https://calendly.com/l-gichigi/customer-chat

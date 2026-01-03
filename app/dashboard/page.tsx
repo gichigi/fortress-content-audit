@@ -702,21 +702,40 @@ export default function DashboardPage() {
             : "Auto weekly audits have been disabled for this domain.",
         })
       } else {
-        let errorMessage = 'Failed to update auto audit settings'
+        let errorMessage = 'Failed to save scheduled audit settings'
+        let errorData: any = null
+        
         try {
-          const errorData = await response.json()
-          errorMessage = errorData.error || errorData.message || errorMessage
-          // Log the full error for debugging
-          console.error('[ToggleAutoAudit] API Error:', {
-            status: response.status,
-            statusText: response.statusText,
-            error: errorData
-          })
-        } catch {
-          // If JSON parsing fails, use status text
-          errorMessage = response.statusText || errorMessage
-          console.error('[ToggleAutoAudit] Failed to parse error response:', response.status, response.statusText)
+          // Try to parse error response as JSON
+          const text = await response.text()
+          if (text) {
+            try {
+              errorData = JSON.parse(text)
+              errorMessage = errorData.error || errorData.message || errorMessage
+            } catch (parseError) {
+              // If JSON parsing fails, use the raw text if available
+              if (text.trim()) {
+                errorMessage = text
+              }
+            }
+          }
+        } catch (textError) {
+          // If reading response body fails, use status text
+          console.error('[ToggleAutoAudit] Failed to read error response:', textError)
         }
+        
+        // Log the full error for debugging
+        console.error('[ToggleAutoAudit] API Error:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData || 'No error data available'
+        })
+        
+        // Use status text as fallback if no error message found
+        if (errorMessage === 'Failed to save scheduled audit settings' && response.statusText) {
+          errorMessage = `${errorMessage}: ${response.statusText}`
+        }
+        
         throw new Error(errorMessage)
       }
     } catch (error) {

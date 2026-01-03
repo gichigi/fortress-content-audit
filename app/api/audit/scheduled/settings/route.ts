@@ -165,9 +165,14 @@ export async function POST(request: Request) {
     })
 
   } catch (error) {
-    console.error('[ScheduledSettings] Error:', error)
+    console.error('[ScheduledSettings] POST Error:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { 
+        error: 'Internal server error',
+        message: errorMessage,
+        details: process.env.NODE_ENV === 'development' ? String(error) : undefined
+      },
       { status: 500 }
     )
   }

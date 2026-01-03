@@ -45,6 +45,21 @@ export default function AccountPage() {
     loadProfile()
   }, [])
 
+  // Reload profile when returning from Stripe checkout (payment success)
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search)
+    if (urlParams.get('payment') === 'success') {
+      // Reload profile to get updated plan
+      loadProfile()
+      toast({
+        title: "Payment successful!",
+        description: "Your subscription is now active.",
+      })
+      // Clear query param
+      router.replace('/account', { scroll: false })
+    }
+  }, [router, toast])
+
   const loadProfile = async () => {
     try {
       const supabase = createClient()
@@ -454,14 +469,24 @@ export default function AccountPage() {
                     <Link href="/pricing">View Pricing</Link>
                   </Button>
                 </div>
+              ) : profile?.plan === 'pro' ? (
+                <div className="flex gap-3">
+                  <Button asChild className="flex-1">
+                    <Link href="/pricing">Upgrade to {PLAN_NAMES.enterprise}</Link>
+                  </Button>
+                  <Button onClick={handleManageBilling} variant="outline" className="flex-1">
+                    <CreditCard className="mr-2 h-4 w-4" />
+                    Manage Billing
+                  </Button>
+                </div>
               ) : (
                 <>
                   <Button onClick={handleManageBilling} variant="outline" className="w-full">
                     <CreditCard className="mr-2 h-4 w-4" />
-                    Manage Billing
+                    Cancel Subscription
                   </Button>
                   <p className="text-xs text-muted-foreground text-center">
-                    Cancel your subscription or update payment method in the billing portal
+                    Contact us to cancel your enterprise subscription
                   </p>
                 </>
               )}
