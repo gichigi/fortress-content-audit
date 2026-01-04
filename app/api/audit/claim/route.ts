@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import Logger from '@/lib/logger'
 
 function getBearer(req: Request) {
   const a = req.headers.get('authorization') || req.headers.get('Authorization')
@@ -15,12 +16,12 @@ export async function POST(request: Request) {
     // Must be authenticated
     const token = getBearer(request)
     if (!token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: 'Please sign in to continue.' }, { status: 401 })
     }
 
     const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(token)
     if (userErr || !userData?.user?.id) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
+      return NextResponse.json({ error: 'Your session has expired. Please sign in again.' }, { status: 401 })
     }
 
     const userId = userData.user.id
@@ -28,7 +29,7 @@ export async function POST(request: Request) {
     const { sessionToken } = body
 
     if (!sessionToken || typeof sessionToken !== 'string') {
-      return NextResponse.json({ error: 'Missing sessionToken' }, { status: 400 })
+      return NextResponse.json({ error: 'Missing required parameter. Please try again.' }, { status: 400 })
     }
 
     console.log(`[Audit Claim] User ${userId} claiming audit with session token: ${sessionToken}`)
@@ -42,13 +43,13 @@ export async function POST(request: Request) {
       .maybeSingle()
 
     if (findErr) {
-      console.error('[Audit Claim] Error finding audit:', findErr)
-      return NextResponse.json({ error: 'Database error' }, { status: 500 })
+      Logger.error('[Audit Claim] Error finding audit', findErr instanceof Error ? findErr : new Error(String(findErr)))
+      return NextResponse.json({ error: 'Something went wrong. Please try again.' }, { status: 500 })
     }
 
     if (!audit) {
-      console.log('[Audit Claim] No unclaimed audit found for session token')
-      return NextResponse.json({ error: 'Audit not found or already claimed' }, { status: 404 })
+      Logger.warn('[Audit Claim] No unclaimed audit found for session token')
+      return NextResponse.json({ error: 'The requested audit was not found or has already been claimed.' }, { status: 404 })
     }
 
     // Claim the audit by setting user_id and clearing session_token
@@ -62,10 +63,9 @@ export async function POST(request: Request) {
       .eq('id', audit.id)
 
     if (updateErr) {
-      console.error('[Audit Claim] Error claiming audit:', updateErr)
+      Logger.error('[Audit Claim] Error claiming audit', updateErr instanceof Error ? updateErr : new Error(String(updateErr)))
       return NextResponse.json({ 
-        error: 'Failed to claim audit',
-        details: updateErr.message || String(updateErr)
+        error: 'Something went wrong claiming the audit. Please try again.'
       }, { status: 500 })
     }
 
@@ -77,9 +77,12 @@ export async function POST(request: Request) {
       domain: audit.domain,
     })
   } catch (e) {
-    console.error('[Audit Claim] Unexpected error:', e)
+    const error = e instanceof Error ? e : new Error(String(e))
+    Logger.error('[Audit Claim] Unexpected error', error, {
+      ...(process.env.NODE_ENV === 'development' ? { stack: error.stack } : {})
+    })
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : 'Claim failed' },
+      { error: 'Something went wrong. Please try again.' },
       { status: 500 }
     )
   }

@@ -655,7 +655,7 @@ export async function pollAuditStatus(responseId: string, tier?: AuditTier): Pro
     
     throw new Error(`Audit job failed with status: ${status}. ${error?.message || 'Please try again.'}`)
   } catch (error) {
-    console.error(`[Audit] Poll error:`, error instanceof Error ? error.message : error)
+    // Error will be logged by handleAuditError, so we don't duplicate here
     throw handleAuditError(error)
   }
 }
@@ -1007,6 +1007,12 @@ function parseAuditResponse(response: any, tier: AuditTier): AuditResult {
   }
 }
 
+// Extract OpenAI request ID from error message for logging
+function extractRequestId(errorMessage: string): string | null {
+  const match = errorMessage.match(/req_[a-z0-9]+/i)
+  return match ? match[0] : null
+}
+
 // Map OpenAI errors to user-friendly messages
 function handleAuditError(error: unknown): Error {
   if (!(error instanceof Error)) {
@@ -1016,17 +1022,37 @@ function handleAuditError(error: unknown): Error {
 
   const msg = error.message.toLowerCase()
   
+  // Detect OpenAI 500 errors with request IDs and help.openai.com references
+  const isOpenAI500Error = (msg.includes("500") || msg.includes("error occurred while processing")) &&
+                           (msg.includes("help.openai.com") || msg.includes("request id req_") || /req_[a-z0-9]+/i.test(error.message))
+  
+  if (isOpenAI500Error) {
+    // Extract request ID for logging
+    const requestId = extractRequestId(error.message)
+    Logger.error("[Audit] OpenAI 500 error", error, { 
+      requestId,
+      // Only include stack in development
+      ...(process.env.NODE_ENV === 'development' ? { stack: error.stack } : {})
+    })
+    return new Error("Our AI service encountered a temporary issue. Please try again in a moment.")
+  }
+  
   // Log original error for debugging - simplified for expected errors
   const isExpectedError = msg.includes('bot protection') || 
                          msg.includes('daily limit') ||
-                         msg.includes('invalid domain')
+                         msg.includes('invalid domain') ||
+                         msg.includes('rate_limit') ||
+                         msg.includes('429')
   
   if (isExpectedError) {
+    // For expected errors, log only message without full stack
     Logger.error(`[Audit] ${error.message}`)
   } else {
+    // For unexpected errors, log with context but truncate stack in production
     Logger.error(`[Audit] Error: ${error.message}`, error, { 
-      stack: error.stack,
-      name: error.name 
+      name: error.name,
+      // Only include full stack in development
+      ...(process.env.NODE_ENV === 'development' ? { stack: error.stack } : {})
     })
   }
 
@@ -1042,7 +1068,7 @@ function handleAuditError(error: unknown): Error {
 
   // Auth errors
   if (msg.includes("401") || msg.includes("invalid_api_key") || msg.includes("authentication")) {
-    console.error("[Audit] API key error - check OPENAI_API_KEY")
+    Logger.error("[Audit] API key error - check OPENAI_API_KEY")
     return new Error("AI service authentication failed. Please contact support.")
   }
 
@@ -1071,9 +1097,20 @@ function handleAuditError(error: unknown): Error {
     return error
   }
 
-  // Fallback - preserve original message if it's informative
-  if (error.message && error.message.length > 0 && error.message !== "Audit generation failed. Please try again.") {
-    return new Error(`Audit generation failed: ${error.message}`)
+  // Fallback - sanitize any remaining OpenAI errors
+  if (error.message && error.message.length > 0) {
+    // Check if it contains OpenAI-specific patterns that should be sanitized
+    if (msg.includes("help.openai.com") || /req_[a-z0-9]+/i.test(error.message)) {
+      const requestId = extractRequestId(error.message)
+      Logger.error("[Audit] Unhandled OpenAI error", error, { 
+        requestId,
+        ...(process.env.NODE_ENV === 'development' ? { stack: error.stack } : {})
+      })
+      return new Error("Our AI service encountered an issue. Please try again in a moment.")
+    }
+    
+    // For other errors, return generic message
+    return new Error("Audit generation failed. Please try again.")
   }
   
   return new Error("Audit generation failed. Please try again.")

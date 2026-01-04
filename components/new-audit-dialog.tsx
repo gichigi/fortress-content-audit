@@ -39,6 +39,76 @@ export function NewAuditDialog({ open, onOpenChange, onSuccess }: NewAuditDialog
   const [plan, setPlan] = useState<string>("free")
   const [error, setError] = useState<string | null>(null)
 
+  // Poll for audit completion (runs after dialog closes)
+  const pollForCompletion = useCallback(async (runId: string, domainName: string) => {
+    const maxAttempts = 20 // 5 minutes max (15s intervals)
+    let attempts = 0
+    
+    const poll = async () => {
+      try {
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) return
+        
+        const response = await fetch(`/api/audit/${runId}`, {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`
+          }
+        })
+        
+        if (!response.ok) {
+          attempts++
+          if (attempts < maxAttempts) {
+            setTimeout(poll, 15000) // Poll every 15 seconds
+          }
+          return
+        }
+        
+        const data = await response.json()
+        
+        // Check if audit failed
+        if (data.status === 'failed') {
+          toast({
+            title: "Audit failed",
+            description: data.error || "The audit encountered an error. Please try again.",
+            variant: "destructive",
+          })
+          return
+        }
+        
+        // Check if audit is complete (status completed, regardless of issue count)
+        if (data.status === 'completed') {
+          toast({
+            title: "Audit completed",
+            description: `${domainName} has been audited successfully.`,
+          })
+          if (onSuccess) {
+            onSuccess(domainName)
+          }
+          return
+        }
+        
+        // Still pending - continue polling
+        attempts++
+        if (attempts < maxAttempts) {
+          setTimeout(poll, 15000) // Poll every 15 seconds
+        } else {
+          // Timeout - audit may still complete, user can refresh
+          console.log('[NewAuditDialog] Polling timeout, audit may still be running')
+        }
+      } catch (error) {
+        console.error('[NewAuditDialog] Poll error:', error)
+        attempts++
+        if (attempts < maxAttempts) {
+          setTimeout(poll, 15000) // Poll every 15 seconds
+        }
+      }
+    }
+    
+    // Start polling after a short delay
+    setTimeout(poll, 3000)
+  }, [toast, onSuccess])
+
   const loadUsageInfo = useCallback(async () => {
     try {
       const supabase = createClient()
@@ -122,50 +192,40 @@ export function NewAuditDialog({ open, onOpenChange, onSuccess }: NewAuditDialog
         body: JSON.stringify({ domain: inputDomain })
       })
 
-      // If response.ok, validation passed and audit started
+      // If response.ok, validation passed and audit started in background
       if (response.ok) {
+        const data = await response.json()
+        
         // Close dialog and show "started" toast immediately
         toast({
           title: "Audit started",
-          description: `Auditing ${normalizedDomain}...`,
+          description: `Auditing ${normalizedDomain}... This may take up to a minute.`,
         })
         onOpenChange(false)
         setDomain("")
         setLoading(false)
         
-        // Handle response body in background (don't block dialog close)
-        // Use a separate async function to avoid blocking
-        ;(async () => {
-          try {
-            const data = await response.json()
-            
-            if (data.status === 'completed') {
-              toast({
-                title: "Audit completed",
-                description: `${normalizedDomain} has been audited successfully.`,
-              })
-              if (onSuccess) {
-                onSuccess(normalizedDomain)
-              }
-            } else {
-              // Bot protection or other errors
-              toast({
-                title: "Audit failed",
-                description: data.error || `Audit failed with status: ${data.status || 'unknown'}`,
-                variant: "error",
-              })
-            }
-          } catch (error) {
-            console.error('Error parsing audit response:', error)
-            toast({
-              title: "Audit failed",
-              description: "Failed to parse audit response. Please check the dashboard.",
-              variant: "error",
-            })
+        // Audit is running in background - poll for completion
+        if (data.runId && data.status === 'pending') {
+          pollForCompletion(data.runId, normalizedDomain)
+        } else if (data.status === 'completed') {
+          // Audit already completed (mock data or very fast)
+          toast({
+            title: "Audit completed",
+            description: `${normalizedDomain} has been audited successfully.`,
+          })
+          if (onSuccess) {
+            onSuccess(normalizedDomain)
           }
-        })()
+        } else if (data.status === 'failed') {
+          // Audit failed immediately (shouldn't happen but handle it)
+          toast({
+            title: "Audit failed",
+            description: data.error || "The audit encountered an error. Please try again.",
+            variant: "destructive",
+          })
+        }
         
-        // Return early - don't wait for response body
         return
       } else {
         // Validation errors - show in dialog, keep open

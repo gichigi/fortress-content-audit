@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { getAuditUsage } from '@/lib/audit-rate-limit'
+import Logger from '@/lib/logger'
 
 function getBearer(req: Request) {
   const a = req.headers.get('authorization') || req.headers.get('Authorization')
@@ -21,12 +22,12 @@ export async function GET(request: Request) {
   try {
     const token = getBearer(request)
     if (!token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: 'Please sign in to continue.' }, { status: 401 })
     }
 
     const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(token)
     if (userErr || !userData?.user?.id) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
+      return NextResponse.json({ error: 'Your session has expired. Please sign in again.' }, { status: 401 })
     }
     const userId = userData.user.id
     const userEmail = userData.user.email || null
@@ -48,9 +49,12 @@ export async function GET(request: Request) {
 
     return NextResponse.json(usage)
   } catch (e) {
-    console.error('[Usage] Error:', e)
+    const error = e instanceof Error ? e : new Error(String(e))
+    Logger.error('[Usage] Error', error, {
+      ...(process.env.NODE_ENV === 'development' ? { stack: error.stack } : {})
+    })
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : 'Failed to get usage info' },
+      { error: 'Something went wrong. Please try again.' },
       { status: 500 }
     )
   }

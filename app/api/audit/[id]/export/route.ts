@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { generateAuditMarkdown, generateAuditJSON, generateAuditPDF } from '@/lib/audit-exporter'
 import PostHogClient from '@/lib/posthog'
+import Logger from '@/lib/logger'
 
 function getBearer(req: Request) {
   const a = req.headers.get('authorization') || req.headers.get('Authorization')
@@ -19,12 +20,12 @@ export async function GET(
   try {
     const token = getBearer(request)
     if (!token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: 'Please sign in to continue.' }, { status: 401 })
     }
 
     const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(token)
     if (userErr || !userData?.user?.id) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
+      return NextResponse.json({ error: 'Your session has expired. Please sign in again.' }, { status: 401 })
     }
     const userId = userData.user.id
     const { id } = await params
@@ -35,7 +36,7 @@ export async function GET(
     
     // Validate format
     if (!['pdf', 'json', 'md'].includes(format)) {
-      return NextResponse.json({ error: 'Invalid format. Use pdf, json, or md' }, { status: 400 })
+      return NextResponse.json({ error: 'Invalid format. Please use pdf, json, or md.' }, { status: 400 })
     }
 
     // Exports are available to all authenticated users (no plan gating)
@@ -49,12 +50,12 @@ export async function GET(
       .maybeSingle()
 
     if (fetchErr) {
-      console.error('[Export] Error fetching audit:', fetchErr)
-      return NextResponse.json({ error: 'Database error' }, { status: 500 })
+      Logger.error('[Export] Error fetching audit', fetchErr instanceof Error ? fetchErr : new Error(String(fetchErr)))
+      return NextResponse.json({ error: 'Something went wrong. Please try again.' }, { status: 500 })
     }
 
     if (!audit) {
-      return NextResponse.json({ error: 'Audit not found' }, { status: 404 })
+      return NextResponse.json({ error: 'The requested audit was not found.' }, { status: 404 })
     }
 
     // Fetch issues from database (single source of truth)
@@ -66,8 +67,8 @@ export async function GET(
       .order('created_at', { ascending: true })
 
     if (issuesErr) {
-      console.error('[Export] Error fetching issues:', issuesErr)
-      return NextResponse.json({ error: 'Failed to fetch issues' }, { status: 500 })
+      Logger.error('[Export] Error fetching issues', issuesErr instanceof Error ? issuesErr : new Error(String(issuesErr)))
+      return NextResponse.json({ error: 'Something went wrong fetching issues. Please try again.' }, { status: 500 })
     }
 
     const issuesList = issues || []
@@ -285,9 +286,10 @@ export async function GET(
       })
       posthog.shutdown()
     } catch (phError) {
-      console.error('[Export] PostHog error:', phError)
+      // PostHog errors are non-critical, log silently
     }
     
+    // Return user-friendly error message
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }

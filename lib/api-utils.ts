@@ -31,6 +31,16 @@ export const ERROR_MESSAGES = {
   SERVER_ERROR: "Something went wrong on our end. Please try again in a moment.",
   VALIDATION_ERROR: "Please check your input and try again.",
   
+  // Audit-specific errors
+  AUDIT_BOT_PROTECTION: "Bot protection detected. Remove firewall/bot protection to crawl this site.",
+  AUDIT_GENERATION_FAILED: "Audit generation failed. Please try again.",
+  AUDIT_TIMEOUT: "Request timed out. The site may be too large. Please try again.",
+  AUDIT_MODEL_UNAVAILABLE: "AI model is temporarily unavailable. Please try again in a few minutes.",
+  AUDIT_OPENAI_500: "Our AI service encountered a temporary issue. Please try again in a moment.",
+  AUDIT_INVALID_DOMAIN: "Please enter a valid website URL to audit.",
+  AUDIT_DATABASE_ERROR: "Something went wrong saving your audit. Please try again.",
+  AUDIT_NOT_FOUND: "The requested audit was not found.",
+  
   // Generic fallback
   UNKNOWN_ERROR: "Something unexpected happened. Please try again or contact support if the issue persists.",
 } as const
@@ -98,6 +108,33 @@ export function classifyError(error: any): keyof typeof ERROR_MESSAGES {
     return 'VALIDATION_ERROR'
   }
   
+  // Audit-specific errors
+  if (errorMessage.includes('bot protection') || errorMessage.includes('firewall') || errorMessage.includes('captcha')) {
+    return 'AUDIT_BOT_PROTECTION'
+  }
+  if (errorMessage.includes('audit generation failed') || errorMessage.includes('audit failed')) {
+    return 'AUDIT_GENERATION_FAILED'
+  }
+  if (errorMessage.includes('timed out') && (errorMessage.includes('site') || errorMessage.includes('audit'))) {
+    return 'AUDIT_TIMEOUT'
+  }
+  if (errorMessage.includes('model') && (errorMessage.includes('unavailable') || errorMessage.includes('not found'))) {
+    return 'AUDIT_MODEL_UNAVAILABLE'
+  }
+  if ((errorMessage.includes('500') || errorMessage.includes('error occurred while processing')) && 
+      (errorMessage.includes('help.openai.com') || errorMessage.includes('request id') || /req_[a-z0-9]+/i.test(errorMessage))) {
+    return 'AUDIT_OPENAI_500'
+  }
+  if (errorMessage.includes('invalid domain') || errorMessage.includes('invalid url')) {
+    return 'AUDIT_INVALID_DOMAIN'
+  }
+  if (errorMessage.includes('database error') || errorMessage.includes('failed to save')) {
+    return 'AUDIT_DATABASE_ERROR'
+  }
+  if (errorMessage.includes('audit not found') || errorMessage.includes('run not found')) {
+    return 'AUDIT_NOT_FOUND'
+  }
+  
   return 'UNKNOWN_ERROR'
 }
 
@@ -146,7 +183,10 @@ export function createErrorDetails(error: any): ErrorDetails {
     'WEBSITE_TIMEOUT', 
     'OPENAI_CONNECTION',
     'NETWORK_ERROR',
-    'SERVER_ERROR'
+    'SERVER_ERROR',
+    'AUDIT_TIMEOUT',
+    'AUDIT_MODEL_UNAVAILABLE',
+    'AUDIT_OPENAI_500'
   ]
   
   const canRetry = retryableErrors.includes(errorType)
@@ -169,6 +209,21 @@ export function createErrorDetails(error: any): ErrorDetails {
       break
     case 'TEMPLATE_NOT_FOUND':
       suggestedAction = "Contact support with error code: TEMPLATE_MISSING"
+      break
+    case 'AUDIT_BOT_PROTECTION':
+      suggestedAction = "Temporarily disable bot protection or firewall to allow the audit to run"
+      break
+    case 'AUDIT_TIMEOUT':
+      suggestedAction = "Try auditing a smaller section of your site, or try again later"
+      break
+    case 'AUDIT_MODEL_UNAVAILABLE':
+      suggestedAction = "Wait a few minutes and try again"
+      break
+    case 'AUDIT_OPENAI_500':
+      suggestedAction = "This is usually temporary. Please try again in a moment"
+      break
+    case 'AUDIT_INVALID_DOMAIN':
+      suggestedAction = "Check for typos in the URL or try adding 'https://' at the beginning"
       break
   }
   

@@ -8,6 +8,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { pollAuditStatus, AuditTier } from '@/lib/audit'
+import Logger from '@/lib/logger'
 
 function getBearer(req: Request) {
   const a = req.headers.get('authorization') || req.headers.get('Authorization')
@@ -25,12 +26,12 @@ export async function POST(
   try {
     const token = getBearer(request)
     if (!token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: 'Please sign in to continue.' }, { status: 401 })
     }
 
     const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(token)
     if (userErr || !userData?.user?.id) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
+      return NextResponse.json({ error: 'Your session has expired. Please sign in again.' }, { status: 401 })
     }
     const userId = userData.user.id
     const { id } = await params
@@ -44,12 +45,12 @@ export async function POST(
       .maybeSingle()
 
     if (fetchErr) {
-      console.error('[Resume] Error fetching audit:', fetchErr)
-      return NextResponse.json({ error: 'Database error' }, { status: 500 })
+      Logger.error('[Resume] Error fetching audit', fetchErr instanceof Error ? fetchErr : new Error(String(fetchErr)))
+      return NextResponse.json({ error: 'Something went wrong. Please try again.' }, { status: 500 })
     }
 
     if (!auditRun) {
-      return NextResponse.json({ error: 'Audit not found' }, { status: 404 })
+      return NextResponse.json({ error: 'The requested audit was not found.' }, { status: 404 })
     }
 
     // Check if responseId exists in issues_json
@@ -111,7 +112,7 @@ export async function POST(
 
       if (updateErr) {
         console.error('[Resume] Failed to update audit run:', updateErr)
-        return NextResponse.json({ error: 'Failed to update audit' }, { status: 500 })
+        return NextResponse.json({ error: 'Something went wrong updating the audit. Please try again.' }, { status: 500 })
       }
 
       // Save issues to issues table
@@ -163,7 +164,10 @@ export async function POST(
     )
   } catch (e) {
     const error = e instanceof Error ? e : new Error('Unknown error')
-    console.error('[Resume] Error:', error.message)
+    Logger.error('[Resume] Error', error, {
+      ...(process.env.NODE_ENV === 'development' ? { stack: error.stack } : {})
+    })
+    // Return user-friendly message (error.message is already sanitized by handleAuditError if it came from audit)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }

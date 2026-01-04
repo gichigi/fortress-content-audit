@@ -8,6 +8,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { pollAuditStatus, AuditTier } from '@/lib/audit'
+import Logger from '@/lib/logger'
 // Removed: issue-signature imports (no longer needed)
 import { incrementAuditUsage, getAuditUsage } from '@/lib/audit-rate-limit'
 import { emailService } from '@/lib/email-service'
@@ -41,7 +42,7 @@ export async function POST(request: Request) {
     const { responseId, runId, session_token } = body || {}
 
     if (!responseId) {
-      return NextResponse.json({ error: 'Missing responseId' }, { status: 400 })
+      return NextResponse.json({ error: 'Missing required parameter. Please try again.' }, { status: 400 })
     }
 
     // Retrieve tier and queued_count from database if runId is provided
@@ -448,7 +449,10 @@ export async function POST(request: Request) {
     })
   } catch (e) {
     const error = e instanceof Error ? e : new Error('Unknown error')
-    console.error('[Poll] Error:', error.message)
+    Logger.error('[Poll] Error', error, {
+      ...(process.env.NODE_ENV === 'development' ? { stack: error.stack } : {})
+    })
+    // Return user-friendly message (error.message is already sanitized by handleAuditError if it came from audit)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }

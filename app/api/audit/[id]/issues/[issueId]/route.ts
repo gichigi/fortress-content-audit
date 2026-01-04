@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { IssueStatus } from '@/types/fortress'
+import Logger from '@/lib/logger'
 
 function getBearer(req: Request) {
   const a = req.headers.get('authorization') || req.headers.get('Authorization')
@@ -18,12 +19,12 @@ export async function PATCH(
     // Auth check
     const token = getBearer(request)
     if (!token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: 'Please sign in to continue.' }, { status: 401 })
     }
 
     const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(token)
     if (userErr || !userData?.user?.id) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
+      return NextResponse.json({ error: 'Your session has expired. Please sign in again.' }, { status: 401 })
     }
     const userId = userData.user.id
 
@@ -59,12 +60,12 @@ export async function PATCH(
       .maybeSingle()
 
     if (auditErr) {
-      console.error('[IssueStatus] Error fetching audit:', auditErr)
-      return NextResponse.json({ error: 'Database error' }, { status: 500 })
+      Logger.error('[IssueStatus] Error fetching audit', auditErr instanceof Error ? auditErr : new Error(String(auditErr)))
+      return NextResponse.json({ error: 'Something went wrong. Please try again.' }, { status: 500 })
     }
 
     if (!audit) {
-      return NextResponse.json({ error: 'Audit not found' }, { status: 404 })
+      return NextResponse.json({ error: 'The requested audit was not found.' }, { status: 404 })
     }
 
     // Update issue status directly
@@ -80,12 +81,12 @@ export async function PATCH(
       .single()
 
     if (updateErr) {
-      console.error('[IssueStatus] Error updating issue:', updateErr)
-      return NextResponse.json({ error: 'Failed to update issue status' }, { status: 500 })
+      Logger.error('[IssueStatus] Error updating issue', updateErr instanceof Error ? updateErr : new Error(String(updateErr)))
+      return NextResponse.json({ error: 'Something went wrong updating the issue. Please try again.' }, { status: 500 })
     }
 
     if (!issue) {
-      return NextResponse.json({ error: 'Issue not found' }, { status: 404 })
+      return NextResponse.json({ error: 'The requested issue was not found.' }, { status: 404 })
     }
 
     return NextResponse.json({
@@ -93,9 +94,11 @@ export async function PATCH(
       issue,
     })
   } catch (error) {
-    console.error('[IssueStatus] Unexpected error:', error)
+    Logger.error('[IssueStatus] Unexpected error', error instanceof Error ? error : new Error(String(error)), {
+      ...(process.env.NODE_ENV === 'development' ? { stack: error instanceof Error ? error.stack : undefined } : {})
+    })
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Something went wrong. Please try again.' },
       { status: 500 }
     )
   }

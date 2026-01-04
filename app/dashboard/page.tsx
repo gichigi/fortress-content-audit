@@ -871,70 +871,34 @@ export default function DashboardPage() {
         throw new Error(error.error || 'Failed to delete domain')
       }
 
-      // Close dialog immediately after successful delete so user can interact with page
+      // Store domain to delete for background operations before clearing state
+      const deletedDomain = domainToDelete
+      
+      // Close dialog and clear states immediately (synchronous) so UI is responsive
+      // Use React's automatic batching - all state updates in same function are batched
       setShowDeleteDialog(false)
       setDeletingDomain(null)
       setDomainToDelete(null)
 
-      // Reload domains first to get updated list
-      await loadDomains(session.access_token)
-
-      // If deleted domain was selected, switch to another domain or clear selection
-      const { data: { user } } = await supabase.auth.getUser()
-      let domainToUse = selectedDomain
-      
-      if (user && selectedDomain === domainToDelete) {
-        // Get updated domain list
-        const { data: domainData } = await supabase
-          .from('brand_audit_runs')
-          .select('domain')
-          .eq('user_id', user.id)
-          .not('domain', 'is', null)
-        
-        const availableDomains = Array.from(new Set(
-          (domainData || []).map(a => a.domain).filter((d): d is string => d !== null)
-        ))
-        
-        const newSelectedDomain = availableDomains[0] || null
-        domainToUse = newSelectedDomain
-        setSelectedDomain(newSelectedDomain)
-        if (newSelectedDomain) {
-          localStorage.setItem('selectedDomain', newSelectedDomain)
-          window.dispatchEvent(new Event('domainChanged'))
-        } else {
-          localStorage.removeItem('selectedDomain')
-        }
-        
-        // Reload data with new domain
-        await loadAudits(session.access_token, newSelectedDomain)
-      } else {
-        // Reload data with current domain (which wasn't deleted)
-        await loadAudits(session.access_token, selectedDomain)
-      }
-      
-      // Use the correct domain (newSelectedDomain if domain was deleted, otherwise selectedDomain)
-      // Wrap in try-catch to prevent one failure from blocking the rest
-      try {
-        await loadUsageInfo(session.access_token, domainToUse)
-      } catch (error) {
-        console.error('Error loading usage info after delete:', error)
-      }
-      
-      if (plan === 'pro' || plan === 'enterprise') {
-        try {
-          await loadHealthScore(session.access_token)
-        } catch (error) {
-          console.error('Error loading health score after delete:', error)
-        }
-      }
-
-      // Notify domain switcher to reload its list
-      window.dispatchEvent(new Event('domainsReload'))
-
+      // Show toast immediately
       toast({
         title: "Domain deleted",
-        description: "All audits and data for this domain have been removed. You can now add a new domain.",
+        description: "All audits and data for this domain have been removed.",
       })
+
+      // Clear localStorage and refresh page
+      if (selectedDomain === deletedDomain) {
+        localStorage.removeItem('selectedDomain')
+      }
+      
+      // Notify domain switcher to reload immediately
+      window.dispatchEvent(new Event('domainsReload'))
+      
+      // Force full page reload after a short delay to ensure clean state
+      // This is the most reliable way to reset all state after deletion
+      setTimeout(() => {
+        window.location.reload()
+      }, 100)
     } catch (error) {
       toast({
         title: "Unable to delete domain",
@@ -1244,7 +1208,17 @@ export default function DashboardPage() {
           </div>
 
       {/* Domain Deletion Confirmation Dialog */}
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+      <AlertDialog 
+        open={showDeleteDialog} 
+        onOpenChange={(open) => {
+          if (!open) {
+            // Allow closing - clear states
+            setShowDeleteDialog(false)
+            setDomainToDelete(null)
+            setDeletingDomain(null)
+          }
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Domain</AlertDialogTitle>
