@@ -4,17 +4,17 @@ import Logger from "./logger"
 
 // ============================================================================
 // Content Audit
-// Uses GPT-5 with web_search for FREE tier (opens pages directly)
-// For PAID/ENTERPRISE tiers: Deep Research API with web search/crawl
+// All tiers use GPT-5.1 with web_search (synchronous, opens pages directly)
+// Tier differences: maxToolCalls and page guidance
 // ============================================================================
 
 // Audit tiers for cost/scope control
-// FREE tier uses GPT-5.1 with web_search (synchronous, opens pages directly)
-// PAID/ENTERPRISE tiers use Deep Research API (background execution)
+// All tiers use GPT-5.1 with web_search (synchronous, opens pages directly)
+// Tier differences: maxToolCalls and page guidance
 export const AUDIT_TIERS = {
   FREE: { maxToolCalls: 10, background: false, model: "gpt-5.1-2025-11-13" as const },
-  PAID: { maxToolCalls: 50, background: true, model: "o4-mini-deep-research" as const },
-  ENTERPRISE: { maxToolCalls: 100, background: true, model: "o3-deep-research" as const },
+  PAID: { maxToolCalls: 50, background: false, model: "gpt-5.1-2025-11-13" as const },
+  ENTERPRISE: { maxToolCalls: 100, background: false, model: "gpt-5.1-2025-11-13" as const },
 } as const
 
 export type AuditTier = keyof typeof AUDIT_TIERS
@@ -25,11 +25,13 @@ const AUDIT_PROMPT = `You're a world-class web content auditor.
 Find and report ALL content-related issues you can identify. Be thorough and comprehensive.
 Don't limit yourself — report every issue you find, including minor ones.
 
+If you encounter bot protection (Cloudflare, CAPTCHA, access denied), include an issue with title "BOT_PROTECTION_DETECTED" and category "bot_protection".
+
 If you find no issues, return an empty array.
 
 For each issue, provide:
 - Title, URL, snippet, suggested fix
-- Category: 'typos', 'grammar', 'punctuation', 'seo', 'factual', 'links', 'terminology'
+- Category: 'typos', 'grammar', 'punctuation', 'seo', 'factual', 'links', 'terminology', 'bot_protection'
 - Severity: 'low', 'medium', or 'high'
 
 `
@@ -118,7 +120,7 @@ function extractDomainHostname(domain: string): string {
 }
 
 // ============================================================================
-// Mini Audit - Free tier (GPT-5 with web_search)
+// Mini Audit - Free tier (GPT-5.1 with web_search)
 // ============================================================================
 export async function miniAudit(domain: string): Promise<AuditResult> {
   const tier = AUDIT_TIERS.FREE
@@ -151,7 +153,7 @@ Return your audit results as a JSON object with this structure:
   "issues": [
     {
       "title": "Issue title",
-      "category": "typos|grammar|punctuation|seo|factual|links|terminology",
+      "category": "typos|grammar|punctuation|seo|factual|links|terminology|bot_protection",
       "severity": "low|medium|high",
       "impact": "Impact description",
       "fix": "Suggested fix",
@@ -268,14 +270,45 @@ Return ONLY valid JSON, no markdown code blocks.`
     // Validate with Zod schema
     const validated = AuditResultSchema.parse(parsed)
     
+    // Check if model explicitly reported bot protection
+    const botProtectionIssue = validated.issues.find((issue: any) => 
+      issue.title === 'BOT_PROTECTION_DETECTED' || issue.category === 'bot_protection'
+    )
+    
+    if (botProtectionIssue) {
+      Logger.warn(`[MiniAudit] ⚠️ Bot protection detected by model: ${botProtectionIssue.title}`)
+      throw new Error("Bot protection detected. Remove firewall/bot protection to crawl this site.")
+    }
+    
     // Use opened pages for auditedUrls if available, otherwise use parsed URLs
     const auditedUrls = openedPages.length > 0 ? openedPages : (validated.auditedUrls || [])
     
-    Logger.info(`[MiniAudit] ✅ Complete: ${validated.issues.length} issues, ${validated.pagesScanned} pages, ${auditedUrls.length} URLs audited`)
+    // Detect bot protection: if response completed quickly but no pages were opened
+    // This indicates the site is blocking automated access
+    const hasBotProtection = openedPages.length === 0 && auditedUrls.length === 0 && modelDurationMs < 5000
+    if (hasBotProtection) {
+      Logger.warn(`[MiniAudit] ⚠️ Bot protection detected: Completed in ${modelDurationMs}ms with 0 pages opened. Site may be blocking automated access.`)
+      // Check output text for bot protection indicators, or if no issues found (likely blocked)
+      const outputShowsBotProtection = outputText && detectBotProtection(outputText)
+      const noIssuesFound = validated.issues.length === 0
+      
+      // If bot protection indicators found OR no pages opened and no issues, throw error
+      if (outputShowsBotProtection || (noIssuesFound && modelDurationMs < 3000)) {
+        throw new Error("Bot protection detected. Remove firewall/bot protection to crawl this site.")
+      }
+    }
+    
+    // Calculate pagesScanned from actual opened pages if AI returned 0 or invalid value
+    // This ensures we report accurate page counts even if AI doesn't calculate correctly
+    const pagesScanned = validated.pagesScanned > 0 
+      ? validated.pagesScanned 
+      : Math.max(openedPages.length, auditedUrls.length > 0 ? auditedUrls.length : 1)
+    
+    Logger.info(`[MiniAudit] ✅ Complete: ${validated.issues.length} issues, ${pagesScanned} pages, ${auditedUrls.length} URLs audited`)
     
     return {
       issues: validated.issues,
-      pagesScanned: validated.pagesScanned,
+      pagesScanned,
       auditedUrls,
       status: "completed",
       tier: "FREE",
@@ -288,99 +321,223 @@ Return ONLY valid JSON, no markdown code blocks.`
 }
 
 // ============================================================================
-// Full Audit - Paid/Enterprise tier (deep crawl, background execution)
+// Full Audit - Paid/Enterprise tier (GPT-5.1 with web_search, synchronous)
 // ============================================================================
 export async function auditSite(
   domain: string,
   tier: AuditTier = "PAID"
 ): Promise<AuditResult> {
+  // Type guard: FREE tier should use miniAudit() instead
+  if (tier === 'FREE') {
+    Logger.warn(`[AuditSite] FREE tier should use miniAudit(), not auditSite(). Falling back to miniAudit().`)
+    return miniAudit(domain)
+  }
+  
   const tierConfig = AUDIT_TIERS[tier]
 
   // Normalize domain URL
   const normalizedDomain = normalizeDomain(domain)
-  const domainForFilter = extractDomainForFilter(normalizedDomain)
+  const domainHostname = extractDomainHostname(normalizedDomain)
 
   const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
-    timeout: tierConfig.background ? 3600000 : 300000, // 1hr for background, 5min otherwise
+    timeout: 300000, // 5min timeout
   })
 
-  // Build the research input prompt
+  // Build tier-specific page guidance
   const pageGuidance = tier === "ENTERPRISE"
-    ? "Crawl as many pages as needed to produce a comprehensive audit."
-    : "Analyze up to 10-20 important pages (homepage, pricing, features, about, key product pages)."
+    ? "Crawl as many pages as needed to produce a comprehensive audit. Analyze the full site structure, including all major sections, product pages, documentation, and support content."
+    : tier === "PAID"
+    ? "Analyze up to 10-20 important pages (homepage, pricing, features, about, key product pages, documentation). Focus on high-traffic and conversion-critical pages."
+    : "Analyze the homepage and 1-2 key pages (e.g., /about, /pricing, /product)."
 
   const input = `${AUDIT_PROMPT}
 
 Website to audit: ${normalizedDomain}
 
+Instructions:
 ${pageGuidance}
 
 Look for:
 - Cross-page inconsistencies in terminology, pricing, or product names
 - Factual contradictions between different sections
 - Grammar/spelling errors on key landing pages
-- Outdated or conflicting information`
+- Outdated or conflicting information
+- SEO issues and broken links
+- Accessibility and usability problems
+
+Return your audit results as a JSON object with this structure:
+{
+  "issues": [
+    {
+      "title": "Issue title",
+      "category": "typos|grammar|punctuation|seo|factual|links|terminology|bot_protection",
+      "severity": "low|medium|high",
+      "impact": "Impact description",
+      "fix": "Suggested fix",
+      "locations": [
+        {
+          "url": "<actual URL where issue was found>",
+          "snippet": "<actual text/HTML showing the issue>"
+        }
+      ]
+    }
+  ],
+  "pagesScanned": <number>,
+  "auditedUrls": ["<actual URLs audited>"]
+}
+
+Return ONLY valid JSON, no markdown code blocks.`
 
   try {
-    // Use Deep Research model with background execution for paid tiers
-    // Cast to any to allow params not yet in SDK typings
+    Logger.info(`[AuditSite] Starting GPT-5.1 web_search audit for ${normalizedDomain} (tier: ${tier})`)
+    const modelStartTime = Date.now()
+    
+    Logger.debug(`[AuditSite] Sending request to GPT-5.1 with web_search (maxToolCalls: ${tierConfig.maxToolCalls})`)
     const params: any = {
       model: tierConfig.model,
-      input,
+      input: input,
       tools: [{
-        type: "web_search_preview",
+        type: "web_search",
         filters: {
-          allowed_domains: [domainForFilter] // Restrict to target domain only
+          allowed_domains: [domainHostname]
         }
       }],
       max_tool_calls: tierConfig.maxToolCalls, // Limit tool calls based on tier
-      reasoning: { summary: "auto" },
-      include: ["web_search_call.action.sources"], // Include sources to get all URLs consulted
+      max_output_tokens: 20000, // Increased for full JSON response
+      include: ["web_search_call.action.sources"], // Include sources to get URLs
       text: {
         verbosity: "low"
       },
     }
-    if (tierConfig.background) {
-      params.store = true
-      params.background = true
-    }
     
-    const modelStartTime = Date.now()
     const response = await openai.responses.create(params)
-    const modelDurationMs = Date.now() - modelStartTime
     
-    // Verify model matches request
-    const actualModel = response.model || params.model
-    if (actualModel !== tierConfig.model) {
-      console.error(`[Audit] ⚠️ MODEL MISMATCH: requested ${tierConfig.model}, got ${actualModel}`)
-    }
-
-    // Handle background execution (returns response ID for polling)
-    // Check both "queued" and "in_progress" states (cast to string for SDK type compat)
-    const status = response.status as string
-    if (tierConfig.background && (status === "queued" || status === "in_progress")) {
-      return {
-        issues: [],
-        pagesScanned: 0,
-        auditedUrls: [],
-        responseId: response.id,
-        status: "in_progress",
-        tier,
-        modelDurationMs,
+    // Poll for completion if needed (synchronous polling)
+    let status = response.status as string
+    let finalResponse = response
+    let attempts = 0
+    const maxAttempts = 60 // 60 seconds max
+    
+    while ((status === "queued" || status === "in_progress") && attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      finalResponse = await openai.responses.retrieve(response.id)
+      status = finalResponse.status as string
+      attempts++
+      if (attempts % 10 === 0) {
+        Logger.debug(`[AuditSite] Status: ${status} (${attempts}s)`)
       }
     }
-
-    const transformedText = await transformToStructuredJSON(response.output_text || '', normalizedDomain)
-    response.output_text = transformedText
     
-    const result = parseAuditResponse(response, tier)
+    const modelDurationMs = Date.now() - modelStartTime
+    
+    if (status !== "completed" && status !== "incomplete") {
+      throw new Error(`Audit failed with status: ${status}`)
+    }
+    
+    // Extract output text
+    let outputText = finalResponse.output_text || ''
+    
+    // If output_text not directly available, try to extract from output array
+    if (!outputText && Array.isArray(finalResponse.output)) {
+      const messageItems = finalResponse.output.filter((item: any) => item.type === 'message' && (item as any).content && Array.isArray((item as any).content))
+      for (const message of messageItems.reverse()) {
+        const content = (message as any).content
+        const textItems = content.filter((item: any) => item.type === 'output_text' && item.text)
+        if (textItems.length > 0) {
+          outputText = textItems[textItems.length - 1].text
+          break
+        }
+      }
+    }
+    
+    if (!outputText) {
+      throw new Error("GPT-5.1 returned empty response")
+    }
+    
+    // Extract opened pages for auditedUrls and count tool calls
+    const openedPages: string[] = []
+    let toolCallsUsed = 0
+    if (finalResponse.output && Array.isArray(finalResponse.output)) {
+      const webSearchCalls = finalResponse.output.filter((item: any) => item.type === 'web_search_call')
+      toolCallsUsed = webSearchCalls.length
+      webSearchCalls.forEach((call: any) => {
+        if (call.action?.type === 'open_page' && call.action.url) {
+          openedPages.push(call.action.url)
+        }
+      })
+    }
+    
+    Logger.info(`[AuditSite] Tool calls used: ${toolCallsUsed}/${tierConfig.maxToolCalls} (${openedPages.length} pages opened)`)
+    
+    // Try to parse JSON from output
+    let parsed: any
+    try {
+      const jsonMatch = outputText.match(/\{[\s\S]*\}/)
+      if (jsonMatch) {
+        parsed = JSON.parse(jsonMatch[0])
+      } else {
+        // Fallback: transform plain text to JSON
+        Logger.debug(`[AuditSite] Transforming output to structured JSON`)
+        const structuredOutput = await transformToStructuredJSON(outputText, normalizedDomain)
+        parsed = JSON.parse(structuredOutput)
+      }
+    } catch (parseError) {
+      // Transform plain text to JSON
+      Logger.debug(`[AuditSite] Transforming output to structured JSON`)
+      const structuredOutput = await transformToStructuredJSON(outputText, normalizedDomain)
+      parsed = JSON.parse(structuredOutput)
+    }
+    
+    // Validate with Zod schema
+    const validated = AuditResultSchema.parse(parsed)
+    
+    // Use opened pages for auditedUrls if available, otherwise use parsed URLs
+    const auditedUrls = openedPages.length > 0 ? openedPages : (validated.auditedUrls || [])
+    
+    // Check if model explicitly reported bot protection
+    const botProtectionIssue = validated.issues.find((issue: any) => 
+      issue.title === 'BOT_PROTECTION_DETECTED' || issue.category === 'bot_protection'
+    )
+    
+    if (botProtectionIssue) {
+      Logger.warn(`[AuditSite] ⚠️ Bot protection detected by model: ${botProtectionIssue.title}`)
+      throw new Error("Bot protection detected. Remove firewall/bot protection to crawl this site.")
+    }
+    
+    // Detect bot protection: if response completed quickly but no pages were opened
+    // This indicates the site is blocking automated access
+    const hasBotProtection = openedPages.length === 0 && auditedUrls.length === 0 && modelDurationMs < 5000
+    if (hasBotProtection) {
+      Logger.warn(`[AuditSite] ⚠️ Bot protection detected: Completed in ${modelDurationMs}ms with 0 pages opened. Site may be blocking automated access.`)
+      // Check output text for bot protection indicators, or if no issues found (likely blocked)
+      const outputShowsBotProtection = outputText && detectBotProtection(outputText)
+      const noIssuesFound = validated.issues.length === 0
+      
+      // If bot protection indicators found OR no pages opened and no issues, throw error
+      if (outputShowsBotProtection || (noIssuesFound && modelDurationMs < 3000)) {
+        throw new Error("Bot protection detected. Remove firewall/bot protection to crawl this site.")
+      }
+    }
+    
+    // Calculate pagesScanned from actual opened pages if AI returned 0 or invalid value
+    // This ensures we report accurate page counts even if AI doesn't calculate correctly
+    const pagesScanned = validated.pagesScanned > 0 
+      ? validated.pagesScanned 
+      : Math.max(openedPages.length, auditedUrls.length > 0 ? auditedUrls.length : 1)
+    
+    Logger.info(`[AuditSite] ✅ Complete: ${validated.issues.length} issues, ${pagesScanned} pages, ${auditedUrls.length} URLs audited (tier: ${tier})`)
+    
     return {
-      ...result,
+      issues: validated.issues,
+      pagesScanned,
+      auditedUrls,
+      status: "completed",
+      tier,
       modelDurationMs,
     }
   } catch (error) {
-    console.error(`[Audit] Error:`, error instanceof Error ? error.message : error)
+    Logger.error(`[AuditSite] Error`, error instanceof Error ? error : undefined)
     throw handleAuditError(error)
   }
 }
@@ -399,7 +556,7 @@ export async function pollAuditStatus(responseId: string, tier?: AuditTier): Pro
   })
 
   try {
-    // Poll Deep Research response status - supports queued/in_progress/completed states
+    // Poll response status - supports queued/in_progress/completed states (legacy only)
     const response = await openai.responses.retrieve(responseId)
 
     // Check both "queued" and "in_progress" states (cast to string for SDK type compat)
@@ -489,13 +646,11 @@ export async function pollAuditStatus(responseId: string, tier?: AuditTier): Pro
     console.error(`[Audit] Job failed or cancelled (${status}): ${responseId}`)
     console.error(`[Audit] Full response:`, JSON.stringify(response, null, 2))
     
-    // Check if failure is due to model requiring verified org
+    // Check if failure is due to model issues
     const error = response.error as any
     if (error?.code === 'model_not_found' || error?.message?.includes('verified')) {
-      console.error(`[Audit] Model verification error during execution. Error: ${error?.message}`)
-      // This can happen due to propagation delay even if org is verified
-      // Provide a more helpful error message
-      throw new Error("The audit failed due to a verification check during execution. This may be a temporary propagation delay. Please try again in a few minutes, or the system will automatically fall back to o4-mini on the next attempt.")
+      console.error(`[Audit] Model error during execution. Error: ${error?.message}`)
+      throw new Error("The audit failed due to a model issue. Please try again in a few minutes.")
     }
     
     throw new Error(`Audit job failed with status: ${status}. ${error?.message || 'Please try again.'}`)
@@ -529,7 +684,7 @@ Return ONLY valid JSON matching this exact structure:
   "issues": [
     {
       "title": "Issue title",
-      "category": "typos|grammar|punctuation|seo|factual|links|terminology",
+      "category": "typos|grammar|punctuation|seo|factual|links|terminology|bot_protection",
       "severity": "low|medium|high",
       "impact": "Impact description",
       "fix": "Suggested fix",
@@ -564,7 +719,6 @@ CRITICAL RULES:
       temperature: 0.1, // Lower temperature for more consistent transformation
       response_format: { type: "json_object" },
       max_tokens: 4000, // Limit to ensure fast response
-      verbosity: "low",
     })
 
     const transformed = response.choices[0]?.message?.content
@@ -778,7 +932,7 @@ function parseAuditResponse(response: any, tier: AuditTier): AuditResult {
   let rawOutput = response.output_text
   
   // If output_text not directly available, try to extract from output array
-  // Deep Research responses have structure: output[] -> message -> content[] -> output_text
+  // GPT-5.1 responses have structure: output[] -> message -> content[] -> output_text
   if (!rawOutput && Array.isArray(response.output)) {
     // Find message items with content
     const messageItems = response.output.filter((item: any) => item.type === 'message' && Array.isArray(item.content))
@@ -804,7 +958,7 @@ function parseAuditResponse(response: any, tier: AuditTier): AuditResult {
 
   // Check for bot protection indicators in response
   if (detectBotProtection(rawOutput)) {
-    throw new Error("This site has bot protection enabled. The audit couldn't access the content. Try a different URL or contact support for assistance.")
+    throw new Error("Bot protection detected. Remove firewall/bot protection to crawl this site.")
   }
 
   let parsed: any
@@ -856,14 +1010,29 @@ function parseAuditResponse(response: any, tier: AuditTier): AuditResult {
 // Map OpenAI errors to user-friendly messages
 function handleAuditError(error: unknown): Error {
   if (!(error instanceof Error)) {
+    Logger.error("[Audit] Unknown error type", undefined, { error: String(error) })
     return new Error("Audit generation failed. Please try again.")
   }
 
   const msg = error.message.toLowerCase()
+  
+  // Log original error for debugging - simplified for expected errors
+  const isExpectedError = msg.includes('bot protection') || 
+                         msg.includes('daily limit') ||
+                         msg.includes('invalid domain')
+  
+  if (isExpectedError) {
+    Logger.error(`[Audit] ${error.message}`)
+  } else {
+    Logger.error(`[Audit] Error: ${error.message}`, error, { 
+      stack: error.stack,
+      name: error.name 
+    })
+  }
 
   // Bot protection detection (check first before other errors)
   if (detectBotProtection(msg)) {
-    return new Error("This site has bot protection enabled. The audit couldn't access the content. Try a different URL or contact support for assistance.")
+    return new Error("Bot protection detected. Remove firewall/bot protection to crawl this site.")
   }
 
   // Rate limits
@@ -902,6 +1071,10 @@ function handleAuditError(error: unknown): Error {
     return error
   }
 
-  // Fallback
+  // Fallback - preserve original message if it's informative
+  if (error.message && error.message.length > 0 && error.message !== "Audit generation failed. Please try again.") {
+    return new Error(`Audit generation failed: ${error.message}`)
+  }
+  
   return new Error("Audit generation failed. Please try again.")
 }

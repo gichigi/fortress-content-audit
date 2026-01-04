@@ -39,6 +39,14 @@ export function useAuditIssues(auditId: string | null, token: string | null): Us
       })
       
       if (!response.ok) {
+        // Handle 404 (audit not found/deleted) gracefully
+        if (response.status === 404) {
+          setTableRows([])
+          setTotalIssues(0)
+          setError(null) // Clear any previous errors
+          setLoading(false)
+          return
+        }
         throw new Error('Failed to fetch audit')
       }
       

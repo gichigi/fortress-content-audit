@@ -67,9 +67,6 @@ export default function DashboardPage() {
   const [exportLoading, setExportLoading] = useState<string | null>(null) // Track which format is loading
   const [scheduledAudits, setScheduledAudits] = useState<any[]>([])
   const [scheduledAuditsLoading, setScheduledAuditsLoading] = useState(false)
-  const [auditPolling, setAuditPolling] = useState(false)
-  const [auditResponseId, setAuditResponseId] = useState<string | null>(null)
-  const [auditRunId, setAuditRunId] = useState<string | null>(null)
   const [startingAudit, setStartingAudit] = useState(false)
   const [rerunningAuditId, setRerunningAuditId] = useState<string | null>(null)
   
@@ -421,95 +418,7 @@ export default function DashboardPage() {
     }
   }, [])
 
-  // Poll for audit progress when audit is in progress (defined after load functions)
-  useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/46d3112f-6e93-4e4c-a7bb-bc54c7690dac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard/page.tsx:249',message:'Polling useEffect entry',data:{auditPolling,hasResponseId:!!auditResponseId,hasAuthToken:!!authToken,loadAuditsType:typeof loadAudits},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
-    if (!auditPolling || !auditResponseId || !authToken) return
-
-    const pollInterval = setInterval(async () => {
-      try {
-        const pollResponse = await fetch('/api/audit/poll', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${authToken}`
-          },
-          body: JSON.stringify({
-            responseId: auditResponseId,
-            runId: auditRunId
-          })
-        })
-
-        if (!pollResponse.ok) {
-          let errorMessage = 'Failed to check audit status'
-          try {
-            const errorData = await pollResponse.json()
-            errorMessage = errorData.error || errorMessage
-          } catch {
-            errorMessage = pollResponse.statusText || errorMessage
-          }
-          setAuditPolling(false)
-          setAuditResponseId(null)
-          setAuditRunId(null)
-          toast({
-            title: "Unable to check audit status",
-            description: errorMessage || "Please refresh the page to see the latest status.",
-            variant: "error",
-          })
-          return
-        }
-
-        const pollData = await pollResponse.json()
-
-        if (pollData.status === 'completed') {
-          setAuditPolling(false)
-          setAuditResponseId(null)
-          setAuditRunId(null)
-
-          // Refresh all dashboard data
-          await Promise.all([
-            loadAudits(authToken, selectedDomain),
-            loadHealthScore(authToken),
-            loadUsageInfo(authToken, selectedDomain),
-            refetch()
-          ])
-
-          toast({
-            title: "Audit completed",
-            description: "Your audit results have been updated.",
-          })
-        } else if (pollData.status === 'failed' || pollData.error) {
-          // Handle failed audits (including bot protection errors)
-          setAuditPolling(false)
-          setAuditResponseId(null)
-          setAuditRunId(null)
-
-          const errorMessage = pollData.error || pollData.message || 'Audit failed'
-          toast({
-            title: "Audit could not be completed",
-            description: errorMessage || "Please try running the audit again.",
-            variant: "error",
-          })
-        }
-      } catch (error) {
-        console.error('[Dashboard Poll] Error:', error)
-        // Show user-friendly error message
-        toast({
-          title: "Unable to check audit status",
-          description: error instanceof Error ? error.message : "Please refresh the page to see the latest status.",
-          variant: "error",
-        })
-        // Stop polling on error
-        setAuditPolling(false)
-        setAuditResponseId(null)
-        setAuditRunId(null)
-      }
-    }, 5000)
-
-    return () => clearInterval(pollInterval)
-  }, [auditPolling, auditResponseId, auditRunId, authToken, selectedDomain, loadAudits, loadHealthScore, loadUsageInfo, refetch, toast])
+  // Polling removed - all audits now complete synchronously
 
   const checkAuthAndLoad = async () => {
     // #region agent log
@@ -815,8 +724,54 @@ export default function DashboardPage() {
         body: JSON.stringify({ domain: selectedDomain })
       })
 
-      if (!response.ok) {
-        // Handle errors (429, 400, etc.)
+      // If response.ok, validation passed and audit started
+      if (response.ok) {
+        // Show "started" toast immediately
+        toast({
+          title: "Audit started",
+          description: `Auditing ${selectedDomain}...`,
+        })
+        
+        // Handle response body in background (button stays in loading state)
+        ;(async () => {
+          try {
+            const data = await response.json()
+            setStartingAudit(false)
+            
+            if (data.status === 'completed') {
+              await Promise.all([
+                loadAudits(authToken, selectedDomain),
+                loadHealthScore(authToken),
+                loadUsageInfo(authToken, selectedDomain),
+                refetch()
+              ])
+              toast({
+                title: "Audit completed",
+                description: "Your audit results are ready.",
+              })
+            } else {
+              toast({
+                title: "Audit failed",
+                description: data.error || `Audit failed with status: ${data.status || 'unknown'}`,
+                variant: "error",
+              })
+            }
+          } catch (error) {
+            console.error('Error parsing audit response:', error)
+            setStartingAudit(false)
+            toast({
+              title: "Audit failed",
+              description: "Failed to parse audit response. Please check the dashboard.",
+              variant: "error",
+            })
+          }
+        })()
+        
+        // Return early - button stays in loading state until response is parsed
+        return
+      } else {
+        // Validation errors - show error toast
+        setStartingAudit(false)
         let errorMessage = 'Failed to start audit'
         let errorData: any = {}
         try {
@@ -826,44 +781,10 @@ export default function DashboardPage() {
           errorMessage = response.statusText || errorMessage
         }
         
-        // If it's a daily limit error, show toast immediately and return
-        if (response.status === 429 && (errorData.error === 'Daily limit reached' || errorMessage.includes('Daily limit'))) {
-          toast({
-            title: "Daily limit reached",
-            description: errorData.message || errorMessage || `You've reached your daily limit. Try again tomorrow.`,
-          })
-          return
-        }
-        
-        throw new Error(errorMessage)
-      }
-
-      const data = await response.json()
-
-      // Clear starting state immediately - we have a response
-      setStartingAudit(false)
-
-      if (data.status === 'in_progress' && data.responseId) {
-        setAuditResponseId(data.responseId)
-        setAuditRunId(data.runId)
-        setAuditPolling(true)
-        // Reload usage info to update count for this domain
-        await loadUsageInfo(authToken, selectedDomain)
         toast({
-          title: "Audit started",
-          description: "Your audit is running in the background. The dashboard will refresh when complete.",
-        })
-      } else if (data.status === 'completed') {
-        // Immediate completion (unlikely for paid tiers)
-        await Promise.all([
-          loadAudits(authToken, selectedDomain),
-          loadHealthScore(authToken),
-          loadUsageInfo(authToken, selectedDomain),
-          refetch()
-        ])
-        toast({
-          title: "Audit completed",
-          description: "Your audit results are ready.",
+          title: "Unable to start audit",
+          description: errorMessage,
+          variant: "error",
         })
       }
     } catch (error) {
@@ -896,10 +817,6 @@ export default function DashboardPage() {
         description: errorMessage || "Please try again in a moment.",
         variant: "error",
       })
-      // Reset polling state on error
-      setAuditPolling(false)
-      setAuditResponseId(null)
-      setAuditRunId(null)
     } finally {
       // Always clear starting state in finally as a safety net
       // (should already be cleared above, but this ensures cleanup)
@@ -954,11 +871,18 @@ export default function DashboardPage() {
         throw new Error(error.error || 'Failed to delete domain')
       }
 
+      // Close dialog immediately after successful delete so user can interact with page
+      setShowDeleteDialog(false)
+      setDeletingDomain(null)
+      setDomainToDelete(null)
+
       // Reload domains first to get updated list
       await loadDomains(session.access_token)
 
       // If deleted domain was selected, switch to another domain or clear selection
       const { data: { user } } = await supabase.auth.getUser()
+      let domainToUse = selectedDomain
+      
       if (user && selectedDomain === domainToDelete) {
         // Get updated domain list
         const { data: domainData } = await supabase
@@ -972,6 +896,7 @@ export default function DashboardPage() {
         ))
         
         const newSelectedDomain = availableDomains[0] || null
+        domainToUse = newSelectedDomain
         setSelectedDomain(newSelectedDomain)
         if (newSelectedDomain) {
           localStorage.setItem('selectedDomain', newSelectedDomain)
@@ -986,9 +911,21 @@ export default function DashboardPage() {
         // Reload data with current domain (which wasn't deleted)
         await loadAudits(session.access_token, selectedDomain)
       }
-      await loadUsageInfo(session.access_token, selectedDomain)
+      
+      // Use the correct domain (newSelectedDomain if domain was deleted, otherwise selectedDomain)
+      // Wrap in try-catch to prevent one failure from blocking the rest
+      try {
+        await loadUsageInfo(session.access_token, domainToUse)
+      } catch (error) {
+        console.error('Error loading usage info after delete:', error)
+      }
+      
       if (plan === 'pro' || plan === 'enterprise') {
-        await loadHealthScore(session.access_token)
+        try {
+          await loadHealthScore(session.access_token)
+        } catch (error) {
+          console.error('Error loading health score after delete:', error)
+        }
       }
 
       // Notify domain switcher to reload its list
@@ -1004,7 +941,7 @@ export default function DashboardPage() {
         description: error instanceof Error ? error.message : "Please try again or contact support if the issue persists.",
         variant: "error",
       })
-    } finally {
+      // On error, still close dialog and clear states
       setDeletingDomain(null)
       setShowDeleteDialog(false)
       setDomainToDelete(null)
@@ -1226,16 +1163,11 @@ export default function DashboardPage() {
                     )}
                     <Button
                       onClick={handleStartAudit}
-                      disabled={(usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit) || auditPolling || startingAudit}
+                      disabled={(usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit) || startingAudit}
                       variant={usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit ? "outline" : "default"}
                       className={usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit ? "opacity-70 cursor-not-allowed border-muted-foreground/50" : ""}
                     >
                       {startingAudit ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Starting...
-                        </>
-                      ) : auditPolling ? (
                         <>
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                           Running audit...

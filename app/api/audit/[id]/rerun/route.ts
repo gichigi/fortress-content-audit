@@ -61,8 +61,16 @@ export async function POST(
       )
     }
 
-    // Audit site for Pro rerun
+    // Audit site for Pro rerun - all audits now complete synchronously
     const result = await auditSite(run.domain, 'PAID')
+
+    // Ensure audit completed successfully
+    if (result.status !== 'completed') {
+      return NextResponse.json(
+        { error: 'Audit did not complete successfully' },
+        { status: 500 }
+      )
+    }
 
     const issuesJson = {
       issues: result.issues || [],

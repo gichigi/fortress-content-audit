@@ -86,103 +86,69 @@ export async function POST(request: Request) {
         
         console.log(`[ScheduledAudits] Running audit for ${normalizedDomain} (user: ${scheduled.user_id}, tier: ${auditTier})`)
 
-        // Run the audit (use normalized domain)
+        // Run the audit (use normalized domain) - all audits now complete synchronously
         const result = await auditSite(normalizedDomain, auditTier)
 
-        // Handle background execution (in_progress status)
-        if (result.status === 'in_progress' && result.responseId) {
-          console.log(`[ScheduledAudits] Audit queued for ${normalizedDomain} (responseId: ${result.responseId})`)
-          
-          // Save pending audit run with scheduled_audit_id for tracking
-          const { data: run, error: runError } = await supabaseAdmin
-            .from('brand_audit_runs')
-            .insert({
-              user_id: scheduled.user_id,
-              guideline_id: null,
-              domain: normalizedDomain,
-              pages_scanned: 0,
-              issues_json: { issues: [], auditedUrls: [], responseId: result.responseId, tier: auditTier },
-              is_preview: false,
-              scheduled_audit_id: scheduled.id,
-            })
-            .select('id')
-            .maybeSingle()
-
-          if (runError) {
-            console.error(`[ScheduledAudits] Failed to save audit run for ${normalizedDomain}:`, runError)
-            results.failed++
-            results.errors.push(`${normalizedDomain}: Failed to save audit run`)
-            continue
-          }
-
-          // Update next_run to 7 days from now (last_run will be updated when poll completes)
-          const nextRun = new Date(now)
-          nextRun.setDate(nextRun.getDate() + 7)
-          
-          await supabaseAdmin
-            .from('scheduled_audits')
-            .update({ next_run: nextRun.toISOString() })
-            .eq('id', scheduled.id)
-          
-          results.successful++
+        // All audits complete synchronously now
+        if (result.status !== 'completed') {
+          console.error(`[ScheduledAudits] Unexpected audit status for ${normalizedDomain}: ${result.status}`)
+          results.failed++
+          results.errors.push(`${normalizedDomain}: Audit did not complete successfully`)
           continue
         }
 
-        // Audit completed immediately (shouldn't happen for PAID/ENTERPRISE but handle it)
-        if (result.status === 'completed') {
-          // Save audit run
-          const issuesJson = {
-            issues: result.issues || [],
-            auditedUrls: result.auditedUrls || [],
-          }
+        // Save audit run
+        const issuesJson = {
+          issues: result.issues || [],
+          auditedUrls: result.auditedUrls || [],
+        }
 
-          const { data: inserted, error: insertError } = await supabaseAdmin
-            .from('brand_audit_runs')
-            .insert({
-              user_id: scheduled.user_id,
-              guideline_id: null,
-              domain: normalizedDomain,
-              pages_scanned: result.pagesScanned,
-              issues_json: issuesJson,
-              is_preview: false,
-              scheduled_audit_id: scheduled.id,
-            })
-            .select('id')
-            .single()
+        const { data: inserted, error: insertError } = await supabaseAdmin
+          .from('brand_audit_runs')
+          .insert({
+            user_id: scheduled.user_id,
+            guideline_id: null,
+            domain: normalizedDomain,
+            pages_scanned: result.pagesScanned,
+            issues_json: issuesJson,
+            is_preview: false,
+            scheduled_audit_id: scheduled.id,
+          })
+          .select('id')
+          .single()
 
-          if (insertError) {
-            console.error(`[ScheduledAudits] Failed to save audit for ${normalizedDomain}:`, insertError)
-            results.failed++
-            results.errors.push(`${normalizedDomain}: Failed to save audit`)
-            continue
-          }
+        if (insertError) {
+          console.error(`[ScheduledAudits] Failed to save audit for ${normalizedDomain}:`, insertError)
+          results.failed++
+          results.errors.push(`${normalizedDomain}: Failed to save audit`)
+          continue
+        }
 
-          // Save issues to issues table if available
-          if (inserted?.id && result.issues && result.issues.length > 0) {
-            try {
-              const issuesToInsert = result.issues.map((issue: any) => ({
-                audit_id: inserted.id,
-                title: issue.title,
-                category: issue.category || null,
-                severity: issue.severity,
-                impact: issue.impact || null,
-                fix: issue.fix || null,
-                locations: issue.locations || [],
-                status: 'active',
-              }))
+        // Save issues to issues table if available
+        if (inserted?.id && result.issues && result.issues.length > 0) {
+          try {
+            const issuesToInsert = result.issues.map((issue: any) => ({
+              audit_id: inserted.id,
+              title: issue.title,
+              category: issue.category || null,
+              severity: issue.severity,
+              impact: issue.impact || null,
+              fix: issue.fix || null,
+              locations: issue.locations || [],
+              status: 'active',
+            }))
 
-              const { error: issuesErr } = await (supabaseAdmin as any)
-                .from('issues')
-                .insert(issuesToInsert)
+            const { error: issuesErr } = await (supabaseAdmin as any)
+              .from('issues')
+              .insert(issuesToInsert)
 
-              if (issuesErr) {
-                console.error(`[ScheduledAudits] Failed to save issues for ${normalizedDomain}:`, issuesErr)
-              } else {
-                console.log(`[ScheduledAudits] Saved ${issuesToInsert.length} issues for ${normalizedDomain}`)
-              }
-            } catch (error) {
-              console.error(`[ScheduledAudits] Error saving issues for ${normalizedDomain}:`, error)
+            if (issuesErr) {
+              console.error(`[ScheduledAudits] Failed to save issues for ${normalizedDomain}:`, issuesErr)
+            } else {
+              console.log(`[ScheduledAudits] Saved ${issuesToInsert.length} issues for ${normalizedDomain}`)
             }
+          } catch (error) {
+            console.error(`[ScheduledAudits] Error saving issues for ${normalizedDomain}:`, error)
           }
         }
 

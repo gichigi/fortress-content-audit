@@ -18,9 +18,9 @@ export const PLAN_PRICES: Record<(typeof PLAN_TIERS)[keyof typeof PLAN_TIERS], n
 
 export const PLAN_FEATURES = {
   free: {
-    model: 'o4-mini-deep-research',
-    maxToolCalls: 5,
-    pagesAnalyzed: '3 pages (homepage + 2 key)',
+    model: 'gpt-5.1-2025-11-13',
+    maxToolCalls: 10,
+    pagesAnalyzed: '2 pages (homepage + 1 key)',
     issueCategories: 'High-signal only',
     issuesShown: '3 (preview with fade-out)',
     exportFormat: 'None',
@@ -39,8 +39,8 @@ export const PLAN_FEATURES = {
     autoWeeklyAudits: false,
   },
   pro: {
-    model: 'o3-deep-research',
-    maxToolCalls: 25,
+    model: 'gpt-5.1-2025-11-13',
+    maxToolCalls: 50,
     pagesAnalyzed: '10-20 important pages',
     issueCategories: 'All categories',
     issuesShown: 'All issues',
@@ -60,7 +60,7 @@ export const PLAN_FEATURES = {
     autoWeeklyAudits: true,
   },
   enterprise: {
-    model: 'o3-deep-research',
+    model: 'gpt-5.1-2025-11-13',
     maxToolCalls: 100,
     pagesAnalyzed: 'Full-site analysis',
     issueCategories: 'All categories + custom',

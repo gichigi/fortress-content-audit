@@ -21,7 +21,7 @@ import { Loader2, AlertCircle } from "lucide-react"
 interface NewAuditDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSuccess?: () => void
+  onSuccess?: (newDomain: string) => void
 }
 
 interface UsageInfo {
@@ -76,6 +76,9 @@ export function NewAuditDialog({ open, onOpenChange, onSuccess }: NewAuditDialog
   useEffect(() => {
     if (open) {
       loadUsageInfo()
+      // Reset states when dialog opens
+      setDomain("")
+      setError(null)
     }
   }, [open, loadUsageInfo])
 
@@ -90,11 +93,19 @@ export function NewAuditDialog({ open, onOpenChange, onSuccess }: NewAuditDialog
     setLoading(true)
     setError(null)
 
+    // Normalize domain for display
+    const inputDomain = domain.trim()
+    const normalizedDomain = inputDomain
+      .replace(/^https?:\/\//, '')
+      .replace(/^www\./, '')
+      .replace(/\/$/, '')
+
     try {
       const supabase = createClient()
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
-        setError("Not authenticated")
+        setLoading(false)
+        setError("Not authenticated. Please sign in and try again.")
         return
       }
 
@@ -108,51 +119,84 @@ export function NewAuditDialog({ open, onOpenChange, onSuccess }: NewAuditDialog
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`
         },
-        body: JSON.stringify({ domain: domain.trim() })
+        body: JSON.stringify({ domain: inputDomain })
       })
 
-      if (!response.ok) {
+      // If response.ok, validation passed and audit started
+      if (response.ok) {
+        // Close dialog and show "started" toast immediately
+        toast({
+          title: "Audit started",
+          description: `Auditing ${normalizedDomain}...`,
+        })
+        onOpenChange(false)
+        setDomain("")
+        setLoading(false)
+        
+        // Handle response body in background (don't block dialog close)
+        // Use a separate async function to avoid blocking
+        ;(async () => {
+          try {
+            const data = await response.json()
+            
+            if (data.status === 'completed') {
+              toast({
+                title: "Audit completed",
+                description: `${normalizedDomain} has been audited successfully.`,
+              })
+              if (onSuccess) {
+                onSuccess(normalizedDomain)
+              }
+            } else {
+              // Bot protection or other errors
+              toast({
+                title: "Audit failed",
+                description: data.error || `Audit failed with status: ${data.status || 'unknown'}`,
+                variant: "error",
+              })
+            }
+          } catch (error) {
+            console.error('Error parsing audit response:', error)
+            toast({
+              title: "Audit failed",
+              description: "Failed to parse audit response. Please check the dashboard.",
+              variant: "error",
+            })
+          }
+        })()
+        
+        // Return early - don't wait for response body
+        return
+      } else {
+        // Validation errors - show in dialog, keep open
+        setLoading(false)
         const errorData = await response.json().catch(() => ({}))
         
         // Provide specific error messages
+        let errorMessage = 'Failed to start audit'
         if (response.status === 429) {
-          const limitMessage = errorData.message || 'Daily limit reached'
-          throw new Error(limitMessage)
+          errorMessage = errorData.message || 'Daily limit reached'
         } else if (response.status === 403) {
-          throw new Error('This feature requires a paid plan. Upgrade to Pro or Enterprise.')
+          errorMessage = 'This feature requires a paid plan. Upgrade to Pro or Enterprise.'
         } else if (response.status === 400) {
-          throw new Error(errorData.error || 'Invalid domain. Please check the URL and try again.')
+          errorMessage = errorData.error || 'Invalid domain. Please check the URL and try again.'
         } else if (response.status === 401) {
-          throw new Error('Authentication required. Please sign in and try again.')
+          errorMessage = 'Authentication required. Please sign in and try again.'
         } else {
-          throw new Error(errorData.error || `Failed to start audit (${response.status})`)
+          errorMessage = errorData.error || `Failed to start audit (${response.status})`
         }
-      }
-
-      const data = await response.json()
-
-      toast({
-        title: "Audit started",
-        description: "Your audit is running in the background. You'll receive an email when it's complete.",
-      })
-
-      // Close dialog and reset form
-      setDomain("")
-      onOpenChange(false)
-      
-      // Call success callback to refresh data
-      if (onSuccess) {
-        onSuccess()
+        
+        setError(errorMessage)
       }
     } catch (error) {
       console.error('Audit error:', error)
+      setLoading(false)
+      
       const errorMessage = error instanceof Error 
         ? error.message 
         : "Failed to start audit. Please try again."
+      
       setError(errorMessage)
-      // Don't close dialog on error so user can see the error and retry
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -204,7 +248,7 @@ export function NewAuditDialog({ open, onOpenChange, onSuccess }: NewAuditDialog
               </p>
             </div>
 
-            {/* Error Message */}
+            {/* Error Message - only show for client-side validation */}
             {error && (
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
@@ -233,7 +277,7 @@ export function NewAuditDialog({ open, onOpenChange, onSuccess }: NewAuditDialog
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Starting...
+                  Running audit...
                 </>
               ) : (
                 "Start Audit"

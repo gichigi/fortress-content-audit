@@ -1,3 +1,9 @@
+// DEPRECATED: Poll background audit status endpoint
+// This endpoint is deprecated as of the GPT-5.1 unified audit refactor.
+// All audits now complete synchronously - no background execution or polling needed.
+// Kept temporarily for legacy audits that may still be in progress.
+// TODO: Remove this endpoint after transition period (30 days from refactor date).
+//
 // Poll background audit status (for paid/enterprise tiers)
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
@@ -14,6 +20,9 @@ function getBearer(req: Request) {
 }
 
 export async function POST(request: Request) {
+  // Log deprecation warning
+  console.warn('[Poll] DEPRECATED: Poll endpoint called. All audits now complete synchronously.')
+  
   try {
     const token = getBearer(request)
     let userId: string | null = null

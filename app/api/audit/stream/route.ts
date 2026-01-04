@@ -1,3 +1,9 @@
+// DEPRECATED: Stream audit progress via Server-Sent Events (SSE)
+// This endpoint is deprecated as of the GPT-5.1 unified audit refactor.
+// All audits now complete synchronously - no background execution or streaming needed.
+// Kept temporarily for legacy audits that may still be in progress.
+// TODO: Remove this endpoint after transition period (30 days from refactor date).
+//
 // Stream audit progress via Server-Sent Events (SSE)
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
@@ -16,6 +22,9 @@ function sendSSE(controller: ReadableStreamDefaultController, event: string, dat
 }
 
 export async function GET(request: Request) {
+  // Log deprecation warning
+  console.warn('[Stream] DEPRECATED: Stream endpoint called. All audits now complete synchronously.')
+  
   const { searchParams } = new URL(request.url)
   const responseId = searchParams.get('responseId')
   const runId = searchParams.get('runId')

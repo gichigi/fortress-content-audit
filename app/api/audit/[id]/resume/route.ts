@@ -1,3 +1,9 @@
+// DEPRECATED: Resume failed or interrupted audit by polling the responseId
+// This endpoint is deprecated as of the GPT-5.1 unified audit refactor.
+// All audits now complete synchronously - no background execution or resuming needed.
+// Kept temporarily for legacy audits that may still be in progress.
+// TODO: Remove this endpoint after transition period (30 days from refactor date).
+//
 // Resume failed or interrupted audit by polling the responseId
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
@@ -13,6 +19,9 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Log deprecation warning
+  console.warn('[Resume] DEPRECATED: Resume endpoint called. All audits now complete synchronously.')
+  
   try {
     const token = getBearer(request)
     if (!token) {

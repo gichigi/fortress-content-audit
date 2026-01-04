@@ -162,73 +162,7 @@ export default function Home() {
     checkAuth()
   }, [])
 
-  // Poll for audit progress when audit is in progress
-  useEffect(() => {
-    // Only poll if we have a responseId and audit is in progress
-    const responseId = auditResults?.responseId || auditResults?.meta?.responseId
-    if (!responseId || !loading) {
-      return
-    }
-
-    let pollInterval: NodeJS.Timeout | null = null
-
-    const pollStatus = async () => {
-      try {
-        const baseUrl =
-          typeof window !== 'undefined'
-            ? window.location.origin
-            : process.env.NEXT_PUBLIC_APP_URL || ''
-
-        const pollResponse = await fetch(`${baseUrl}/api/audit/poll`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(authToken && { 'Authorization': `Bearer ${authToken}` })
-          },
-          body: JSON.stringify({
-            responseId,
-            runId: auditResults?.runId
-          })
-        })
-
-        if (!pollResponse.ok) {
-          console.error('[Poll] Failed to poll status')
-          return
-        }
-
-        const pollData = await pollResponse.json()
-
-        if (pollData.status === 'in_progress') {
-          // Update progress info
-          setProgressInfo({
-            pagesScanned: pollData.progress?.pagesScanned || 0,
-            pagesBeingCrawled: pollData.progress?.auditedUrls || [],
-            reasoningSummaries: pollData.progress?.reasoningSummaries || []
-          })
-        } else if (pollData.status === 'completed') {
-          // Audit completed, update results and stop polling
-          setAuditResults(pollData)
-          setLoading(false)
-          setProgressInfo({ pagesScanned: 0, pagesBeingCrawled: [], reasoningSummaries: [] })
-          if (pollInterval) {
-            clearInterval(pollInterval)
-          }
-        }
-      } catch (error) {
-        console.error('[Poll] Error polling status:', error)
-      }
-    }
-
-    // Poll immediately, then every 5 seconds
-    pollStatus()
-    pollInterval = setInterval(pollStatus, 5000)
-
-    return () => {
-      if (pollInterval) {
-        clearInterval(pollInterval)
-      }
-    }
-  }, [auditResults?.responseId, auditResults?.meta?.responseId, auditResults?.runId, loading, authToken])
+  // Polling removed - all audits now complete synchronously
 
   // Scroll to results when audit completes
   useEffect(() => {
@@ -301,71 +235,87 @@ export default function Home() {
       const contentType = response.headers.get('content-type') || ''
       const isJson = contentType.includes('application/json')
 
-      if (!response.ok) {
+      // If response.ok, validation passed and audit started
+      if (response.ok) {
+        // Interstitial is shown via loading state (InterstitialLoader open={loading})
+        // Keep loading=true to show interstitial during audit
+        // Parse JSON response
+        if (!isJson) {
+          const text = await response.text()
+          console.error('Non-JSON success response:', text.substring(0, 200))
+          setLoading(false)
+          setApiError('Server error')
+          return
+        }
+
+        // Handle response body in background (interstitial stays open via loading state)
+        ;(async () => {
+          try {
+            const data = await response.json()
+            setLoading(false)
+            
+            if (data.status === 'completed') {
+              setAuditResults(data)
+              
+              // Store session token if provided (for unauthenticated users)
+              // This enables claiming the audit after signup
+              if (data.sessionToken) {
+                setSessionToken(data.sessionToken)
+                // Store in localStorage for auto-claim on dashboard
+                localStorage.setItem('audit_session_token', data.sessionToken)
+                console.log('[Homepage] Received session token for audit:', data.sessionToken)
+              }
+            } else {
+              // Bot protection or other errors
+              setApiError(data.error || "Audit failed")
+            }
+          } catch (error) {
+            console.error('Error parsing audit response:', error)
+            setLoading(false)
+            setApiError("Failed to parse audit response. Please try again.")
+          }
+        })()
+        
+        // Return early - interstitial will stay open via loading state
+        return
+      } else {
+        // Validation errors - show inline
+        setLoading(false)
+        
         if (isJson) {
           const errorData = await response.json()
           
           // Provide specific error messages based on status code
+          let errorMessage = 'Failed to start audit'
           if (response.status === 400) {
-            throw new Error(errorData.error || 'Invalid URL')
+            errorMessage = errorData.error || 'Invalid URL'
           } else if (response.status === 429) {
-            throw new Error(errorData.message || errorData.error || 'Too many requests. Try again later.')
+            errorMessage = errorData.message || errorData.error || 'Too many requests. Try again later.'
           } else if (response.status === 403) {
-            throw new Error('Upgrade to Pro or Enterprise')
+            errorMessage = 'Upgrade to Pro or Enterprise'
           } else if (response.status === 401) {
-            throw new Error('Please sign in')
+            errorMessage = 'Please sign in'
           } else if (response.status === 500) {
-            throw new Error('Server error. Try again.')
+            errorMessage = 'Server error. Try again.'
           } else {
-            throw new Error(errorData.error || errorData.message || `Failed to start audit`)
+            errorMessage = errorData.error || errorData.message || `Failed to start audit`
           }
+          
+          setApiError(errorMessage)
         } else {
           // Response is HTML or other format (likely an error page)
           const text = await response.text()
           console.error('Non-JSON error response:', text.substring(0, 200))
           
+          let errorMessage = 'Failed to start audit'
           if (response.status === 429) {
-            throw new Error('Too many requests. Try again later.')
+            errorMessage = 'Too many requests. Try again later.'
           } else if (response.status >= 500) {
-            throw new Error('Server error. Try again.')
-          } else {
-            throw new Error('Failed to start audit')
+            errorMessage = 'Server error. Try again.'
           }
+          
+          setApiError(errorMessage)
         }
-      }
-
-      // Parse JSON response
-      if (!isJson) {
-        const text = await response.text()
-        console.error('Non-JSON success response:', text.substring(0, 200))
-        throw new Error('Server error')
-      }
-
-      const data = await response.json()
-      setAuditResults(data)
-      
-      // If audit is in progress, keep loading state and start polling
-      if (data.status === 'in_progress' || data.responseId || data.meta?.responseId) {
-        setLoading(true)
-        // Initialize progress info if available
-        if (data.progress) {
-          setProgressInfo({
-            pagesScanned: data.progress.pagesScanned || 0,
-            pagesBeingCrawled: data.progress.auditedUrls || []
-          })
-        }
-      } else {
-        // Audit completed immediately, stop loading
-        setLoading(false)
-      }
-      
-      // Store session token if provided (for unauthenticated users)
-      // This enables claiming the audit after signup
-      if (data.sessionToken) {
-        setSessionToken(data.sessionToken)
-        // Store in localStorage for auto-claim on dashboard
-        localStorage.setItem('audit_session_token', data.sessionToken)
-        console.log('[Homepage] Received session token for audit:', data.sessionToken)
       }
     } catch (error) {
       console.error('Audit error:', error)

@@ -175,8 +175,20 @@ export function DomainSwitcher() {
     window.dispatchEvent(new Event('domainChanged'))
   }
 
-  const handleNewAuditSuccess = () => {
-    // Reload domains and usage info after new audit
+  const handleNewAuditSuccess = (newDomain: string) => {
+    // Domain is only passed here if audit completed successfully
+    // Normalize domain (remove protocol, www, trailing slash)
+    const normalizedDomain = newDomain.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '')
+    
+    // Add to sidebar (audit already completed successfully)
+    if (normalizedDomain && !domains.includes(normalizedDomain)) {
+      setDomains(prev => [...prev, normalizedDomain])
+      setSelectedDomain(normalizedDomain)
+      localStorage.setItem('selectedDomain', normalizedDomain)
+      window.dispatchEvent(new Event('domainChanged'))
+    }
+
+    // Reload from server to ensure consistency and update usage info
     const loadDomains = async () => {
       try {
         const supabase = createClient()
@@ -211,6 +223,13 @@ export function DomainSwitcher() {
             audits.map(a => a.domain).filter((d): d is string => d !== null)
           ))
           setDomains(uniqueDomains)
+          
+          // Ensure new domain is still selected after reload
+          if (uniqueDomains.includes(normalizedDomain)) {
+            setSelectedDomain(normalizedDomain)
+            localStorage.setItem('selectedDomain', normalizedDomain)
+            window.dispatchEvent(new Event('domainChanged'))
+          }
         }
       } catch (error) {
         console.error("Error loading domains:", error)

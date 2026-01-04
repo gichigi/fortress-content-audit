@@ -20,6 +20,7 @@ function generateSessionToken(): string {
 
 export async function POST(request: Request) {
   const startTime = Date.now()
+  let requestDomain: string | null = null // Store domain for error logging
   try {
     const token = getBearer(request)
     let userId: string | null = null
@@ -44,6 +45,7 @@ export async function POST(request: Request) {
 
     const body = await request.json().catch(() => ({}))
     const { domain, guidelineId, session_token } = body || {}
+    requestDomain = domain || null // Store for error logging
     if (!domain || typeof domain !== 'string') {
       return NextResponse.json({ error: 'Missing domain' }, { status: 400 })
     }
@@ -183,33 +185,17 @@ export async function POST(request: Request) {
 
     const title = `${brandName} Audit`
 
-    // Handle background execution (paid tiers may return in_progress)
-    if (result.status === 'in_progress' && result.responseId) {
-      // Save pending audit run for polling
-      // Store tier in issues_json so it can be retrieved during polling
-      const { data: run } = await supabaseAdmin
-        .from('brand_audit_runs')
-        .insert({
-          user_id: userId,
-          session_token: isAuthenticated ? null : finalSessionToken,
-          guideline_id: guidelineId || null,
-          domain: storageDomain,
-          title,
-          brand_name: brandName,
-          pages_scanned: 0,
-          issues_json: { issues: [], auditedUrls: [], responseId: result.responseId, tier: auditTier },
-          is_preview: false,
-        })
-        .select('id')
-        .maybeSingle()
-
-      return NextResponse.json({
-        runId: run?.id || null,
-        status: 'in_progress',
-        responseId: result.responseId,
-        sessionToken: finalSessionToken,
-        message: 'Audit is running in the background. Poll for status.',
-      })
+    // All audits now complete synchronously (no background execution)
+    // Ensure result status is completed
+    if (result.status !== 'completed') {
+      console.error(`[API] Unexpected audit status: ${result.status}, expected 'completed'`)
+      return NextResponse.json(
+        { 
+          error: 'Audit did not complete successfully',
+          details: `Received status: ${result.status}. All audits should complete synchronously.`
+        },
+        { status: 500 }
+      )
     }
 
     // Filter out ignored issues for authenticated users (by checking existing issues with ignored status)
@@ -372,6 +358,24 @@ export async function POST(request: Request) {
   } catch (e) {
     const duration = Date.now() - startTime
     const error = e instanceof Error ? e : new Error('Unknown error')
+    
+    // Log error - simplified for expected errors (bot protection), detailed for unexpected
+    const isExpectedError = error.message.includes('bot protection') || 
+                           error.message.includes('Daily limit') ||
+                           error.message.includes('Invalid domain')
+    
+    if (isExpectedError) {
+      console.error('[API] Audit error:', error.message, `(domain: ${requestDomain || 'unknown'}, ${duration}ms)`)
+    } else {
+      console.error('[API] Audit error:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+        domain: requestDomain || 'unknown',
+        duration_ms: duration,
+      })
+    }
+    
     try {
       const posthog = PostHogClient()
       posthog.capture({
@@ -382,6 +386,7 @@ export async function POST(request: Request) {
           message: error.message,
           endpoint: '/api/audit',
           duration_ms: duration,
+          domain: requestDomain || 'unknown',
         }
       })
       posthog.shutdown()
