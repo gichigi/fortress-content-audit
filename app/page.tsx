@@ -81,8 +81,8 @@ export default function Home() {
   const [sessionToken, setSessionToken] = useState<string | null>(null)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [authToken, setAuthToken] = useState<string | null>(null)
-  const [progressInfo, setProgressInfo] = useState<{ pagesScanned: number; pagesBeingCrawled: string[]; reasoningSummaries: string[] }>({
-    pagesScanned: 0,
+  const [progressInfo, setProgressInfo] = useState<{ pagesAudited: number; pagesBeingCrawled: string[]; reasoningSummaries: string[] }>({
+    pagesAudited: 0,
     pagesBeingCrawled: [],
     reasoningSummaries: []
   })
@@ -453,7 +453,7 @@ export default function Home() {
         open={loading}
         title="Analyzing your website..."
         description="Scanning pages and identifying content issues. This may take a moment."
-        pagesScanned={progressInfo.pagesScanned}
+        pagesAudited={progressInfo.pagesAudited}
         pagesBeingCrawled={progressInfo.pagesBeingCrawled}
         reasoningSummaries={progressInfo.reasoningSummaries}
       />
@@ -539,7 +539,7 @@ export default function Home() {
       {/* No Issues Success State - shown when audit completes but no issues found */}
       {!loading && auditResults && auditResults.runId && !isLoading && (testEmptyState || tableRows.length === 0) && (
         <EmptyAuditState 
-          pagesScanned={testEmptyState ? 5 : (auditResults.meta?.pagesScanned ?? auditResults.pagesScanned ?? undefined)}
+          pagesAudited={testEmptyState ? 5 : (auditResults.meta?.pagesAudited ?? auditResults.pagesAudited ?? undefined)}
           variant="card"
         />
       )}

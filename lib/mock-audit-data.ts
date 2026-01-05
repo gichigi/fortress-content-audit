@@ -258,7 +258,7 @@ export function createMockAuditData(origin: string = 'https://example.com', issu
 
   return {
     issues,
-    pagesScanned: Math.max(3, Math.ceil(auditedUrls.length / 2)),
+    pagesAudited: auditedUrls.length > 0 ? auditedUrls.length : 1,
     auditedUrls,
   }
 }

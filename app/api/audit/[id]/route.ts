@@ -72,7 +72,7 @@ export async function GET(
         totalIssues: 0,
         error: auditError,
         meta: { 
-          pagesScanned: run.pages_scanned, 
+          pagesAudited: run.pages_audited || run.pages_scanned || 0, 
           createdAt: run.created_at,
           auditedUrls: run.issues_json?.auditedUrls || [],
         },
@@ -93,7 +93,7 @@ export async function GET(
       totalIssues: issues.length,
       error: auditError,
       meta: { 
-        pagesScanned: run.pages_scanned, 
+        pagesAudited: run.pages_audited || run.pages_scanned || 0, 
         createdAt: run.created_at,
         auditedUrls: run.issues_json?.auditedUrls || [],
       },

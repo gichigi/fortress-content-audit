@@ -83,7 +83,7 @@ export async function GET(request: Request) {
         ENTERPRISE: 120,
       }
 
-      let lastPagesScanned = 0
+      let lastPagesAudited = 0
       let lastIssuesCount = 0
       let lastAuditedUrls: string[] = []
       let lastReasoningSummaries: string[] = []
@@ -120,27 +120,27 @@ export async function GET(request: Request) {
           }
 
           // Extract progress updates
-          const pagesScanned = result.pagesScanned || 0
+          const pagesAudited = result.pagesAudited || 0
           const auditedUrls = result.auditedUrls || []
           const issuesCount = result.issues?.length || 0
           const reasoningSummaries = result.reasoningSummaries || []
 
           // Send progress event if there are changes
           if (
-            pagesScanned !== lastPagesScanned ||
+            pagesAudited !== lastPagesAudited ||
             issuesCount !== lastIssuesCount ||
             JSON.stringify(auditedUrls) !== JSON.stringify(lastAuditedUrls) ||
             JSON.stringify(reasoningSummaries) !== JSON.stringify(lastReasoningSummaries)
           ) {
             sendSSE(controller, 'progress', {
-              pagesScanned,
+              pagesAudited,
               issuesFound: issuesCount,
               auditedUrls,
               status: result.status,
               reasoningSummaries,
             })
 
-            lastPagesScanned = pagesScanned
+            lastPagesAudited = pagesAudited
             lastIssuesCount = issuesCount
             lastAuditedUrls = auditedUrls
             lastReasoningSummaries = reasoningSummaries
@@ -149,7 +149,7 @@ export async function GET(request: Request) {
           // Check if completed
           if (result.status === 'completed') {
             sendSSE(controller, 'complete', {
-              pagesScanned: result.pagesScanned,
+              pagesAudited: result.pagesAudited,
               issuesFound: result.issues?.length || 0,
               auditedUrls: result.auditedUrls || [],
               totalIssues: result.issues?.length || 0,

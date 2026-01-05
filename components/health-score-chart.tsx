@@ -45,15 +45,7 @@ interface HealthScoreChartProps {
   domain?: string
 }
 
-const chartConfig = {
-  score: {
-    label: "Health Score",
-    color: "rgb(22 163 74)", // green-600, matches health score cards
-  },
-} satisfies ChartConfig
-
-// Chart color - green-600 to match health score cards
-const chartColor = "rgb(22 163 74)"
+import { getHealthScoreColor } from "@/lib/health-score"
 
 export function HealthScoreChart({ data, domain }: HealthScoreChartProps) {
   const isMobile = useMobile()
@@ -89,6 +81,18 @@ export function HealthScoreChart({ data, domain }: HealthScoreChartProps) {
     criticalPages: item.metrics?.criticalPages || 0,
     pagesWithIssues: item.metrics?.pagesWithIssues || 0,
   }))
+
+  // Get latest score for dynamic color (most recent data point)
+  const latestScore = chartData.length > 0 ? chartData[chartData.length - 1].score : 100
+  const chartColor = getHealthScoreColor(latestScore)
+  
+  // Dynamic chart config based on latest score
+  const chartConfig = {
+    score: {
+      label: "Health Score",
+      color: chartColor,
+    },
+  } satisfies ChartConfig
 
   // Check if we have data to display (use chartData instead of data)
   if (chartData.length === 0) {

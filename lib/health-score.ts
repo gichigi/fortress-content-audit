@@ -231,3 +231,27 @@ export async function calculateAggregatedHealthScore(
 
 // Removed: calculateAggregatedHealthScoreFromGroups - no longer needed with simplified model
 
+/**
+ * Get Tailwind text color class for health score
+ * @param score - Health score (0-100)
+ * @returns Tailwind text color class
+ */
+export function getHealthScoreTextColor(score: number): string {
+  if (score >= 95) return 'text-green-600'
+  if (score >= 80) return 'text-yellow-600'
+  if (score >= 50) return 'text-orange-600'
+  return 'text-destructive'
+}
+
+/**
+ * Get RGB color value for health score (for charts/gradients)
+ * @param score - Health score (0-100)
+ * @returns RGB color string
+ */
+export function getHealthScoreColor(score: number): string {
+  if (score >= 95) return 'rgb(22 163 74)' // green-600
+  if (score >= 80) return 'rgb(202 138 4)' // yellow-600
+  if (score >= 50) return 'rgb(234 88 12)' // orange-600
+  return 'rgb(220 38 38)' // red-600 (destructive)
+}
+

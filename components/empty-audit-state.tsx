@@ -5,9 +5,9 @@ import { Card, CardContent } from "@/components/ui/card"
 
 interface EmptyAuditStateProps {
   /**
-   * Number of pages scanned (optional, for display)
+   * Number of pages audited (optional, for display)
    */
-  pagesScanned?: number
+  pagesAudited?: number
   /**
    * Whether to show as a card (for homepage) or inline (for table)
    */
@@ -18,10 +18,10 @@ interface EmptyAuditStateProps {
  * Shared empty audit state component used across homepage and dashboard
  * Displays a consistent message when no issues are found in an audit
  */
-export function EmptyAuditState({ pagesScanned, variant = "card" }: EmptyAuditStateProps) {
-  // Dynamic message with pagesScanned number (properly handles singular/plural)
-  const message = typeof pagesScanned === 'number' && pagesScanned > 0
-    ? `Your content looks great! We scanned ${pagesScanned} page${pagesScanned === 1 ? '' : 's'} and found no issues.`
+export function EmptyAuditState({ pagesAudited, variant = "card" }: EmptyAuditStateProps) {
+  // Dynamic message with pagesAudited number (properly handles singular/plural)
+  const message = typeof pagesAudited === 'number' && pagesAudited > 0
+    ? `Your content looks great! We audited ${pagesAudited} page${pagesAudited === 1 ? '' : 's'} and found no issues.`
     : "Your content looks great! We found no issues."
 
   if (variant === "card") {

@@ -83,7 +83,7 @@ export async function POST(
         user_id: userId,
         guideline_id: null,
         domain: run.domain,
-        pages_scanned: result.pagesScanned,
+        pages_audited: result.pagesAudited,
         issues_json: issuesJson,
         is_preview: false,
       })
@@ -144,7 +144,7 @@ export async function POST(
       runId: inserted?.id, 
       issues: issuesJson.issues || [], 
       usage, // Include usage info
-      meta: { pagesScanned: result.pagesScanned } 
+      meta: { pagesAudited: result.pagesAudited } 
     })
   } catch (e) {
     return NextResponse.json(

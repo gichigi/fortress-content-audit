@@ -47,6 +47,23 @@ export function useAuditIssues(auditId: string | null, token: string | null): Us
           setLoading(false)
           return
         }
+        // Handle 401 (authentication error) with specific message
+        if (response.status === 401) {
+          let errorMessage = 'Your session has expired. Please sign in again.'
+          try {
+            const errorData = await response.json()
+            if (errorData.error) {
+              errorMessage = errorData.error
+            }
+          } catch {
+            // If JSON parsing fails, use default message
+          }
+          setError(new Error(errorMessage))
+          setTableRows([])
+          setTotalIssues(0)
+          setLoading(false)
+          return
+        }
         throw new Error('Failed to fetch audit')
       }
       

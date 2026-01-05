@@ -132,24 +132,20 @@ function createColumns(
       accessorKey: "title",
       header: "Issue",
       cell: ({ row }) => {
-        return <div className="font-medium">{row.original.title}</div>
-      },
-      enableHiding: false,
-    },
-    {
-      accessorKey: "severity",
-      header: "Severity",
-      cell: ({ row }) => {
-        const severityLabel = row.original.severity === 'high' ? 'critical' : row.original.severity
+        const severity = row.original.severity
+        const severityColors = {
+          high: 'bg-red-500',
+          medium: 'bg-orange-500', 
+          low: 'bg-gray-300'
+        }
         return (
-          <Badge
-            variant={getSeverityBadgeVariant(row.original.severity)}
-            className="px-2 py-0.5 text-xs font-semibold uppercase"
-          >
-            {severityLabel}
-          </Badge>
+          <div className="flex items-center gap-3">
+            <div className={`w-1 h-4 rounded-full ${severityColors[severity]} shrink-0`} title={severity === 'high' ? 'Critical' : severity} />
+            <div className="font-medium">{row.original.title}</div>
+          </div>
         )
       },
+      enableHiding: false,
       sortingFn: (rowA, rowB) => {
         const order = { high: 0, medium: 1, low: 2 }
         return order[rowA.original.severity] - order[rowB.original.severity]
@@ -161,6 +157,15 @@ function createColumns(
       cell: ({ row }) => (
         <div className="max-w-md text-sm text-muted-foreground break-words">
           {row.original.impact}
+        </div>
+      ),
+    },
+    {
+      accessorKey: "fix",
+      header: "Fix",
+      cell: ({ row }) => (
+        <div className="max-w-md text-sm text-muted-foreground break-words">
+          {row.original.fix || '—'}
         </div>
       ),
     },
@@ -499,11 +504,11 @@ export function DataTable({
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
     []
   )
-  // Sort by severity by default: Critical → Medium → Low
+  // Sort by severity by default: Critical → Medium → Low (via title column sorting function)
   const severityOrder = { high: 0, medium: 1, low: 2 }
   const [sorting, setSorting] = React.useState<SortingState>([
     {
-      id: "severity",
+      id: "title",
       desc: false, // Ascending: Critical first
     },
   ])

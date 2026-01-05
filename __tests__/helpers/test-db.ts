@@ -45,7 +45,7 @@ export function createMockAuditData(domain: string = 'example.com', groupCount: 
 
   return {
     groups,
-    pagesScanned: groupCount * 2,
+    pagesAudited: groupCount * 2,
     auditedUrls: groups.map(g => g.examples[0].url),
   }
 }
@@ -76,7 +76,7 @@ export async function createTestAuditUnauthenticated(
       user_id: null,
       session_token: sessionToken,
       domain,
-      pages_scanned: mockData.pagesScanned,
+      pages_audited: mockData.pagesAudited,
       issues_json: issuesJson,
       is_preview: true,
     })
@@ -106,7 +106,7 @@ export async function createTestAuditAuthenticated(
       user_id: userId,
       session_token: null,
       domain,
-      pages_scanned: mockData.pagesScanned,
+      pages_audited: mockData.pagesAudited,
       issues_json: issuesJson,
       is_preview: false,
     })

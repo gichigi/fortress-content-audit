@@ -10,7 +10,24 @@ export function generateAuditMarkdown(audit: AuditRun, issues: Issue[]): string 
   const issuesJson = audit.issues_json as any
   const auditedUrls = Array.isArray(issuesJson?.auditedUrls) ? issuesJson.auditedUrls : []
   const domain = audit.domain || 'Unknown domain'
-  const pagesScanned = audit.pages_scanned || 0
+  const pagesAudited = audit.pages_audited || audit.pages_scanned || 0
+  // Calculate pages with issues from issue locations
+  const pagesWithIssues = new Set<string>()
+  issues.forEach(issue => {
+    if (issue.locations && Array.isArray(issue.locations)) {
+      issue.locations.forEach(loc => {
+        if (loc.url) {
+          try {
+            const url = new URL(loc.url)
+            pagesWithIssues.add(url.pathname || '/')
+          } catch {
+            // Invalid URL, skip
+          }
+        }
+      })
+    }
+  })
+  const pagesWithIssuesCount = pagesWithIssues.size
   const createdAt = audit.created_at ? new Date(audit.created_at).toLocaleDateString() : 'Unknown date'
   const totalIssues = issues.length
 
@@ -29,7 +46,8 @@ When fixing issues:
 ## Audit Metadata
 
 - **Domain**: ${domain}
-- **Pages Scanned**: ${pagesScanned}
+- **Pages Audited**: ${pagesAudited}
+- **Pages with Issues**: ${pagesWithIssuesCount}${pagesAudited > 0 ? ` (${pagesWithIssuesCount}/${pagesAudited})` : ''}
 - **Total Issues**: ${totalIssues}
 - **Audit Date**: ${createdAt}
 
@@ -90,7 +108,7 @@ export function generateAuditJSON(audit: AuditRun, issues: Issue[]): string {
     domain: audit.domain,
     title: audit.title || audit.brand_name || 'Audit',
     brandName: audit.brand_name,
-    pagesScanned: audit.pages_scanned || 0,
+    pagesAudited: audit.pages_audited || audit.pages_scanned || 0,
     totalIssues: issues.length,
     createdAt: audit.created_at,
     tier,
@@ -109,13 +127,30 @@ export async function generateAuditPDF(audit: AuditRun, issues: Issue[]): Promis
   const issuesJson = audit.issues_json as any
   const auditedUrls = Array.isArray(issuesJson?.auditedUrls) ? issuesJson.auditedUrls : []
   const domain = audit.domain || 'Unknown domain'
-  const pagesScanned = audit.pages_scanned || 0
+  const pagesAudited = audit.pages_audited || audit.pages_scanned || 0
+  // Calculate pages with issues from issue locations
+  const pagesWithIssues = new Set<string>()
+  issues.forEach(issue => {
+    if (issue.locations && Array.isArray(issue.locations)) {
+      issue.locations.forEach(loc => {
+        if (loc.url) {
+          try {
+            const url = new URL(loc.url)
+            pagesWithIssues.add(url.pathname || '/')
+          } catch {
+            // Invalid URL, skip
+          }
+        }
+      })
+    }
+  })
+  const pagesWithIssuesCount = pagesWithIssues.size
   const createdAt = audit.created_at ? new Date(audit.created_at).toLocaleDateString() : 'Unknown date'
   const totalIssues = issues.length
   const title = audit.title || audit.brand_name || 'Content Audit'
 
   // Generate HTML content
-  const html = generateAuditHTML(title, domain, pagesScanned, totalIssues, createdAt, issues, auditedUrls)
+  const html = generateAuditHTML(title, domain, pagesAudited, pagesWithIssuesCount, totalIssues, createdAt, issues, auditedUrls)
 
   // Launch Puppeteer with timeout handling
   // Note: In serverless environments (Vercel), you may need to use @sparticuz/chromium
@@ -222,7 +257,8 @@ export async function generateAuditPDF(audit: AuditRun, issues: Issue[]): Promis
 function generateAuditHTML(
   title: string,
   domain: string,
-  pagesScanned: number,
+  pagesAudited: number,
+  pagesWithIssues: number,
   totalIssues: number,
   createdAt: string,
   issues: Issue[],
@@ -516,7 +552,8 @@ function generateAuditHTML(
       <div class="meta">
         <p><strong>Domain:</strong> ${escapeHtml(domain)}</p>
         <p><strong>Date:</strong> ${escapeHtml(createdAt)}</p>
-        <p><strong>Pages Scanned:</strong> ${pagesScanned}</p>
+        <p><strong>Pages Audited:</strong> ${pagesAudited}</p>
+        <p><strong>Pages with Issues:</strong> ${pagesWithIssues}${pagesAudited > 0 ? ` (${pagesWithIssues}/${pagesAudited})` : ''}</p>
         <p><strong>Total Issues:</strong> ${totalIssues}</p>
       </div>
     </div>
@@ -529,8 +566,12 @@ function generateAuditHTML(
         <span>${escapeHtml(domain)}</span>
       </div>
       <div class="summary-item">
-        <strong>Pages Scanned</strong>
-        <span>${pagesScanned}</span>
+        <strong>Pages Audited</strong>
+        <span>${pagesAudited}</span>
+      </div>
+      <div class="summary-item">
+        <strong>Pages with Issues</strong>
+        <span>${pagesWithIssues}${pagesAudited > 0 ? ` / ${pagesAudited}` : ''}</span>
       </div>
       <div class="summary-item">
         <strong>Total Issues</strong>

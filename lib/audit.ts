@@ -33,7 +33,7 @@ For each issue, provide:
 - Title (keep concise, under 10 words), URL, snippet, suggested fix
 - Category: 'typos', 'grammar', 'punctuation', 'seo', 'factual', 'links', 'terminology', 'bot_protection'
 - Severity: 'low', 'medium', or 'high'
-- Impact (keep brief, 1-2 sentences)
+- Impact (keep brief, max 15 words)
 
 `
 
@@ -54,13 +54,12 @@ const AuditIssueSchema = z.object({
 
 const AuditResultSchema = z.object({
   issues: z.array(AuditIssueSchema),
-  pagesScanned: z.number(),
   auditedUrls: z.array(z.string()),
 })
 
 // Full audit result type (includes metadata)
 export type AuditResult = z.infer<typeof AuditResultSchema> & {
-  pagesScanned: number
+  pagesAudited: number // Derived from openedPages.length (accurate count)
   auditedUrls?: string[]
   responseId?: string
   status?: "completed" | "in_progress" | "queued" | "failed"
@@ -100,10 +99,9 @@ const AUDIT_JSON_SCHEMA = {
         required: ["title", "severity", "locations"]  // category optional
       }
     },
-    pagesScanned: { type: "integer" },
     auditedUrls: { type: "array", items: { type: "string" } }
   },
-  required: ["issues", "pagesScanned", "auditedUrls"]
+  required: ["issues", "auditedUrls"]
 }
 
 // ============================================================================
@@ -166,7 +164,6 @@ Return your audit results as a JSON object with this structure:
       ]
     }
   ],
-  "pagesScanned": 2,
   "auditedUrls": ["<homepage URL>", "<key page URL>"]
 }
 
@@ -299,17 +296,14 @@ Return ONLY valid JSON, no markdown code blocks.`
       }
     }
     
-    // Calculate pagesScanned from actual opened pages if AI returned 0 or invalid value
-    // This ensures we report accurate page counts even if AI doesn't calculate correctly
-    const pagesScanned = validated.pagesScanned > 0 
-      ? validated.pagesScanned 
-      : Math.max(openedPages.length, auditedUrls.length > 0 ? auditedUrls.length : 1)
+    // Calculate pagesAudited from actual opened pages (accurate count)
+    const pagesAudited = openedPages.length > 0 ? openedPages.length : (auditedUrls.length > 0 ? auditedUrls.length : 1)
     
-    Logger.info(`[MiniAudit] ✅ Complete: ${validated.issues.length} issues, ${pagesScanned} pages, ${auditedUrls.length} URLs audited`)
+    Logger.info(`[MiniAudit] ✅ Complete: ${validated.issues.length} issues, ${pagesAudited} pages audited, ${auditedUrls.length} URLs`)
     
     return {
       issues: validated.issues,
-      pagesScanned,
+      pagesAudited,
       auditedUrls,
       status: "completed",
       tier: "FREE",
@@ -384,7 +378,6 @@ Return your audit results as a JSON object with this structure:
       ]
     }
   ],
-  "pagesScanned": <number>,
   "auditedUrls": ["<actual URLs audited>"]
 }
 
@@ -521,17 +514,14 @@ Return ONLY valid JSON, no markdown code blocks.`
       }
     }
     
-    // Calculate pagesScanned from actual opened pages if AI returned 0 or invalid value
-    // This ensures we report accurate page counts even if AI doesn't calculate correctly
-    const pagesScanned = validated.pagesScanned > 0 
-      ? validated.pagesScanned 
-      : Math.max(openedPages.length, auditedUrls.length > 0 ? auditedUrls.length : 1)
+    // Calculate pagesAudited from actual opened pages (accurate count)
+    const pagesAudited = openedPages.length > 0 ? openedPages.length : (auditedUrls.length > 0 ? auditedUrls.length : 1)
     
-    Logger.info(`[AuditSite] ✅ Complete: ${validated.issues.length} issues, ${pagesScanned} pages, ${auditedUrls.length} URLs audited (tier: ${tier})`)
+    Logger.info(`[AuditSite] ✅ Complete: ${validated.issues.length} issues, ${pagesAudited} pages audited, ${auditedUrls.length} URLs (tier: ${tier})`)
     
     return {
       issues: validated.issues,
-      pagesScanned,
+      pagesAudited,
       auditedUrls,
       status: "completed",
       tier,
@@ -564,16 +554,12 @@ export async function pollAuditStatus(responseId: string, tier?: AuditTier): Pro
     const status = response.status as string
     if (status === "queued" || status === "in_progress") {
       // Try to extract progress info from partial response if available
-      let pagesScanned = 0
       let auditedUrls: string[] = []
       let issues: any[] = []
       
       if (response.output_text) {
         try {
           const partial = JSON.parse(response.output_text)
-          if (typeof partial.pagesScanned === 'number') {
-            pagesScanned = partial.pagesScanned
-          }
           if (Array.isArray(partial.auditedUrls)) {
             auditedUrls = partial.auditedUrls
           }
@@ -586,12 +572,15 @@ export async function pollAuditStatus(responseId: string, tier?: AuditTier): Pro
         }
       }
       
+      // Calculate pagesAudited from auditedUrls (accurate count from opened pages)
+      const pagesAudited = auditedUrls.length > 0 ? auditedUrls.length : 0
+      
       // Extract reasoning summaries from response output
       const reasoningSummaries = extractReasoningSummaries(response)
       
       return {
         issues,
-        pagesScanned,
+        pagesAudited,
         auditedUrls,
         responseId,
         status: status === "queued" ? "queued" : "in_progress",
@@ -623,7 +612,7 @@ export async function pollAuditStatus(responseId: string, tier?: AuditTier): Pro
         response.output_text = outputText
       } else if (!outputText && isIncomplete) {
         // If incomplete with no output_text, create empty structure
-        response.output_text = JSON.stringify({ issues: [], pagesScanned: 0, auditedUrls: [] })
+        response.output_text = JSON.stringify({ issues: [], auditedUrls: [] })
       } else if (outputText) {
         // Update response with extracted text
         response.output_text = outputText
@@ -639,7 +628,7 @@ export async function pollAuditStatus(responseId: string, tier?: AuditTier): Pro
       const reasoningSummaries = extractReasoningSummaries(response)
       result.reasoningSummaries = reasoningSummaries
       
-      console.log(`[Audit] ✅ Complete: ${result.issues.length} issues, ${result.pagesScanned} pages, ${actualCrawledUrls.length} URLs audited`)
+      console.log(`[Audit] ✅ Complete: ${result.issues.length} issues, ${result.pagesAudited} pages audited, ${actualCrawledUrls.length} URLs`)
       return result
     }
 
@@ -666,7 +655,7 @@ export async function pollAuditStatus(responseId: string, tier?: AuditTier): Pro
 // ============================================================================
 async function transformToStructuredJSON(plainText: string, domain: string): Promise<string> {
   if (!plainText || plainText.trim().length === 0) {
-    return JSON.stringify({ issues: [], pagesScanned: 0, auditedUrls: [] })
+    return JSON.stringify({ issues: [], auditedUrls: [] })
   }
   
   const openai = new OpenAI({
@@ -697,7 +686,6 @@ Return ONLY valid JSON matching this exact structure:
       ]
     }
   ],
-  "pagesScanned": <number>,
   "auditedUrls": ["<actual URLs from text>"]
 }
 
@@ -705,7 +693,6 @@ CRITICAL RULES:
 - Extract real URLs from the text - never use placeholders like "example.com"
 - If no URLs are found in the text, use empty arrays
 - Extract actual snippets showing the error
-- Count pages scanned from the text
 - Return ONLY valid JSON, no markdown code blocks
 - If the text mentions "${domain}", use that as the base URL`
 
@@ -989,18 +976,19 @@ function parseAuditResponse(response: any, tier: AuditTier): AuditResult {
     throw new Error("AI model returned data in unexpected format. Please try again.")
   }
 
-  const pagesScanned = typeof validated.pagesScanned === "number" ? validated.pagesScanned : 0
-  
   // Extract actual crawled URLs from response output (more accurate than text parsing)
   const actualCrawledUrls = extractCrawledUrls(response)
   const auditedUrls = actualCrawledUrls.length > 0 ? actualCrawledUrls : (Array.isArray(validated.auditedUrls) ? validated.auditedUrls : [])
+  
+  // Calculate pagesAudited from actual crawled URLs (accurate count)
+  const pagesAudited = actualCrawledUrls.length > 0 ? actualCrawledUrls.length : (auditedUrls.length > 0 ? auditedUrls.length : 0)
 
   // Validate issues have locations
   validateIssues(validated.issues)
 
   return {
     issues: validated.issues,
-    pagesScanned,
+    pagesAudited,
     auditedUrls,
     responseId: response.id,
     status: "completed",

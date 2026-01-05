@@ -171,7 +171,7 @@ export async function POST(request: Request) {
         domain: storageDomain,
         title,
         brand_name: brandName,
-        pages_scanned: 0, // Will be updated when audit completes
+        pages_audited: 0, // Will be updated when audit completes
         issues_json: { issues: [], auditedUrls: [], status: 'pending' },
         is_preview: !isAuthenticated || plan === 'free',
       })
@@ -217,7 +217,7 @@ export async function POST(request: Request) {
           const mockData = createMockAuditData(normalized, 10)
           result = {
             issues: mockData.issues,
-            pagesScanned: mockData.pagesScanned,
+            pagesAudited: mockData.pagesAudited,
             auditedUrls: mockData.auditedUrls,
             status: 'completed',
             tier: auditTier,
@@ -281,7 +281,7 @@ export async function POST(request: Request) {
         const { error: updateErr } = await supabaseAdmin
           .from('brand_audit_runs')
           .update({
-            pages_scanned: result.pagesScanned,
+            pages_audited: result.pagesAudited,
             issues_json: issuesJson,
           })
           .eq('id', runId)
@@ -355,7 +355,7 @@ export async function POST(request: Request) {
       sessionToken: finalSessionToken,
       usage: null, // Will be available after audit completes
       meta: { 
-        pagesScanned: 0,
+        pagesAudited: 0,
         auditedUrls: [],
         tier: auditTier,
       },

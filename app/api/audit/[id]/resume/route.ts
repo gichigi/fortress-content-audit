@@ -85,7 +85,7 @@ export async function POST(
         responseId,
         message: 'Audit is running. Poll for status updates.',
         progress: {
-          pagesScanned: result.pagesScanned || 0,
+          pagesAudited: result.pagesAudited || 0,
           issuesFound: result.issues?.length || 0,
         },
       })
@@ -104,7 +104,7 @@ export async function POST(
       const { error: updateErr } = await supabaseAdmin
         .from('brand_audit_runs')
         .update({
-          pages_scanned: result.pagesScanned,
+          pages_audited: result.pagesAudited,
           issues_json: updatedIssuesJson,
         })
         .eq('id', id)
@@ -151,7 +151,7 @@ export async function POST(
         issues: filteredIssues,
         totalIssues: filteredIssues.length,
         meta: {
-          pagesScanned: result.pagesScanned,
+          pagesAudited: result.pagesAudited,
           auditedUrls: result.auditedUrls || [],
         },
       })

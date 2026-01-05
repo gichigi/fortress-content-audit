@@ -173,7 +173,7 @@ export function AuditResults({
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
             <div className="flex items-center gap-2 bg-muted/50 px-3 py-1.5 rounded-full">
               <FileText className="h-4 w-4" />
-              <span>{results.meta?.pagesScanned || 0} pages scanned</span>
+              <span>{results.meta?.pagesAudited || 0} pages audited</span>
             </div>
             {results.meta?.discoveredPages && results.meta.discoveredPages.length > 0 && (
               <Button

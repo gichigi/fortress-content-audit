@@ -30,9 +30,9 @@ export interface InterstitialLoaderProps extends React.HTMLAttributes<HTMLDivEle
    */
   pagesBeingCrawled?: string[]
   /**
-   * Number of pages scanned so far
+   * Number of pages audited so far
    */
-  pagesScanned?: number
+  pagesAudited?: number
   /**
    * Reasoning summaries from the model's thinking process
    */
@@ -49,7 +49,7 @@ const InterstitialLoader = React.forwardRef<HTMLDivElement, InterstitialLoaderPr
       zIndex = 50,
       open = true,
       pagesBeingCrawled = [],
-      pagesScanned = 0,
+      pagesAudited = 0,
       reasoningSummaries = [],
       children,
       ...props
@@ -134,11 +134,11 @@ const InterstitialLoader = React.forwardRef<HTMLDivElement, InterstitialLoaderPr
           )}
           
           {/* Progress info */}
-          {(pagesScanned > 0 || pagesBeingCrawled.length > 0) && (
+          {(pagesAudited > 0 || pagesBeingCrawled.length > 0) && (
             <div className="mt-6 space-y-3 text-left max-w-lg mx-auto">
-              {pagesScanned > 0 && (
+              {pagesAudited > 0 && (
                 <p className="text-sm text-muted-foreground text-center">
-                  Pages scanned: {pagesScanned}
+                  Pages audited: {pagesAudited}
                 </p>
               )}
               {pagesBeingCrawled.length > 0 && (

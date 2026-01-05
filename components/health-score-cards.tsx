@@ -9,6 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { getHealthScoreTextColor } from "@/lib/health-score"
 
 interface HealthScoreCardsProps {
   currentScore?: {
@@ -20,11 +21,12 @@ interface HealthScoreCardsProps {
       criticalPages: number
     }
   }
+  pagesAudited?: number | null
   previousScore?: number
   loading?: boolean
 }
 
-export function HealthScoreCards({ currentScore, previousScore, loading }: HealthScoreCardsProps) {
+export function HealthScoreCards({ currentScore, pagesAudited, previousScore, loading }: HealthScoreCardsProps) {
   // Show loading state only while actively loading
   if (loading) {
     return (
@@ -59,12 +61,7 @@ export function HealthScoreCards({ currentScore, previousScore, loading }: Healt
       <Card className="@container/card border border-border">
         <CardHeader className="relative">
           <CardDescription>Health Score</CardDescription>
-          <CardTitle className={`@[250px]/card:text-3xl text-2xl font-semibold tabular-nums ${
-            score >= 95 ? 'text-green-600' :
-            score >= 80 ? 'text-yellow-600' :
-            score >= 50 ? 'text-orange-600' :
-            'text-destructive'
-          }`}>
+          <CardTitle className={`@[250px]/card:text-3xl text-2xl font-semibold tabular-nums ${getHealthScoreTextColor(score)}`}>
             {score}/100
           </CardTitle>
           {previousScore !== undefined && (
@@ -129,7 +126,10 @@ export function HealthScoreCards({ currentScore, previousScore, loading }: Healt
         <CardHeader className="relative">
           <CardDescription>Pages with Issues</CardDescription>
           <CardTitle className="@[250px]/card:text-3xl text-2xl font-semibold tabular-nums">
-            {metrics.pagesWithIssues || 0}
+            {pagesAudited !== null && pagesAudited !== undefined 
+              ? `[${metrics.pagesWithIssues || 0}/${pagesAudited}]`
+              : (metrics.pagesWithIssues || 0)
+            }
           </CardTitle>
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1 text-sm">
@@ -137,7 +137,10 @@ export function HealthScoreCards({ currentScore, previousScore, loading }: Healt
             Pages requiring content fixes
           </div>
           <div className="text-muted-foreground">
-            Unique pages with active issues
+            {pagesAudited !== null && pagesAudited !== undefined
+              ? `${metrics.pagesWithIssues || 0} pages with issues out of ${pagesAudited} pages audited`
+              : 'Unique pages with active issues'
+            }
           </div>
         </CardFooter>
       </Card>

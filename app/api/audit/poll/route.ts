@@ -189,7 +189,7 @@ export async function POST(request: Request) {
         responseId,
         message: 'Audit is still running. Check back in a few seconds.',
         progress: {
-          pagesScanned: result.pagesScanned || 0,
+          pagesAudited: result.pagesAudited || 0,
           issuesFound: result.issues?.length || 0,
           auditedUrls: result.auditedUrls || [],
           reasoningSummaries: result.reasoningSummaries || [],
@@ -249,7 +249,7 @@ export async function POST(request: Request) {
           console.log(`[Poll] No issues found on homepage, returning mock issues for ${normalized}`)
           const mockData = createMockAuditData(normalized, 10)
           filteredIssues = mockData.issues
-          result.pagesScanned = mockData.pagesScanned
+          result.pagesAudited = mockData.pagesAudited
           result.auditedUrls = mockData.auditedUrls
         }
       }
@@ -264,7 +264,7 @@ export async function POST(request: Request) {
       let updateQuery = supabaseAdmin
         .from('brand_audit_runs')
         .update({
-          pages_scanned: result.pagesScanned,
+          pages_audited: result.pagesAudited,
           issues_json: issuesJson,
         })
         .eq('id', runId)
@@ -280,7 +280,7 @@ export async function POST(request: Request) {
       if (updateErr) {
         console.error('[Poll] Failed to update audit run:', updateErr)
       } else {
-        console.log(`[Poll] ✅ Audit completed and updated: ${runId} (${result.issues?.length || 0} issues, ${result.pagesScanned || 0} pages)`)
+        console.log(`[Poll] ✅ Audit completed and updated: ${runId} (${result.issues?.length || 0} issues, ${result.pagesAudited || 0} pages audited)`)
         
         // Save issues to issues table
         if (filteredIssues.length > 0) {
@@ -362,7 +362,7 @@ export async function POST(request: Request) {
                 customerName: userName,
                 domain: auditRun.domain || 'your website',
                 totalIssues: filteredIssues.length,
-                pagesScanned: result.pagesScanned || 0,
+                pagesAudited: result.pagesAudited || 0,
                 auditId: runId,
               })
 
@@ -442,7 +442,7 @@ export async function POST(request: Request) {
       totalIssues: responseIssues.length,
       usage, // Include usage info
       meta: {
-        pagesScanned: result.pagesScanned,
+        pagesAudited: result.pagesAudited,
         auditedUrls: result.auditedUrls || [],
         tier: result.tier,
       },

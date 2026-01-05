@@ -139,7 +139,7 @@ describe('Database Storage', () => {
           user_id: null,
           session_token: expiredToken,
           domain: testDomain,
-          pages_scanned: mockData.pagesScanned,
+          pages_audited: mockData.pagesAudited,
           issues_json: { groups: mockData.groups },
           created_at: expiredTime.toISOString(),
         })
@@ -314,7 +314,7 @@ describe('Database Storage', () => {
       expect(mockData.groups).toBeDefined()
       expect(Array.isArray(mockData.groups)).toBe(true)
       expect(mockData.groups.length).toBe(5)
-      expect(mockData.pagesScanned).toBeGreaterThan(0)
+      expect(mockData.pagesAudited).toBeGreaterThan(0)
       expect(mockData.auditedUrls).toBeDefined()
 
       mockData.groups.forEach(group => {

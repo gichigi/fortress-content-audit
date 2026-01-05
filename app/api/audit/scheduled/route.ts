@@ -109,7 +109,7 @@ export async function POST(request: Request) {
             user_id: scheduled.user_id,
             guideline_id: null,
             domain: normalizedDomain,
-            pages_scanned: result.pagesScanned,
+            pages_audited: result.pagesAudited,
             issues_json: issuesJson,
             is_preview: false,
             scheduled_audit_id: scheduled.id,

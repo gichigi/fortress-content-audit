@@ -48,7 +48,7 @@ export interface AuditCompletionEmailData {
   customerName?: string;
   domain: string;
   totalIssues: number;
-  pagesScanned: number;
+  pagesAudited: number;
   auditId: string;
 }
 
@@ -341,7 +341,7 @@ Founder, Fortress
             <p style="margin: 0 0 10px 0; font-weight: 500;">Audit Summary:</p>
             <ul style="margin: 0; padding-left: 20px;">
               <li style="margin-bottom: 8px;"><strong>${data.totalIssues}</strong> issue${data.totalIssues === 1 ? '' : 's'} found</li>
-              <li style="margin-bottom: 0;"><strong>${data.pagesScanned}</strong> page${data.pagesScanned === 1 ? '' : 's'} scanned</li>
+              <li style="margin-bottom: 0;"><strong>${data.pagesAudited}</strong> page${data.pagesAudited === 1 ? '' : 's'} audited</li>
             </ul>
           </div>
           
@@ -375,7 +375,7 @@ Your content audit for ${data.domain} is complete!
 
 Audit Summary:
 - ${data.totalIssues} issue${data.totalIssues === 1 ? '' : 's'} found
-- ${data.pagesScanned} page${data.pagesScanned === 1 ? '' : 's'} scanned
+- ${data.pagesAudited} page${data.pagesAudited === 1 ? '' : 's'} audited
 
 View your audit results: ${auditUrl}
 

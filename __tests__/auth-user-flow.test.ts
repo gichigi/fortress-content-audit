@@ -290,7 +290,7 @@ describe('Auth & User Flow', () => {
       // Mock the audit function
       ;(miniAudit as jest.Mock).mockResolvedValue({
         groups: mockData.groups,
-        pagesScanned: mockData.pagesScanned,
+        pagesAudited: mockData.pagesAudited,
         auditedUrls: mockData.auditedUrls,
         status: 'completed',
         tier: 'FREE',

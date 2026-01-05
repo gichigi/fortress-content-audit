@@ -177,7 +177,7 @@ async function findOrCreateAudit(userId: string, auditId?: string) {
     .insert({
       user_id: userId,
       domain: 'example.com',
-      pages_scanned: 0,
+      pages_audited: 0,
       issues_json: { issues: [], auditedUrls: [] },
       is_preview: false,
     })

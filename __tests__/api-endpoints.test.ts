@@ -91,7 +91,7 @@ describe('API Endpoints', () => {
       // Mock the audit function to return mock data
       ;(miniAudit as jest.Mock).mockResolvedValue({
         groups: mockData.groups,
-        pagesScanned: mockData.pagesScanned,
+        pagesAudited: mockData.pagesAudited,
         auditedUrls: mockData.auditedUrls,
         status: 'completed',
         tier: 'FREE',
@@ -160,7 +160,7 @@ describe('API Endpoints', () => {
       // Mock the audit function
       ;(miniAudit as jest.Mock).mockResolvedValue({
         groups: mockData.groups,
-        pagesScanned: mockData.pagesScanned,
+        pagesAudited: mockData.pagesAudited,
         auditedUrls: mockData.auditedUrls,
         status: 'completed',
         tier: 'FREE',
@@ -333,7 +333,7 @@ describe('API Endpoints', () => {
       // Mock poll to return in_progress
       ;(pollAuditStatus as jest.Mock).mockResolvedValue({
         status: 'in_progress',
-        pagesScanned: 5,
+        pagesAudited: 5,
         groups: [],
       })
 
@@ -368,7 +368,7 @@ describe('API Endpoints', () => {
       ;(pollAuditStatus as jest.Mock).mockResolvedValue({
         status: 'completed',
         groups: mockData.groups,
-        pagesScanned: mockData.pagesScanned,
+        pagesAudited: mockData.pagesAudited,
         auditedUrls: mockData.auditedUrls,
       })
 
@@ -573,7 +573,7 @@ describe('API Endpoints', () => {
       // Verify structure matches what API expects
       expect(mockData.groups).toBeDefined()
       expect(Array.isArray(mockData.groups)).toBe(true)
-      expect(mockData.pagesScanned).toBeGreaterThan(0)
+      expect(mockData.pagesAudited).toBeGreaterThan(0)
       
       // Verify groups structure
       mockData.groups.forEach(group => {

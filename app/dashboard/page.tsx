@@ -42,7 +42,7 @@ interface AuditRun {
   domain: string | null
   title: string | null
   brand_name: string | null
-  pages_scanned: number | null
+  pages_audited: number | null
   issues_json: any
   created_at: string | null
   guideline_id: string | null
@@ -351,7 +351,12 @@ export default function DashboardPage() {
         .limit(50)
 
       if (error) throw error
-      setAudits(data || [])
+      // Map database results to handle both old (pages_scanned) and new (pages_audited) column names
+      const mappedAudits = (data || []).map((audit: any) => ({
+        ...audit,
+        pages_audited: audit.pages_audited ?? audit.pages_scanned ?? null,
+      }))
+      setAudits(mappedAudits)
       
       // Issues are now loaded via useAuditIssues hook when mostRecentAudit changes
     } catch (error) {
@@ -1264,6 +1269,7 @@ export default function DashboardPage() {
                       criticalPages: metrics.criticalPages,
                     }
                   } : healthScoreData?.currentScore}
+                  pagesAudited={mostRecentAudit?.pages_audited ?? null}
                   previousScore={previousScore}
                   loading={tableRowsLoading || healthScoreLoading}
                 />
