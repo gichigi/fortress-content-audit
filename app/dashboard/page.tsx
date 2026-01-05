@@ -836,9 +836,13 @@ export default function DashboardPage() {
               pollForCompletion()
             } else if (data.status === 'failed') {
               setStartingAudit(false)
+              // Check for bot protection error message
+              const botProtectionMsg = data.error?.toLowerCase().includes('bot protection')
+                ? data.error
+                : null
               toast({
                 title: "Audit failed",
-                description: data.error || "The audit encountered an error. Please try again.",
+                description: botProtectionMsg || data.error || "The audit encountered an error. Please try again.",
                 variant: "error",
               })
             } else {
@@ -870,7 +874,11 @@ export default function DashboardPage() {
         let errorData: any = {}
         try {
           errorData = await response.json()
-          errorMessage = errorData.message || errorData.error || errorMessage
+          // Check for bot protection error message before generic error handling
+          const botProtectionMsg = errorData.error?.toLowerCase().includes('bot protection')
+            ? errorData.error
+            : null
+          errorMessage = botProtectionMsg || errorData.message || errorData.error || errorMessage
         } catch {
           errorMessage = response.statusText || errorMessage
         }
@@ -891,8 +899,10 @@ export default function DashboardPage() {
       let errorMessage = "Failed to start audit. Please try again."
       if (error instanceof Error) {
         errorMessage = error.message
-        // Map common error messages to user-friendly versions
-        if (error.message.includes("Audit generation failed") || error.message.includes("generation failed")) {
+        // Check for bot protection first
+        if (error.message.toLowerCase().includes("bot protection")) {
+          errorMessage = error.message
+        } else if (error.message.includes("Audit generation failed") || error.message.includes("generation failed")) {
           errorMessage = "The audit could not be started. This might be due to a temporary service issue. Please try again in a moment."
         } else if (error.message.includes("rate limit") || error.message.includes("429") || error.message.includes("Daily limit")) {
           // Keep the original message for rate limits as it's already user-friendly

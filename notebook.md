@@ -2,8 +2,8 @@
 **Testing notes**
 
 # dash
-- ensure error validation and firewall works (and for homepage/run new audit)
-- lower verbosity on issues and impact
+- ensure error validation and user errors for firewall/anti-bot protection are implemented for homepage/dashboard
+- low verbosity on issues and impact w/o truncation
 
 ## pricing
 will be rewritten
@@ -12,3 +12,5 @@ will be rewritten
 update metadata to reflect this project not aistyleguide
 create simple logo
 re-enable daily audit limit for plans
+- deslop
+- why 2 prompts in /audit.ts

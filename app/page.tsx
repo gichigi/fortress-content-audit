@@ -266,8 +266,11 @@ export default function Home() {
                 console.log('[Homepage] Received session token for audit:', data.sessionToken)
               }
             } else {
-              // Bot protection or other errors
-              setApiError(data.error || "Audit failed")
+              // Bot protection or other errors - check for bot protection message
+              const botProtectionMsg = data.error?.toLowerCase().includes('bot protection')
+                ? data.error
+                : null
+              setApiError(botProtectionMsg || data.error || "Audit failed")
             }
           } catch (error) {
             console.error('Error parsing audit response:', error)
@@ -296,7 +299,11 @@ export default function Home() {
           } else if (response.status === 401) {
             errorMessage = 'Please sign in'
           } else if (response.status === 500) {
-            errorMessage = 'Server error. Try again.'
+            // Check for bot protection error message
+            const botProtectionMsg = errorData.error?.toLowerCase().includes('bot protection')
+              ? errorData.error
+              : null
+            errorMessage = botProtectionMsg || 'Server error. Try again.'
           } else {
             errorMessage = errorData.error || errorData.message || `Failed to start audit`
           }

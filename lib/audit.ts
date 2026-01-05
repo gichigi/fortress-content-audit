@@ -30,9 +30,10 @@ If you encounter bot protection (Cloudflare, CAPTCHA, access denied), include an
 If you find no issues, return an empty array.
 
 For each issue, provide:
-- Title, URL, snippet, suggested fix
+- Title (keep concise, under 10 words), URL, snippet, suggested fix
 - Category: 'typos', 'grammar', 'punctuation', 'seo', 'factual', 'links', 'terminology', 'bot_protection'
 - Severity: 'low', 'medium', or 'high'
+- Impact (keep brief, 1-2 sentences)
 
 `
 

@@ -159,7 +159,7 @@ function createColumns(
       accessorKey: "impact",
       header: "Impact",
       cell: ({ row }) => (
-        <div className="max-w-md truncate text-sm text-muted-foreground">
+        <div className="max-w-md text-sm text-muted-foreground break-words">
           {row.original.impact}
         </div>
       ),
