@@ -583,6 +583,16 @@ export default function DashboardPage() {
   const toggleAutoAudit = async (domain: string, enabled: boolean) => {
     if (!authToken) return
 
+    // Optimistic update - update UI immediately for instant feedback
+    setScheduledAudits((prev) => {
+      const existing = prev.find(sa => sa.domain === domain)
+      if (existing) {
+        return prev.map(sa => sa.domain === domain ? { ...existing, enabled } : sa)
+      } else {
+        return [...prev, { domain, enabled, next_run: null }]
+      }
+    })
+
     try {
       const response = await fetch('/api/audit/scheduled/settings', {
         method: 'POST',
@@ -595,7 +605,7 @@ export default function DashboardPage() {
 
       if (response.ok) {
         const data = await response.json()
-        // Update local state
+        // Update with server response (includes next_run date)
         setScheduledAudits((prev) => {
           const existing = prev.find(sa => sa.domain === domain)
           if (existing) {
@@ -685,6 +695,16 @@ export default function DashboardPage() {
       }
     } catch (error) {
       console.error("Error toggling auto audit:", error)
+      
+      // Revert optimistic update on error
+      setScheduledAudits((prev) => {
+        const existing = prev.find(sa => sa.domain === domain)
+        if (existing) {
+          return prev.map(sa => sa.domain === domain ? { ...existing, enabled: !enabled } : sa)
+        }
+        return prev
+      })
+      
       toast({
         title: "Unable to update auto audit settings",
         description: error instanceof Error ? error.message : "Please try again or contact support if the issue persists.",
@@ -702,14 +722,15 @@ export default function DashboardPage() {
       return
     }
 
+    // TEMPORARILY DISABLED: Daily limit check for testing
     // Check if daily limit reached
-    if (usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit) {
-      toast({
-        title: "Daily limit reached",
-        description: `You've reached your daily limit of ${usageInfo.limit} audit${usageInfo.limit === 1 ? '' : 's'}. Try again tomorrow${plan === 'free' ? ' or upgrade to Pro for 5 domains' : ''}.`,
-      })
-      return
-    }
+    // if (usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit) {
+    //   toast({
+    //     title: "Daily limit reached",
+    //     description: `You've reached your daily limit of ${usageInfo.limit} audit${usageInfo.limit === 1 ? '' : 's'}. Try again tomorrow${plan === 'free' ? ' or upgrade to Pro for 5 domains' : ''}.`,
+    //   })
+    //   return
+    // }
 
     // Set loading state immediately for user feedback
     setStartingAudit(true)
@@ -736,23 +757,96 @@ export default function DashboardPage() {
         ;(async () => {
           try {
             const data = await response.json()
-            setStartingAudit(false)
             
             if (data.status === 'completed') {
-              await Promise.all([
-                loadAudits(authToken, selectedDomain),
-                loadHealthScore(authToken),
-                loadUsageInfo(authToken, selectedDomain),
-                refetch()
-              ])
+              // Audit already completed (very fast or mock)
               toast({
                 title: "Audit completed",
                 description: "Your audit results are ready.",
               })
-            } else {
+              window.location.reload()
+            } else if (data.status === 'pending') {
+              // Audit running in background - poll until complete
+              const pollForCompletion = async () => {
+                const maxAttempts = 15 // ~60 seconds max (4s intervals)
+                let attempts = 0
+                
+                const poll = async () => {
+                  try {
+                    const pollResponse = await fetch(`/api/audit/${data.runId}`, {
+                      headers: { 'Authorization': `Bearer ${authToken}` }
+                    })
+                    
+                    if (!pollResponse.ok) {
+                      attempts++
+                      if (attempts < maxAttempts) {
+                        setTimeout(poll, 4000)
+                      } else {
+                        // Timeout - reload anyway, results may be there
+                        window.location.reload()
+                      }
+                      return
+                    }
+                    
+                    const pollData = await pollResponse.json()
+                    
+                    if (pollData.status === 'completed') {
+                      toast({
+                        title: "Audit completed",
+                        description: "Your audit results are ready.",
+                      })
+                      window.location.reload()
+                      return
+                    }
+                    
+                    if (pollData.status === 'failed') {
+                      setStartingAudit(false)
+                      toast({
+                        title: "Audit failed",
+                        description: pollData.error || "The audit encountered an error. Please try again.",
+                        variant: "error",
+                      })
+                      return
+                    }
+                    
+                    // Still pending - continue polling
+                    attempts++
+                    if (attempts < maxAttempts) {
+                      setTimeout(poll, 4000) // Poll every 4 seconds
+                    } else {
+                      // Timeout - reload anyway
+                      console.log('[Dashboard] Poll timeout, reloading anyway')
+                      window.location.reload()
+                    }
+                  } catch (pollError) {
+                    console.error('[Dashboard] Poll error:', pollError)
+                    attempts++
+                    if (attempts < maxAttempts) {
+                      setTimeout(poll, 4000)
+                    } else {
+                      window.location.reload()
+                    }
+                  }
+                }
+                
+                // Start polling after initial delay
+                setTimeout(poll, 4000)
+              }
+              
+              pollForCompletion()
+            } else if (data.status === 'failed') {
+              setStartingAudit(false)
               toast({
                 title: "Audit failed",
-                description: data.error || `Audit failed with status: ${data.status || 'unknown'}`,
+                description: data.error || "The audit encountered an error. Please try again.",
+                variant: "error",
+              })
+            } else {
+              // Unknown status - treat as error
+              setStartingAudit(false)
+              toast({
+                title: "Audit failed",
+                description: `Unexpected status: ${data.status || 'unknown'}`,
                 variant: "error",
               })
             }
@@ -817,11 +911,9 @@ export default function DashboardPage() {
         description: errorMessage || "Please try again in a moment.",
         variant: "error",
       })
-    } finally {
-      // Always clear starting state in finally as a safety net
-      // (should already be cleared above, but this ensures cleanup)
-      setStartingAudit(false)
     }
+    // Note: No finally block - we intentionally keep startingAudit=true for successful audits
+    // until window.location.reload() completes. All error paths above already clear the state.
   }
 
   const loadDomains = async (token: string) => {
@@ -1127,20 +1219,25 @@ export default function DashboardPage() {
                     )}
                     <Button
                       onClick={handleStartAudit}
-                      disabled={(usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit) || startingAudit}
-                      variant={usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit ? "outline" : "default"}
-                      className={usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit ? "opacity-70 cursor-not-allowed border-muted-foreground/50" : ""}
+                      disabled={startingAudit}
+                      // TEMPORARILY DISABLED: Daily limit check for testing
+                      // disabled={(usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit) || startingAudit}
+                      variant="default"
+                      // variant={usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit ? "outline" : "default"}
+                      // className={usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit ? "opacity-70 cursor-not-allowed border-muted-foreground/50" : ""}
                     >
                       {startingAudit ? (
                         <>
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                           Running audit...
                         </>
-                      ) : usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit ? (
-                        "Daily limit reached"
                       ) : (
                         "Run new audit"
                       )}
+                      {/* TEMPORARILY DISABLED: Daily limit reached text */}
+                      {/* ) : usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit ? (
+                        "Daily limit reached"
+                      ) : ( */}
                     </Button>
                   </div>
                 </div>

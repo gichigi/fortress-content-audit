@@ -176,17 +176,48 @@ function createColumns(
         }
         
         if (locationCount === 1) {
-          // Single page: show URL (truncated if long)
+          // Single page: show URL (smart truncation for glanceability)
           const url = locations[0].url
-          const maxLength = 50
-          const displayUrl = url.length > maxLength ? `${url.substring(0, maxLength)}...` : url
+          
+          // Parse URL to show just the path/slug for better glanceability
+          let displayUrl = url
+          try {
+            const urlObj = new URL(url)
+            let path = urlObj.pathname
+            
+            // Remove trailing slash for cleaner display
+            if (path.endsWith('/') && path.length > 1) {
+              path = path.slice(0, -1)
+            }
+            
+            // Extract just the last segment (slug) if path is long
+            if (path.length > 35) {
+              const segments = path.split('/').filter(s => s)
+              if (segments.length > 0) {
+                // Show last 2 segments if available, otherwise just last one
+                const lastSegments = segments.slice(-2).join('/')
+                displayUrl = `/${lastSegments.length > 30 ? lastSegments.substring(0, 27) + '...' : lastSegments}`
+              } else {
+                displayUrl = path.substring(0, 32) + '...'
+              }
+            } else if (path.length > 1) {
+              displayUrl = path
+            } else {
+              // Root path - show domain
+              displayUrl = urlObj.hostname.replace('www.', '')
+            }
+          } catch {
+            // Fallback: simple truncation if URL parsing fails
+            displayUrl = url.length > 35 ? `${url.substring(0, 32)}...` : url
+          }
+          
           return (
             <div className="text-right">
               <a
                 href={url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="font-medium text-primary hover:underline break-all"
+                className="font-medium text-primary hover:underline truncate block max-w-full"
                 title={url}
                 onClick={(e) => e.stopPropagation()}
               >
