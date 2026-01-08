@@ -120,12 +120,11 @@ export async function POST(
         try {
           const issuesToInsert = filteredIssues.map((issue) => ({
             audit_id: id,
-            title: issue.title,
+            page_url: issue.page_url,
             category: issue.category || null,
+            issue_description: issue.issue_description,
             severity: issue.severity,
-            impact: issue.impact || null,
-            fix: issue.fix || null,
-            locations: issue.locations || [],
+            suggested_fix: issue.suggested_fix,
             status: 'active', // All new issues start as active
           }))
 

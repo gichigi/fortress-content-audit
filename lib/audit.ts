@@ -19,48 +19,50 @@ export const AUDIT_TIERS = {
 
 export type AuditTier = keyof typeof AUDIT_TIERS
 
-// Content audit prompt - comprehensive and thorough
-const AUDIT_PROMPT = `You're a world-class web content auditor. 
+// Reusable OpenAI prompt ID for content audits
+// Set via OPENAI_AUDIT_PROMPT_ID env var or use default
+const AUDIT_PROMPT_ID = process.env.OPENAI_AUDIT_PROMPT_ID || "pmpt_695e4d1f54048195a54712ce6446be87061fc1380da21889"
+const AUDIT_PROMPT_VERSION = process.env.OPENAI_AUDIT_PROMPT_VERSION || "13"
 
-Find and report ALL content-related issues you can identify. Be thorough and comprehensive.
-Don't limit yourself — report every issue you find, including minor ones.
-
-If you encounter bot protection (Cloudflare, CAPTCHA, access denied), include an issue with title "BOT_PROTECTION_DETECTED" and category "bot_protection".
-
-If you find no issues, return an empty array.
-
-For each issue, provide:
-- Title (keep concise, under 10 words), URL, snippet, suggested fix
-- Category: 'typos', 'grammar', 'punctuation', 'seo', 'factual', 'links', 'terminology', 'bot_protection'
-- Severity: 'low', 'medium', or 'high'
-- Impact (keep brief, max 15 words)
-
-`
-
-// Zod schemas for structured audit output
-const AuditIssueLocationSchema = z.object({
-  url: z.string(),
-  snippet: z.string(),
+// Zod schemas for structured audit output (new prompt format)
+const NewPromptIssueSchema = z.object({
+  page_url: z.string(),
+  category: z.enum(["Language", "Facts & Consistency", "Links & Formatting"]),
+  issue_description: z.string(),
+  severity: z.enum(["low", "medium", "critical"]),
+  suggested_fix: z.string(),
 })
 
-const AuditIssueSchema = z.object({
-  title: z.string(),
-  category: z.string().optional(), // Optional: 'typos', 'grammar', 'seo', 'factual', 'links', 'terminology'
-  severity: z.enum(["low", "medium", "high"]),
-  impact: z.string().optional(),
-  fix: z.string().optional(),
-  locations: z.array(AuditIssueLocationSchema).min(1), // At least one location required
+const NewPromptResultSchema = z.object({
+  issues: z.array(NewPromptIssueSchema),
+  total_issues: z.number().optional(),
+  pages_with_issues: z.number().optional(),
+  pages_audited: z.number().optional(),
 })
+
+// Legacy schemas removed - using new prompt format directly
 
 const AuditResultSchema = z.object({
-  issues: z.array(AuditIssueSchema),
-  auditedUrls: z.array(z.string()),
+  issues: z.array(NewPromptIssueSchema),
+  auditedUrls: z.array(z.string()).optional(),
+  total_issues: z.number().optional(),
+  pages_with_issues: z.number().optional(),
+  pages_audited: z.number().optional(),
 })
 
 // Full audit result type (includes metadata)
-export type AuditResult = z.infer<typeof AuditResultSchema> & {
-  pagesAudited: number // Derived from openedPages.length (accurate count)
+export type AuditResult = {
+  issues: Array<{
+    page_url: string
+    category: 'Language' | 'Facts & Consistency' | 'Links & Formatting'
+    issue_description: string
+    severity: 'low' | 'medium' | 'critical'
+    suggested_fix: string
+  }>
+  pagesAudited: number // Derived from openedPages.length or response
   auditedUrls?: string[]
+  total_issues?: number
+  pages_with_issues?: number
   responseId?: string
   status?: "completed" | "in_progress" | "queued" | "failed"
   tier?: AuditTier
@@ -69,40 +71,7 @@ export type AuditResult = z.infer<typeof AuditResultSchema> & {
   reasoningSummaries?: string[] // Reasoning summaries from the model's thinking process
 }
 
-// JSON schema for OpenAI structured output
-const AUDIT_JSON_SCHEMA = {
-  type: "object",
-  properties: {
-    issues: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          title: { type: "string" },      // Specific, actionable
-          category: { type: "string" },   // Optional: typos, grammar, seo, etc.
-          severity: { type: "string", enum: ["low", "medium", "high"] },
-          impact: { type: "string" },
-          fix: { type: "string" },
-          locations: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                url: { type: "string" },
-                snippet: { type: "string" }
-              },
-              required: ["url", "snippet"]
-            },
-            minItems: 1
-          }
-        },
-        required: ["title", "severity", "locations"]  // category optional
-      }
-    },
-    auditedUrls: { type: "array", items: { type: "string" } }
-  },
-  required: ["issues", "auditedUrls"]
-}
+// Legacy JSON schema removed - using new prompt format with Zod validation
 
 // ============================================================================
 // Helper functions
@@ -137,42 +106,16 @@ export async function miniAudit(domain: string): Promise<AuditResult> {
     Logger.info(`[MiniAudit] Starting GPT-5 web_search audit for ${normalizedDomain}`)
     const modelStartTime = Date.now()
     
-    const input = `${AUDIT_PROMPT}
-
-Website to audit: ${normalizedDomain}
-
-Instructions:
-1. Open ONLY the homepage at ${normalizedDomain}
-2. From the homepage, identify and open EXACTLY ONE key page (e.g., /about, /pricing, /product, /features, /docs)
-3. Do NOT open any other pages - only homepage + 1 key page
-4. Audit both pages and compare them for cross-page inconsistencies
-
-Return your audit results as a JSON object with this structure:
-{
-  "issues": [
-    {
-      "title": "Issue title",
-      "category": "typos|grammar|punctuation|seo|factual|links|terminology|bot_protection",
-      "severity": "low|medium|high",
-      "impact": "Impact description",
-      "fix": "Suggested fix",
-      "locations": [
-        {
-          "url": "<actual URL where issue was found>",
-          "snippet": "<actual text/HTML showing the issue>"
-        }
-      ]
-    }
-  ],
-  "auditedUrls": ["<homepage URL>", "<key page URL>"]
-}
-
-Return ONLY valid JSON, no markdown code blocks.`
-
     Logger.debug(`[MiniAudit] Sending request to GPT-5.1 with web_search`)
     const params: any = {
       model: "gpt-5.1-2025-11-13",
-      input: input,
+      prompt: {
+        id: AUDIT_PROMPT_ID,
+        version: AUDIT_PROMPT_VERSION,
+        variables: {
+          url: normalizedDomain
+        }
+      },
       tools: [{
         type: "web_search",
         filters: {
@@ -246,17 +189,29 @@ Return ONLY valid JSON, no markdown code blocks.`
     
     Logger.info(`[MiniAudit] Tool calls used: ${toolCallsUsed}/${tier.maxToolCalls} (${openedPages.length} pages opened)`)
     
+    // Check for bot protection string response (not JSON)
+    const trimmedOutput = outputText.trim()
+    if (trimmedOutput === "BOT_PROTECTION_OR_FIREWALL_BLOCKED") {
+      Logger.warn(`[MiniAudit] ⚠️ Bot protection detected by model`)
+      throw new Error("Bot protection detected. Remove firewall/bot protection to crawl this site.")
+    }
+    
     // Try to parse JSON from output
     let parsed: any
     try {
-      const jsonMatch = outputText.match(/\{[\s\S]*\}/)
-      if (jsonMatch) {
-        parsed = JSON.parse(jsonMatch[0])
+      // Check for null response (no issues found)
+      if (trimmedOutput === "null" || trimmedOutput === "null\n") {
+        parsed = { issues: [], total_issues: 0, pages_with_issues: 0, pages_audited: openedPages.length || 0 }
       } else {
-        // Fallback: transform plain text to JSON
-        Logger.debug(`[MiniAudit] Transforming output to structured JSON`)
-        const structuredOutput = await transformToStructuredJSON(outputText, normalizedDomain)
-        parsed = JSON.parse(structuredOutput)
+        const jsonMatch = outputText.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          parsed = JSON.parse(jsonMatch[0])
+        } else {
+          // Fallback: transform plain text to JSON
+          Logger.debug(`[MiniAudit] Transforming output to structured JSON`)
+          const structuredOutput = await transformToStructuredJSON(outputText, normalizedDomain)
+          parsed = JSON.parse(structuredOutput)
+        }
       }
     } catch (parseError) {
       // Transform plain text to JSON
@@ -268,18 +223,12 @@ Return ONLY valid JSON, no markdown code blocks.`
     // Validate with Zod schema
     const validated = AuditResultSchema.parse(parsed)
     
-    // Check if model explicitly reported bot protection
-    const botProtectionIssue = validated.issues.find((issue: any) => 
-      issue.title === 'BOT_PROTECTION_DETECTED' || issue.category === 'bot_protection'
-    )
-    
-    if (botProtectionIssue) {
-      Logger.warn(`[MiniAudit] ⚠️ Bot protection detected by model: ${botProtectionIssue.title}`)
-      throw new Error("Bot protection detected. Remove firewall/bot protection to crawl this site.")
-    }
-    
-    // Use opened pages for auditedUrls if available, otherwise use parsed URLs
-    const auditedUrls = openedPages.length > 0 ? openedPages : (validated.auditedUrls || [])
+    // Use opened pages for auditedUrls if available, otherwise extract from issues
+    const auditedUrls = openedPages.length > 0 
+      ? openedPages 
+      : validated.issues.length > 0
+        ? [...new Set(validated.issues.map((issue: any) => issue.page_url))]
+        : []
     
     // Detect bot protection: if response completed quickly but no pages were opened
     // This indicates the site is blocking automated access
@@ -296,8 +245,10 @@ Return ONLY valid JSON, no markdown code blocks.`
       }
     }
     
-    // Calculate pagesAudited from actual opened pages (accurate count)
-    const pagesAudited = openedPages.length > 0 ? openedPages.length : (auditedUrls.length > 0 ? auditedUrls.length : 1)
+    // Calculate pagesAudited from response or opened pages
+    const pagesAudited = validated.pages_audited 
+      ?? openedPages.length 
+      ?? (auditedUrls.length > 0 ? auditedUrls.length : 1)
     
     Logger.info(`[MiniAudit] ✅ Complete: ${validated.issues.length} issues, ${pagesAudited} pages audited, ${auditedUrls.length} URLs`)
     
@@ -339,50 +290,6 @@ export async function auditSite(
     timeout: 300000, // 5min timeout
   })
 
-  // Build tier-specific page guidance
-  const pageGuidance = tier === "ENTERPRISE"
-    ? "Crawl as many pages as needed to produce a comprehensive audit. Analyze the full site structure, including all major sections, product pages, documentation, and support content."
-    : tier === "PAID"
-    ? "Analyze up to 10-20 important pages (homepage, pricing, features, about, key product pages, documentation). Focus on high-traffic and conversion-critical pages."
-    : "Analyze the homepage and 1-2 key pages (e.g., /about, /pricing, /product)."
-
-  const input = `${AUDIT_PROMPT}
-
-Website to audit: ${normalizedDomain}
-
-Instructions:
-${pageGuidance}
-
-Look for:
-- Cross-page inconsistencies in terminology, pricing, or product names
-- Factual contradictions between different sections
-- Grammar/spelling errors on key landing pages
-- Outdated or conflicting information
-- SEO issues and broken links
-- Accessibility and usability problems
-
-Return your audit results as a JSON object with this structure:
-{
-  "issues": [
-    {
-      "title": "Issue title",
-      "category": "typos|grammar|punctuation|seo|factual|links|terminology|bot_protection",
-      "severity": "low|medium|high",
-      "impact": "Impact description",
-      "fix": "Suggested fix",
-      "locations": [
-        {
-          "url": "<actual URL where issue was found>",
-          "snippet": "<actual text/HTML showing the issue>"
-        }
-      ]
-    }
-  ],
-  "auditedUrls": ["<actual URLs audited>"]
-}
-
-Return ONLY valid JSON, no markdown code blocks.`
-
   try {
     Logger.info(`[AuditSite] Starting GPT-5.1 web_search audit for ${normalizedDomain} (tier: ${tier})`)
     const modelStartTime = Date.now()
@@ -390,7 +297,13 @@ Return ONLY valid JSON, no markdown code blocks.`
     Logger.debug(`[AuditSite] Sending request to GPT-5.1 with web_search (maxToolCalls: ${tierConfig.maxToolCalls})`)
     const params: any = {
       model: tierConfig.model,
-      input: input,
+      prompt: {
+        id: AUDIT_PROMPT_ID,
+        version: AUDIT_PROMPT_VERSION,
+        variables: {
+          url: normalizedDomain
+        }
+      },
       tools: [{
         type: "web_search",
         filters: {
@@ -464,17 +377,29 @@ Return ONLY valid JSON, no markdown code blocks.`
     
     Logger.info(`[AuditSite] Tool calls used: ${toolCallsUsed}/${tierConfig.maxToolCalls} (${openedPages.length} pages opened)`)
     
+    // Check for bot protection string response (not JSON)
+    const trimmedOutput = outputText.trim()
+    if (trimmedOutput === "BOT_PROTECTION_OR_FIREWALL_BLOCKED") {
+      Logger.warn(`[AuditSite] ⚠️ Bot protection detected by model`)
+      throw new Error("Bot protection detected. Remove firewall/bot protection to crawl this site.")
+    }
+    
     // Try to parse JSON from output
     let parsed: any
     try {
-      const jsonMatch = outputText.match(/\{[\s\S]*\}/)
-      if (jsonMatch) {
-        parsed = JSON.parse(jsonMatch[0])
+      // Check for null response (no issues found)
+      if (trimmedOutput === "null" || trimmedOutput === "null\n") {
+        parsed = { issues: [], total_issues: 0, pages_with_issues: 0, pages_audited: openedPages.length || 0 }
       } else {
-        // Fallback: transform plain text to JSON
-        Logger.debug(`[AuditSite] Transforming output to structured JSON`)
-        const structuredOutput = await transformToStructuredJSON(outputText, normalizedDomain)
-        parsed = JSON.parse(structuredOutput)
+        const jsonMatch = outputText.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          parsed = JSON.parse(jsonMatch[0])
+        } else {
+          // Fallback: transform plain text to JSON
+          Logger.debug(`[AuditSite] Transforming output to structured JSON`)
+          const structuredOutput = await transformToStructuredJSON(outputText, normalizedDomain)
+          parsed = JSON.parse(structuredOutput)
+        }
       }
     } catch (parseError) {
       // Transform plain text to JSON
@@ -486,18 +411,12 @@ Return ONLY valid JSON, no markdown code blocks.`
     // Validate with Zod schema
     const validated = AuditResultSchema.parse(parsed)
     
-    // Use opened pages for auditedUrls if available, otherwise use parsed URLs
-    const auditedUrls = openedPages.length > 0 ? openedPages : (validated.auditedUrls || [])
-    
-    // Check if model explicitly reported bot protection
-    const botProtectionIssue = validated.issues.find((issue: any) => 
-      issue.title === 'BOT_PROTECTION_DETECTED' || issue.category === 'bot_protection'
-    )
-    
-    if (botProtectionIssue) {
-      Logger.warn(`[AuditSite] ⚠️ Bot protection detected by model: ${botProtectionIssue.title}`)
-      throw new Error("Bot protection detected. Remove firewall/bot protection to crawl this site.")
-    }
+    // Use opened pages for auditedUrls if available, otherwise extract from issues
+    const auditedUrls = openedPages.length > 0 
+      ? openedPages 
+      : validated.issues.length > 0
+        ? [...new Set(validated.issues.map((issue: any) => issue.page_url))]
+        : []
     
     // Detect bot protection: if response completed quickly but no pages were opened
     // This indicates the site is blocking automated access
@@ -514,8 +433,10 @@ Return ONLY valid JSON, no markdown code blocks.`
       }
     }
     
-    // Calculate pagesAudited from actual opened pages (accurate count)
-    const pagesAudited = openedPages.length > 0 ? openedPages.length : (auditedUrls.length > 0 ? auditedUrls.length : 1)
+    // Calculate pagesAudited from response or opened pages
+    const pagesAudited = validated.pages_audited 
+      ?? openedPages.length 
+      ?? (auditedUrls.length > 0 ? auditedUrls.length : 1)
     
     Logger.info(`[AuditSite] ✅ Complete: ${validated.issues.length} issues, ${pagesAudited} pages audited, ${auditedUrls.length} URLs (tier: ${tier})`)
     
@@ -673,26 +594,22 @@ Return ONLY valid JSON matching this exact structure:
 {
   "issues": [
     {
-      "title": "Issue title",
-      "category": "typos|grammar|punctuation|seo|factual|links|terminology|bot_protection",
-      "severity": "low|medium|high",
-      "impact": "Impact description",
-      "fix": "Suggested fix",
-      "locations": [
-        {
-          "url": "<actual URL from text>",
-          "snippet": "<actual text from audit>"
-        }
-      ]
+      "page_url": "<actual URL from text>",
+      "category": "Language|Facts & Consistency|Links & Formatting",
+      "issue_description": "impact_word: concise problem description",
+      "severity": "low|medium|critical",
+      "suggested_fix": "Direct, actionable fix"
     }
   ],
-  "auditedUrls": ["<actual URLs from text>"]
+  "total_issues": <number>,
+  "pages_with_issues": <number>,
+  "pages_audited": <number>
 }
 
 CRITICAL RULES:
 - Extract real URLs from the text - never use placeholders like "example.com"
-- If no URLs are found in the text, use empty arrays
-- Extract actual snippets showing the error
+- Format issue_description as "impact_word: description" (e.g., "professionalism: typo found")
+- If no issues found, return null (JSON null value)
 - Return ONLY valid JSON, no markdown code blocks
 - If the text mentions "${domain}", use that as the base URL`
 
@@ -762,14 +679,7 @@ function extractDomainForFilter(url: string): string {
   }
 }
 
-// Validation helper for issues
-function validateIssues(issues: any[]): void {
-  issues.forEach((issue, idx) => {
-    if (!Array.isArray(issue.locations) || issue.locations.length === 0) {
-      console.warn(`[Audit] Issue ${idx} missing locations:`, issue.title)
-    }
-  })
-}
+// Validation helper removed - Zod schema handles validation
 
 // Clean JSON response - remove markdown code blocks and extract valid JSON
 // Similar to lib/openai.ts cleanResponse() but optimized for audit responses
@@ -982,9 +892,6 @@ function parseAuditResponse(response: any, tier: AuditTier): AuditResult {
   
   // Calculate pagesAudited from actual crawled URLs (accurate count)
   const pagesAudited = actualCrawledUrls.length > 0 ? actualCrawledUrls.length : (auditedUrls.length > 0 ? auditedUrls.length : 0)
-
-  // Validate issues have locations
-  validateIssues(validated.issues)
 
   return {
     issues: validated.issues,

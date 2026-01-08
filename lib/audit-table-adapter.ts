@@ -7,7 +7,7 @@ import { Issue, IssueStatus } from "@/types/fortress"
  */
 export interface AuditIssueGroup {
   title: string
-  severity: "low" | "medium" | "high"
+  severity: "low" | "medium" | "critical"
   impact: string
   fix: string
   examples: Array<{
@@ -17,15 +17,14 @@ export interface AuditIssueGroup {
   count: number
 }
 
-// Table row structure
+// Table row structure (matches new prompt format)
 export interface AuditTableRow {
   id: string
-  title: string
-  category?: string  // Optional - can remove if not using
-  severity: 'low' | 'medium' | 'high'
-  impact: string
-  fix: string
-  locations: Array<{ url: string; snippet: string }>
+  page_url: string
+  category: 'Language' | 'Facts & Consistency' | 'Links & Formatting'
+  issue_description: string
+  severity: 'low' | 'medium' | 'critical'
+  suggested_fix: string
   status: 'active' | 'ignored' | 'resolved'
 }
 
@@ -38,27 +37,26 @@ export interface AuditTableRow {
 export function transformIssuesToTableRows(issues: Issue[]): AuditTableRow[] {
   return issues.map(issue => ({
     id: issue.id,
-    title: issue.title,
-    category: issue.category,  // Optional
+    page_url: issue.page_url,
+    category: issue.category,
+    issue_description: issue.issue_description,
     severity: issue.severity,
-    impact: issue.impact || '',
-    fix: issue.fix || '',
-    locations: issue.locations || [],
+    suggested_fix: issue.suggested_fix,
     status: issue.status || 'active',
   }))
 }
 
 /**
  * Get severity badge variant
- * High: Destructive (red)
+ * Critical: Destructive (red)
  * Medium: Warning (yellow/orange)
  * Low: Secondary (gray)
  */
 export function getSeverityBadgeVariant(
-  severity: "low" | "medium" | "high"
+  severity: "low" | "medium" | "critical"
 ): "default" | "secondary" | "destructive" | "warning" {
   switch (severity) {
-    case "high":
+    case "critical":
       return "destructive"
     case "medium":
       return "warning"
@@ -74,7 +72,7 @@ export function getSeverityBadgeVariant(
  */
 export function filterBySeverity(
   groups: AuditTableRow[],
-  severity: "all" | "low" | "medium" | "high"
+  severity: "all" | "low" | "medium" | "critical"
 ): AuditTableRow[] {
   if (severity === "all") {
     return groups

@@ -60,25 +60,27 @@ When fixing issues:
   } else {
     issues.forEach((issue: Issue, index: number) => {
       const severity = issue.severity || 'low'
-      const severityEmoji = severity === 'high' ? '🔴' : severity === 'medium' ? '🟡' : '🟢'
+      const severityEmoji = severity === 'critical' ? '🔴' : severity === 'medium' ? '🟡' : '🟢'
       
-      markdown += `### ${index + 1}. ${issue.title || `Issue ${index + 1}`} ${severityEmoji}
+      // Parse issue_description to extract impact and description
+      const description = issue.issue_description
+      const colonIndex = description.indexOf(':')
+      const impactPrefix = colonIndex > 0 ? description.substring(0, colonIndex).trim() : ''
+      const issueText = colonIndex > 0 ? description.substring(colonIndex + 1).trim() : description
+      
+      markdown += `### ${index + 1}. ${issueText} ${severityEmoji}
 
 **Severity**: ${severity.toUpperCase()}
-**Impact**: ${issue.impact || 'Not specified'}
+${impactPrefix ? `**Impact**: ${impactPrefix}\n` : ''}
+**Suggested Fix**: ${issue.suggested_fix || 'No fix provided'}
 
-**Suggested Fix**: ${issue.fix || 'No fix provided'}
-
-**Pages Found**:
+**Page Found**:
 `
 
-      if (issue.locations && Array.isArray(issue.locations) && issue.locations.length > 0) {
-        issue.locations.forEach((location: any, locIndex: number) => {
-          markdown += `${locIndex + 1}. **URL**: ${location.url || 'Unknown URL'}\n`
-          markdown += `   **Snippet**: "${location.snippet || 'No snippet provided'}"\n\n`
-        })
+      if (issue.page_url) {
+        markdown += `**URL**: ${issue.page_url}\n\n`
       } else {
-        markdown += `   No specific locations captured.\n\n`
+        markdown += `   No specific page captured.\n\n`
       }
 
       markdown += `---\n\n`
@@ -128,20 +130,16 @@ export async function generateAuditPDF(audit: AuditRun, issues: Issue[]): Promis
   const auditedUrls = Array.isArray(issuesJson?.auditedUrls) ? issuesJson.auditedUrls : []
   const domain = audit.domain || 'Unknown domain'
   const pagesAudited = audit.pages_audited || audit.pages_scanned || 0
-  // Calculate pages with issues from issue locations
+  // Calculate pages with issues from issue page_url
   const pagesWithIssues = new Set<string>()
   issues.forEach(issue => {
-    if (issue.locations && Array.isArray(issue.locations)) {
-      issue.locations.forEach(loc => {
-        if (loc.url) {
-          try {
-            const url = new URL(loc.url)
-            pagesWithIssues.add(url.pathname || '/')
-          } catch {
-            // Invalid URL, skip
-          }
-        }
-      })
+    if (issue.page_url) {
+      try {
+        const url = new URL(issue.page_url)
+        pagesWithIssues.add(url.pathname || '/')
+      } catch {
+        // Invalid URL, skip
+      }
     }
   })
   const pagesWithIssuesCount = pagesWithIssues.size
@@ -274,30 +272,33 @@ function generateAuditHTML(
 
   issues.forEach((issue: Issue, index: number) => {
     const severity = issue.severity || 'low'
-    const severityClass = severity === 'high' ? 'high' : severity === 'medium' ? 'medium' : 'low'
-    const severityColor = severity === 'high' ? '#dc2626' : severity === 'medium' ? '#f59e0b' : '#3b82f6'
+    const severityClass = severity === 'critical' ? 'high' : severity === 'medium' ? 'medium' : 'low'
+    const severityColor = severity === 'critical' ? '#dc2626' : severity === 'medium' ? '#f59e0b' : '#3b82f6'
+
+    // Parse issue_description to extract impact and description
+    const description = issue.issue_description
+    const colonIndex = description.indexOf(':')
+    const impactPrefix = colonIndex > 0 ? description.substring(0, colonIndex).trim() : ''
+    const issueText = colonIndex > 0 ? description.substring(colonIndex + 1).trim() : description
 
     issuesHTML += `
       <div class="issue-card">
         <div class="issue-header">
-          <h3>${index + 1}. ${escapeHtml(issue.title || `Issue ${index + 1}`)}</h3>
+          <h3>${index + 1}. ${escapeHtml(issueText || `Issue ${index + 1}`)}</h3>
           <span class="severity-badge ${severityClass}" style="background-color: ${severityColor}20; color: ${severityColor};">
             ${severity.toUpperCase()}
           </span>
         </div>
         <div class="issue-content">
-          <p><strong>Impact:</strong> ${escapeHtml(issue.impact || 'Not specified')}</p>
-          <p><strong>Suggested Fix:</strong> ${escapeHtml(issue.fix || 'No fix provided')}</p>
-          ${issue.locations && Array.isArray(issue.locations) && issue.locations.length > 0 ? `
+          ${impactPrefix ? `<p><strong>Impact:</strong> ${escapeHtml(impactPrefix)}</p>` : ''}
+          <p><strong>Suggested Fix:</strong> ${escapeHtml(issue.suggested_fix || 'No fix provided')}</p>
+          ${issue.page_url ? `
             <div class="examples">
-              <strong>Pages Found:</strong>
+              <strong>Page Found:</strong>
               <ul>
-                ${issue.locations.map((loc: any) => `
-                  <li>
-                    <strong>URL:</strong> <a href="${escapeHtml(loc.url || '')}">${escapeHtml(loc.url || 'Unknown URL')}</a><br>
-                    <strong>Snippet:</strong> "${escapeHtml(loc.snippet || 'No snippet')}"
-                  </li>
-                `).join('')}
+                <li>
+                  <strong>URL:</strong> <a href="${escapeHtml(issue.page_url)}">${escapeHtml(issue.page_url)}</a>
+                </li>
               </ul>
             </div>
           ` : ''}

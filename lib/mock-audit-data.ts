@@ -25,189 +25,132 @@ export function createMockAuditData(origin: string = 'https://example.com', issu
     baseUrl = `https://${origin}`
   }
   const issues: Array<{
-    title: string
-    category?: string
-    severity: 'low' | 'medium' | 'high'
-    impact: string
-    fix: string
-    locations: Array<{ url: string; snippet: string }>
+    page_url: string
+    category: 'Language' | 'Facts & Consistency' | 'Links & Formatting'
+    issue_description: string
+    severity: 'low' | 'medium' | 'critical'
+    suggested_fix: string
   }> = []
 
   // Issue templates with realistic examples
   const issueTemplates: Array<{
-    title: string
-    category?: string
-    severity: 'low' | 'medium' | 'high'
-    impact: string
-    fix: string
-    locations: Array<{ url: string; snippet: string }>
+    page_url: string
+    category: 'Language' | 'Facts & Consistency' | 'Links & Formatting'
+    issue_description: string
+    severity: 'low' | 'medium' | 'critical'
+    suggested_fix: string
   }> = [
     {
-      title: "Fix typo: 'suport' → 'support'",
-      category: 'typos',
+      page_url: `${baseUrl}/contact`,
+      category: 'Language',
+      issue_description: "professionalism: 'suport' is misspelled—it should be 'support'.",
       severity: 'medium',
-      impact: 'Reduces credibility and professionalism',
-      fix: "Correct spelling: 'suport' should be 'support'",
-      locations: [
-        { url: `${baseUrl}/contact`, snippet: 'Contact our suport team for help' },
-      ],
+      suggested_fix: "Correct spelling to 'support'.",
     },
     {
-      title: "Fix typo: 'suport' → 'support'",
-      category: 'typos',
+      page_url: `${baseUrl}/help`,
+      category: 'Language',
+      issue_description: "professionalism: 'suport' is misspelled—it should be 'support'.",
       severity: 'medium',
-      impact: 'Reduces credibility and professionalism',
-      fix: "Correct spelling: 'suport' should be 'support'",
-      locations: [
-        { url: `${baseUrl}/help`, snippet: 'Need suport? Email us' },
-      ],
+      suggested_fix: "Correct spelling to 'support'.",
     },
     {
-      title: "Fix typo: 'accomodate' → 'accommodate'",
-      category: 'typos',
+      page_url: `${baseUrl}/about`,
+      category: 'Language',
+      issue_description: "professionalism: 'accomodate' is misspelled—it should be 'accommodate'.",
       severity: 'medium',
-      impact: 'Reduces credibility and professionalism',
-      fix: "Correct spelling: 'accomodate' should be 'accommodate'",
-      locations: [
-        { url: `${baseUrl}/about`, snippet: 'We accomodate all customer needs' },
-      ],
+      suggested_fix: "Correct spelling to 'accommodate'.",
     },
     {
-      title: "Fix typo: 'accomodate' → 'accommodate'",
-      category: 'typos',
+      page_url: `${baseUrl}/services`,
+      category: 'Language',
+      issue_description: "professionalism: 'accomodate' is misspelled—it should be 'accommodate'.",
       severity: 'medium',
-      impact: 'Reduces credibility and professionalism',
-      fix: "Correct spelling: 'accomodate' should be 'accommodate'",
-      locations: [
-        { url: `${baseUrl}/services`, snippet: 'We can accomodate large teams' },
-      ],
+      suggested_fix: "Correct spelling to 'accommodate'.",
     },
     {
-      title: "Fix grammar: 'The team are' → 'The team is'",
-      category: 'grammar',
+      page_url: `${baseUrl}/team`,
+      category: 'Language',
+      issue_description: "professionalism: 'The team are' uses incorrect subject-verb agreement—should be 'The team is'.",
       severity: 'medium',
-      impact: 'Makes content difficult to read and understand',
-      fix: "Fix subject-verb agreement: 'The team are' should be 'The team is'",
-      locations: [
-        { url: `${baseUrl}/team`, snippet: 'The team are working on this project' },
-      ],
+      suggested_fix: "Change to 'The team is'.",
     },
     {
-      title: "Fix punctuation: 'dont' → 'don't'",
-      category: 'punctuation',
+      page_url: `${baseUrl}/faq`,
+      category: 'Language',
+      issue_description: "readability: 'dont' is missing an apostrophe—should be 'don't'.",
       severity: 'low',
-      impact: 'Minor but affects readability',
-      fix: "Add missing apostrophe: 'dont' should be 'don't'",
-      locations: [
-        { url: `${baseUrl}/faq`, snippet: "We dont offer refunds after 30 days" },
-      ],
+      suggested_fix: "Add apostrophe: 'don't'.",
     },
     {
-      title: "Fix punctuation: 'dont' → 'don't'",
-      category: 'punctuation',
+      page_url: `${baseUrl}/terms`,
+      category: 'Language',
+      issue_description: "readability: 'dont' is missing an apostrophe—should be 'don't'.",
       severity: 'low',
-      impact: 'Minor but affects readability',
-      fix: "Add missing apostrophe: 'dont' should be 'don't'",
-      locations: [
-        { url: `${baseUrl}/terms`, snippet: 'You dont need to register' },
-      ],
+      suggested_fix: "Add apostrophe: 'don't'.",
     },
     {
-      title: "Pricing conflict: $29 vs $39",
-      category: 'factual',
-      severity: 'high',
-      impact: 'Confuses users and damages trust',
-      fix: 'Standardize pricing: Use consistent pricing across all pages',
-      locations: [
-        { url: `${baseUrl}/pricing`, snippet: 'Starting at $29/month' },
-        { url: `${baseUrl}/features`, snippet: 'Plans start at $39/month' },
-      ],
+      page_url: `${baseUrl}/pricing`,
+      category: 'Facts & Consistency',
+      issue_description: "trust: Pricing shows $29/month but features page shows $39/month, creating confusion.",
+      severity: 'critical',
+      suggested_fix: "Standardize pricing across all pages to a single consistent amount.",
     },
     {
-      title: "Terminology inconsistency: 'customer' vs 'client' vs 'user'",
-      category: 'terminology',
+      page_url: `${baseUrl}/`,
+      category: 'Facts & Consistency',
+      issue_description: "confidence: Terminology inconsistency—uses 'customer', 'client', and 'user' interchangeably.",
       severity: 'medium',
-      impact: 'Creates confusion about product features',
-      fix: "Standardize to 'customer' across all pages (not 'client' or 'user')",
-      locations: [
-        { url: `${baseUrl}/`, snippet: 'Our customers love the platform' },
-        { url: `${baseUrl}/testimonials`, snippet: 'Our clients report high satisfaction' },
-        { url: `${baseUrl}/support`, snippet: 'Users can contact support anytime' },
-      ],
+      suggested_fix: "Standardize to 'customer' across all pages.",
     },
     {
-      title: "Product name formatting inconsistency",
-      category: 'terminology',
-      severity: 'high',
-      impact: 'Confuses users about product identity',
-      fix: "Standardize to 'ProductName' across all pages",
-      locations: [
-        { url: `${baseUrl}/pricing`, snippet: 'ProductName Pro' },
-        { url: `${baseUrl}/features`, snippet: 'Product-Name Plus' },
-        { url: `${baseUrl}/about`, snippet: 'Product Name Enterprise' },
-      ],
+      page_url: `${baseUrl}/pricing`,
+      category: 'Facts & Consistency',
+      issue_description: "trust: Product name formatting inconsistent—appears as 'ProductName', 'Product-Name', and 'Product Name'.",
+      severity: 'critical',
+      suggested_fix: "Standardize product name formatting across all pages.",
     },
     {
-      title: "Setup time conflict: 5 minutes vs 10 minutes",
-      category: 'factual',
+      page_url: `${baseUrl}/help`,
+      category: 'Facts & Consistency',
+      issue_description: "confidence: Setup time conflict—help page says 5 minutes, docs say 10 minutes.",
       severity: 'medium',
-      impact: 'Conflicting information on same topic',
-      fix: 'Consolidate duplicate content and remove contradictions',
-      locations: [
-        { url: `${baseUrl}/help`, snippet: 'Setup takes 5 minutes' },
-        { url: `${baseUrl}/docs/getting-started`, snippet: 'Setup takes 10 minutes' },
-      ],
+      suggested_fix: "Consolidate conflicting information and use consistent setup time.",
     },
     {
-      title: 'Add H1 tag',
-      category: 'seo',
+      page_url: `${baseUrl}/products`,
+      category: 'Links & Formatting',
+      issue_description: "trust: Page is missing an H1 tag, which hurts SEO and page structure.",
       severity: 'medium',
-      impact: 'Hurts SEO and page structure',
-      fix: 'Add H1 tag to each page with primary keyword',
-      locations: [
-        { url: `${baseUrl}/products`, snippet: 'Page has no H1 tag, only H2 headings' },
-      ],
+      suggested_fix: "Add H1 tag with primary keyword.",
     },
     {
-      title: 'Add H1 tag',
-      category: 'seo',
+      page_url: `${baseUrl}/blog`,
+      category: 'Links & Formatting',
+      issue_description: "trust: Blog listing page is missing an H1 tag.",
       severity: 'medium',
-      impact: 'Hurts SEO and page structure',
-      fix: 'Add H1 tag to each page with primary keyword',
-      locations: [
-        { url: `${baseUrl}/blog`, snippet: 'Missing H1 on blog listing page' },
-      ],
+      suggested_fix: "Add H1 tag to blog listing page.",
     },
     {
-      title: 'Duplicate meta description',
-      category: 'seo',
+      page_url: `${baseUrl}/page1`,
+      category: 'Links & Formatting',
+      issue_description: "credibility: Duplicate meta description used on multiple pages, reducing SEO effectiveness.",
       severity: 'low',
-      impact: 'Reduces SEO effectiveness',
-      fix: 'Create unique meta descriptions for each page',
-      locations: [
-        { url: `${baseUrl}/page1`, snippet: 'Meta: "Learn more about our services"' },
-        { url: `${baseUrl}/page2`, snippet: 'Meta: "Learn more about our services"' },
-      ],
+      suggested_fix: "Create unique meta descriptions for each page.",
     },
     {
-      title: 'Fix broken link: /old-page returns 404',
-      category: 'links',
-      severity: 'high',
-      impact: 'Frustrates users and hurts SEO',
-      fix: 'Fix or remove broken links: Update URLs or redirect to correct pages',
-      locations: [
-        { url: `${baseUrl}/resources`, snippet: 'Link to /old-page returns 404' },
-      ],
+      page_url: `${baseUrl}/resources`,
+      category: 'Links & Formatting',
+      issue_description: "frustration: Link to /old-page returns 404 error.",
+      severity: 'critical',
+      suggested_fix: "Fix or remove broken link—update URL or redirect to correct page.",
     },
     {
-      title: 'Fix broken link: /deprecated-feature returns 404',
-      category: 'links',
-      severity: 'high',
-      impact: 'Frustrates users and hurts SEO',
-      fix: 'Fix or remove broken links: Update URLs or redirect to correct pages',
-      locations: [
-        { url: `${baseUrl}/docs`, snippet: 'Link to /deprecated-feature returns 404' },
-      ],
+      page_url: `${baseUrl}/docs`,
+      category: 'Links & Formatting',
+      issue_description: "frustration: Link to /deprecated-feature returns 404 error.",
+      severity: 'critical',
+      suggested_fix: "Fix or remove broken link—update URL or redirect to correct page.",
     },
   ]
 
@@ -217,12 +160,11 @@ export function createMockAuditData(origin: string = 'https://example.com', issu
   for (let i = 0; i < templatesToUse.length; i++) {
     const template = templatesToUse[i]
     issues.push({
-      title: template.title,
+      page_url: template.page_url,
       category: template.category,
+      issue_description: template.issue_description,
       severity: template.severity,
-      impact: template.impact,
-      fix: template.fix,
-      locations: template.locations,
+      suggested_fix: template.suggested_fix,
     })
   }
 
@@ -231,29 +173,32 @@ export function createMockAuditData(origin: string = 'https://example.com', issu
     const additional = issueCount - issueTemplates.length
     for (let i = 0; i < additional; i++) {
       const baseTemplate = issueTemplates[i % issueTemplates.length]
-      issues.push({
-        title: `${baseTemplate.title} (Additional)`,
-        category: baseTemplate.category,
-        severity: baseTemplate.severity,
-        impact: baseTemplate.impact,
-        fix: baseTemplate.fix,
-        locations: baseTemplate.locations.map((loc) => {
-          try {
-            const url = new URL(loc.url)
-            url.pathname = `/v${i + 2}${url.pathname}`
-            return { ...loc, url: url.toString() }
-          } catch {
-            // Fallback if URL parsing fails
-            return { ...loc, url: `${baseUrl}/v${i + 2}${loc.url.replace(baseUrl, '')}` }
-          }
-        }),
-      })
+      try {
+        const url = new URL(baseTemplate.page_url)
+        url.pathname = `/v${i + 2}${url.pathname}`
+        issues.push({
+          page_url: url.toString(),
+          category: baseTemplate.category,
+          issue_description: `${baseTemplate.issue_description} (Additional)`,
+          severity: baseTemplate.severity,
+          suggested_fix: baseTemplate.suggested_fix,
+        })
+      } catch {
+        // Fallback if URL parsing fails
+        issues.push({
+          page_url: `${baseUrl}/v${i + 2}${baseTemplate.page_url.replace(baseUrl, '')}`,
+          category: baseTemplate.category,
+          issue_description: `${baseTemplate.issue_description} (Additional)`,
+          severity: baseTemplate.severity,
+          suggested_fix: baseTemplate.suggested_fix,
+        })
+      }
     }
   }
 
-  // Generate audited URLs from all locations
+  // Generate audited URLs from all page_urls
   const auditedUrls = Array.from(
-    new Set(issues.flatMap(issue => issue.locations.map(loc => loc.url)))
+    new Set(issues.map(issue => issue.page_url))
   )
 
   return {

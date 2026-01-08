@@ -246,7 +246,7 @@ export function AuditResults({
                     if (results.preview && i >= 7) return null
                     
                     const isSelected = selectedIssueIndex === i
-                    const isHigh = group.severity === 'high'
+                    const isHigh = group.severity === 'critical'
                     const isMedium = group.severity === 'medium'
                     
                     return (
@@ -308,7 +308,7 @@ export function AuditResults({
                   <Card className="border shadow-sm overflow-hidden sticky top-24">
                     {(() => {
                       const group = results.groups[selectedIssueIndex]
-                      const isHigh = group.severity === 'high'
+                      const isHigh = group.severity === 'critical'
                       const isMedium = group.severity === 'medium'
                       const fixIsGated = isFixGated(selectedIssueIndex)
                       

@@ -9,11 +9,11 @@ export interface HealthScoreResult {
   score: number // 0-100
   metrics: {
     totalActive: number
-    totalCritical: number // high-severity issues
+    totalCritical: number // critical-severity issues
     bySeverity: {
       low: number
       medium: number
-      high: number
+      critical: number
     }
     criticalPages: number
     pagesWithIssues: number
@@ -38,7 +38,7 @@ export async function calculateHealthScore(
   // Query issues from issues table (only active issues)
   const { data: issuesData, error } = await (supabaseAdmin as any)
     .from('issues')
-    .select('severity, status, locations')
+    .select('severity, status, page_url')
     .eq('audit_id', audit.id)
     .eq('status', 'active')  // Only active issues
 
@@ -56,7 +56,7 @@ export async function calculateHealthScore(
       metrics: {
         totalActive: 0,
         totalCritical: 0,
-        bySeverity: { low: 0, medium: 0, high: 0 },
+        bySeverity: { low: 0, medium: 0, critical: 0 },
         criticalPages: 0,
         pagesWithIssues: 0,
       },
@@ -67,48 +67,52 @@ export async function calculateHealthScore(
   const bySeverity = {
     low: 0,
     medium: 0,
-    high: 0,
+    critical: 0,
   }
   
   // Track unique pages with issues
   const pagesWithIssuesSet = new Set<string>()
   
-  // Track unique critical pages (pages with high-severity issues)
+  // Track unique critical pages (pages with critical-severity issues)
   const criticalPagesSet = new Set<string>()
   
   issues.forEach((issue: Issue) => {
     // Count by severity
-    bySeverity[issue.severity]++
+    if (issue.severity === 'critical') {
+      bySeverity.critical++
+    } else if (issue.severity === 'medium') {
+      bySeverity.medium++
+    } else {
+      bySeverity.low++
+    }
     
-    // Extract unique pages from locations array
-    if (issue.locations && Array.isArray(issue.locations)) {
-      issue.locations.forEach((loc: { url: string }) => {
-        try {
-          const url = new URL(loc.url)
-          const pagePath = url.pathname || '/'
-          pagesWithIssuesSet.add(pagePath)
-          
-          // If high severity, mark page as critical
-          if (issue.severity === 'high') {
-            criticalPagesSet.add(pagePath)
-          }
-        } catch (e) {
-          console.warn('[HealthScore] Invalid URL in locations:', loc.url)
+    // Extract unique pages from page_url
+    if (issue.page_url) {
+      try {
+        const url = new URL(issue.page_url)
+        const pagePath = url.pathname || '/'
+        pagesWithIssuesSet.add(pagePath)
+        
+        // If critical severity, mark page as critical
+        if (issue.severity === 'critical') {
+          criticalPagesSet.add(pagePath)
         }
-      })
+      } catch (e) {
+        console.warn('[HealthScore] Invalid URL in page_url:', issue.page_url)
+      }
     }
   })
   
   const totalActive = issues.length
-  const totalCritical = bySeverity.high
+  const totalCritical = bySeverity.critical
   const criticalPages = criticalPagesSet.size
   const pagesWithIssues = pagesWithIssuesSet.size
   
-  // Apply formula: 100 - (low×1 + medium×3 + high×7) - (criticalPages×10)
+  // Apply formula: 100 - (low×1 + medium×3 + critical×7) - (criticalPages×10)
   let score = 100
   score -= bySeverity.low * 1
   score -= bySeverity.medium * 3
-  score -= bySeverity.high * 7
+  score -= bySeverity.critical * 7
   score -= criticalPages * 10
   
   // Clamp to 0-100
@@ -145,7 +149,7 @@ export async function calculateAggregatedHealthScore(
   const bySeverity = {
     low: 0,
     medium: 0,
-    high: 0,
+    critical: 0,
   }
   
   const pagesWithIssuesSet = new Set<string>()
@@ -156,7 +160,7 @@ export async function calculateAggregatedHealthScore(
   
   const { data: allIssues, error } = await (supabaseAdmin as any)
     .from('issues')
-    .select('severity, status, locations')
+    .select('severity, status, page_url')
     .in('audit_id', auditIds)
     .eq('status', 'active')
 
@@ -172,7 +176,7 @@ export async function calculateAggregatedHealthScore(
       metrics: {
         totalActive: 0,
         totalCritical: 0,
-        bySeverity: { low: 0, medium: 0, high: 0 },
+        bySeverity: { low: 0, medium: 0, critical: 0 },
         criticalPages: 0,
         pagesWithIssues: 0,
       },
@@ -182,28 +186,32 @@ export async function calculateAggregatedHealthScore(
   // Process issues
   (allIssues || []).forEach((issue: Issue) => {
     // Count by severity
-    bySeverity[issue.severity]++
+    if (issue.severity === 'critical') {
+      bySeverity.critical++
+    } else if (issue.severity === 'medium') {
+      bySeverity.medium++
+    } else {
+      bySeverity.low++
+    }
     
-    // Extract unique pages from locations array
-    if (issue.locations && Array.isArray(issue.locations)) {
-      issue.locations.forEach((loc: { url: string }) => {
-        try {
-          const url = new URL(loc.url)
-          const pagePath = url.pathname || '/'
-          pagesWithIssuesSet.add(pagePath)
-          
-          if (issue.severity === 'high') {
-            criticalPagesSet.add(pagePath)
-          }
-        } catch (e) {
-          console.warn('[HealthScore] Invalid URL in locations:', loc.url)
+    // Extract unique pages from page_url
+    if (issue.page_url) {
+      try {
+        const url = new URL(issue.page_url)
+        const pagePath = url.pathname || '/'
+        pagesWithIssuesSet.add(pagePath)
+        
+        if (issue.severity === 'critical') {
+          criticalPagesSet.add(pagePath)
         }
-      })
+      } catch (e) {
+        console.warn('[HealthScore] Invalid URL in page_url:', issue.page_url)
+      }
     }
   })
   
   const totalActive = allIssues.length
-  const totalCritical = bySeverity.high
+  const totalCritical = bySeverity.critical
   const criticalPages = criticalPagesSet.size
   const pagesWithIssues = pagesWithIssuesSet.size
   
@@ -211,7 +219,7 @@ export async function calculateAggregatedHealthScore(
   let score = 100
   score -= bySeverity.low * 1
   score -= bySeverity.medium * 3
-  score -= bySeverity.high * 7
+  score -= bySeverity.critical * 7
   score -= criticalPages * 10
   
   // Clamp to 0-100

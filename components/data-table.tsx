@@ -129,113 +129,102 @@ function createColumns(
       enableHiding: false,
     },
     {
-      accessorKey: "title",
+      accessorKey: "issue_description",
       header: "Issue",
       cell: ({ row }) => {
         const severity = row.original.severity
         const severityColors = {
-          high: 'bg-red-500',
+          critical: 'bg-red-500',
           medium: 'bg-orange-500', 
           low: 'bg-gray-300'
         }
+        // Parse issue_description to extract impact prefix and description
+        const description = row.original.issue_description
+        const colonIndex = description.indexOf(':')
+        const impactPrefix = colonIndex > 0 ? description.substring(0, colonIndex).trim() : ''
+        const issueText = colonIndex > 0 ? description.substring(colonIndex + 1).trim() : description
+        
         return (
           <div className="flex items-center gap-3">
-            <div className={`w-1 h-4 rounded-full ${severityColors[severity]} shrink-0`} title={severity === 'high' ? 'Critical' : severity} />
-            <div className="font-medium">{row.original.title}</div>
+            <div className={`w-1 h-4 rounded-full ${severityColors[severity]} shrink-0`} title={severity === 'critical' ? 'Critical' : severity} />
+            <div className="flex-1">
+              {impactPrefix && (
+                <span className="text-xs text-muted-foreground uppercase tracking-wide mr-2">{impactPrefix}</span>
+              )}
+              <span className="font-medium">{issueText}</span>
+            </div>
           </div>
         )
       },
       enableHiding: false,
       sortingFn: (rowA, rowB) => {
-        const order = { high: 0, medium: 1, low: 2 }
+        const order = { critical: 0, medium: 1, low: 2 }
         return order[rowA.original.severity] - order[rowB.original.severity]
       },
     },
     {
-      accessorKey: "impact",
-      header: "Impact",
-      cell: ({ row }) => (
-        <div className="max-w-md text-sm text-muted-foreground break-words">
-          {row.original.impact}
-        </div>
-      ),
-    },
-    {
-      accessorKey: "fix",
+      accessorKey: "suggested_fix",
       header: "Fix",
       cell: ({ row }) => (
         <div className="max-w-md text-sm text-muted-foreground break-words">
-          {row.original.fix || '—'}
+          {row.original.suggested_fix || '—'}
         </div>
       ),
     },
     {
-      accessorKey: "locations",
-      header: () => <div className="w-full text-right">Pages</div>,
+      accessorKey: "page_url",
+      header: () => <div className="w-full text-right">Page</div>,
       cell: ({ row }) => {
-        const locations = row.original.locations || []
-        const locationCount = locations.length
+        const url = row.original.page_url
         
-        if (locationCount === 0) {
+        if (!url) {
           return <div className="text-right text-sm text-muted-foreground">—</div>
         }
         
-        if (locationCount === 1) {
-          // Single page: show URL (smart truncation for glanceability)
-          const url = locations[0].url
+        // Parse URL to show just the path/slug for better glanceability
+        let displayUrl = url
+        try {
+          const urlObj = new URL(url)
+          let path = urlObj.pathname
           
-          // Parse URL to show just the path/slug for better glanceability
-          let displayUrl = url
-          try {
-            const urlObj = new URL(url)
-            let path = urlObj.pathname
-            
-            // Remove trailing slash for cleaner display
-            if (path.endsWith('/') && path.length > 1) {
-              path = path.slice(0, -1)
-            }
-            
-            // Extract just the last segment (slug) if path is long
-            if (path.length > 35) {
-              const segments = path.split('/').filter(s => s)
-              if (segments.length > 0) {
-                // Show last 2 segments if available, otherwise just last one
-                const lastSegments = segments.slice(-2).join('/')
-                displayUrl = `/${lastSegments.length > 30 ? lastSegments.substring(0, 27) + '...' : lastSegments}`
-              } else {
-                displayUrl = path.substring(0, 32) + '...'
-              }
-            } else if (path.length > 1) {
-              displayUrl = path
-            } else {
-              // Root path - show domain
-              displayUrl = urlObj.hostname.replace('www.', '')
-            }
-          } catch {
-            // Fallback: simple truncation if URL parsing fails
-            displayUrl = url.length > 35 ? `${url.substring(0, 32)}...` : url
+          // Remove trailing slash for cleaner display
+          if (path.endsWith('/') && path.length > 1) {
+            path = path.slice(0, -1)
           }
           
-          return (
-            <div className="text-right">
-              <a
-                href={url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-medium text-primary hover:underline truncate block max-w-full"
-                title={url}
-                onClick={(e) => e.stopPropagation()}
-              >
-                {displayUrl}
-              </a>
-            </div>
-          )
+          // Extract just the last segment (slug) if path is long
+          if (path.length > 35) {
+            const segments = path.split('/').filter(s => s)
+            if (segments.length > 0) {
+              // Show last 2 segments if available, otherwise just last one
+              const lastSegments = segments.slice(-2).join('/')
+              displayUrl = `/${lastSegments.length > 30 ? lastSegments.substring(0, 27) + '...' : lastSegments}`
+            } else {
+              displayUrl = path.substring(0, 32) + '...'
+            }
+          } else if (path.length > 1) {
+            displayUrl = path
+          } else {
+            // Root path - show domain
+            displayUrl = urlObj.hostname.replace('www.', '')
+          }
+        } catch {
+          // Fallback: simple truncation if URL parsing fails
+          displayUrl = url.length > 35 ? `${url.substring(0, 32)}...` : url
         }
         
-        // Multiple pages: show count only (user can expand to see URLs)
         return (
-          <div className="text-right font-medium">
-            {locationCount} pages
+          <div className="text-right">
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-primary hover:underline truncate block max-w-full"
+              title={url}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {displayUrl}
+            </a>
           </div>
         )
       },
@@ -400,83 +389,14 @@ function IssueActionsDropdown({
   )
 }
 
-// Expandable row component for showing pages and details
+// Simple row component (no expansion needed with single page_url)
 function ExpandableRow({ row }: { row: Row<AuditTableRow> }) {
-  const [isOpen, setIsOpen] = React.useState(false)
-  const locationCount = row.original.locations?.length || 0
-  const isMultiLocation = locationCount > 1
-
-  const handleToggle = (e: React.MouseEvent | React.KeyboardEvent) => {
-    // Don't toggle if clicking on interactive elements
-    const target = e.target as HTMLElement
-    if (target.closest('button') || target.closest('a') || target.closest('[role="menu"]')) {
-      return
-    }
-    // Allow keyboard activation (Enter or Space)
-    if (e.type === 'keydown') {
-      const keyEvent = e as React.KeyboardEvent
-      if (keyEvent.key !== 'Enter' && keyEvent.key !== ' ') {
-        return
-      }
-      keyEvent.preventDefault()
-    }
-    setIsOpen(!isOpen)
-  }
-
   return (
-    <>
-      <TableRow
-        data-state={row.getIsSelected() && "selected"}
-        data-expanded={isOpen}
-        className={isMultiLocation ? "cursor-pointer hover:bg-muted/50 focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2" : ""}
-        onClick={isMultiLocation ? handleToggle : undefined}
-        onKeyDown={isMultiLocation ? handleToggle : undefined}
-        aria-expanded={isMultiLocation ? isOpen : undefined}
-        aria-controls={isMultiLocation ? `expanded-${row.id}` : undefined}
-        tabIndex={isMultiLocation ? 0 : undefined}
-        role={isMultiLocation ? "button" : undefined}
-      >
-        {row.getVisibleCells().map((cell) => {
-          // In the Issue/Title column, show chevron for multi-page issues
-          if (cell.column.id === 'title' && isMultiLocation) {
-            return (
-              <TableCell key={cell.id}>
-                <div className="flex items-center gap-2">
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  <ChevronDownIcon className={`h-3 w-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-                </div>
-              </TableCell>
-            )
-          }
-          return <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
-        })}
-      </TableRow>
-      {/* Only multi-page issues expand to show pages list */}
-      {isOpen && isMultiLocation && (
-        <TableRow>
-          <TableCell colSpan={row.getVisibleCells().length} className="bg-muted/30 pl-8">
-            <div className="max-w-4xl">
-              <ul className="space-y-2 py-2">
-                {row.original.locations.map((loc, i) => (
-                  <li key={i} className="text-sm">
-                    <a
-                      href={loc.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="font-mono text-primary hover:underline break-all"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {loc.url}
-                    </a>
-                    <span className="ml-2 italic text-foreground/80">"{loc.snippet}"</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </TableCell>
-        </TableRow>
-      )}
-    </>
+    <TableRow data-state={row.getIsSelected() && "selected"}>
+      {row.getVisibleCells().map((cell) => (
+        <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
+      ))}
+    </TableRow>
   )
 }
 
@@ -504,11 +424,11 @@ export function DataTable({
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
     []
   )
-  // Sort by severity by default: Critical → Medium → Low (via title column sorting function)
-  const severityOrder = { high: 0, medium: 1, low: 2 }
+  // Sort by severity by default: Critical → Medium → Low (via issue_description column sorting function)
+  const severityOrder = { critical: 0, medium: 1, low: 2 }
   const [sorting, setSorting] = React.useState<SortingState>([
     {
-      id: "title",
+      id: "issue_description",
       desc: false, // Ascending: Critical first
     },
   ])
@@ -516,7 +436,7 @@ export function DataTable({
     pageIndex: 0,
     pageSize: 10,
   })
-  const [activeSeverityTab, setActiveSeverityTab] = React.useState<"all" | "high" | "medium" | "low">("all")
+  const [activeSeverityTab, setActiveSeverityTab] = React.useState<"all" | "critical" | "medium" | "low">("all")
   const [activeStateTab, setActiveStateTab] = React.useState<'all' | 'active' | 'ignored' | 'resolved'>('active')
   const [isBulkProcessing, setIsBulkProcessing] = React.useState(false)
   const [globalFilter, setGlobalFilter] = React.useState("")
@@ -676,17 +596,12 @@ export function DataTable({
     if (!globalFilter.trim()) return filteredData
     const searchLower = globalFilter.toLowerCase()
     return filteredData.filter((row) => {
-      const matchesTitle = row.title.toLowerCase().includes(searchLower)
-      const matchesImpact = row.impact?.toLowerCase().includes(searchLower) || false
-      const matchesFix = row.fix?.toLowerCase().includes(searchLower) || false
+      const matchesDescription = row.issue_description.toLowerCase().includes(searchLower)
+      const matchesFix = row.suggested_fix?.toLowerCase().includes(searchLower) || false
+      const matchesPageUrl = row.page_url?.toLowerCase().includes(searchLower) || false
+      const matchesCategory = row.category?.toLowerCase().includes(searchLower) || false
       
-      // Search pages array
-      const matchesLocations = row.locations?.some(loc => 
-        loc.url.toLowerCase().includes(searchLower) ||
-        loc.snippet.toLowerCase().includes(searchLower)
-      ) || false
-      
-      return matchesTitle || matchesImpact || matchesFix || matchesLocations
+      return matchesDescription || matchesFix || matchesPageUrl || matchesCategory
     })
   }, [filteredData, globalFilter])
 
@@ -728,7 +643,7 @@ export function DataTable({
   const severityCounts = React.useMemo(() => {
     const counts = {
       all: filteredByState.length,
-      high: filteredByState.filter((item) => item.severity === "high").length,
+      critical: filteredByState.filter((item) => item.severity === "critical").length,
       medium: filteredByState.filter((item) => item.severity === "medium").length,
       low: filteredByState.filter((item) => item.severity === "low").length,
     }
@@ -868,7 +783,9 @@ export function DataTable({
                       {headerGroup.headers.map((header) => {
                         // Mobile-friendly headers: abbreviate long labels
                         const headerId = header.id || ''
-                        const mobileHeader = headerId === 'locations' ? 'Pages' : 
+                        const mobileHeader = headerId === 'page_url' ? 'Page' : 
+                                            headerId === 'issue_description' ? 'Issue' :
+                                            headerId === 'suggested_fix' ? 'Fix' :
                                             headerId === 'severity' ? 'Sev.' :
                                             headerId
                         return (
@@ -1032,7 +949,7 @@ export function DataTable({
         <Tabs
           value={activeSeverityTab}
           onValueChange={(value) => {
-            setActiveSeverityTab(value as "all" | "high" | "medium" | "low")
+            setActiveSeverityTab(value as "all" | "critical" | "medium" | "low")
             // Pagination reset handled in useEffect above
           }}
           className="flex w-full flex-col justify-start gap-6"
@@ -1060,7 +977,7 @@ export function DataTable({
                 <Select 
                   value={activeSeverityTab} 
                   onValueChange={(value) => {
-                    setActiveSeverityTab(value as "all" | "high" | "medium" | "low")
+                    setActiveSeverityTab(value as "all" | "critical" | "medium" | "low")
                     // Pagination reset handled in useEffect above
                   }}
                 >
@@ -1105,7 +1022,7 @@ export function DataTable({
           <div className="@4xl/main:flex hidden items-center gap-3">
             <TabsList>
               <TabsTrigger value="all">All</TabsTrigger>
-              <TabsTrigger value="high">Critical</TabsTrigger>
+              <TabsTrigger value="critical">Critical</TabsTrigger>
               <TabsTrigger value="medium">Medium</TabsTrigger>
               <TabsTrigger value="low">Low</TabsTrigger>
             </TabsList>

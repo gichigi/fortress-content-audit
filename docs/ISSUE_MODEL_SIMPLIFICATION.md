@@ -67,26 +67,25 @@ DROP TYPE IF EXISTS issue_state_enum;
 
 ### CREATE: `issues` table (new, simpler)
 ```sql
-CREATE TYPE issue_severity AS ENUM ('low', 'medium', 'high');
+CREATE TYPE issue_severity AS ENUM ('low', 'medium', 'critical');
 CREATE TYPE issue_status AS ENUM ('active', 'ignored', 'resolved');
 
 CREATE TABLE public.issues (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   audit_id UUID NOT NULL REFERENCES public.brand_audit_runs(id) ON DELETE CASCADE,
   
-  -- What's wrong (actionable title)
-  title TEXT NOT NULL,
+  -- What's wrong (combined impact + description)
+  issue_description TEXT NOT NULL,  -- Format: "impact_word: description"
   
-  -- Metadata for filtering (category optional - severity is primary grouping)
-  category TEXT,  -- Optional: 'typos', 'grammar', 'seo', 'factual', 'links', 'terminology'
+  -- Metadata for filtering
+  category TEXT NOT NULL,  -- 'Language', 'Facts & Consistency', 'Links & Formatting'
   severity issue_severity NOT NULL,
   
-  -- Context
-  impact TEXT,
-  fix TEXT,
+  -- Fix suggestion
+  suggested_fix TEXT NOT NULL,
   
-  -- Where to fix (always an array, even if just 1 location)
-  locations JSONB NOT NULL DEFAULT '[]',  -- [{url, snippet}]
+  -- Where to fix (single page URL)
+  page_url TEXT NOT NULL,
   
   -- State (on the row, not separate table)
   status issue_status NOT NULL DEFAULT 'active',

@@ -22,12 +22,11 @@ export type IssueStatus = 'active' | 'ignored' | 'resolved'
 export interface Issue {
   id: string
   audit_id: string
-  title: string
-  category?: string  // Optional: 'typos', 'grammar', 'seo', 'factual', 'links', 'terminology'
-  severity: 'low' | 'medium' | 'high'
-  impact: string | null
-  fix: string | null
-  locations: Array<{ url: string; snippet: string }>
+  page_url: string
+  category: 'Language' | 'Facts & Consistency' | 'Links & Formatting'
+  issue_description: string
+  severity: 'low' | 'medium' | 'critical'
+  suggested_fix: string
   status: IssueStatus
   created_at: string
   updated_at: string
@@ -51,12 +50,11 @@ export type IssueState = 'active' | 'ignored' | 'resolved' // Deprecated, use Is
 
 export interface AuditIssuesJson {
   issues?: Array<{
-    title: string
-    category?: string
-    severity: 'low' | 'medium' | 'high'
-    impact?: string
-    fix?: string
-    locations: Array<{ url: string; snippet: string }>
+    page_url: string
+    category: 'Language' | 'Facts & Consistency' | 'Links & Formatting'
+    issue_description: string
+    severity: 'low' | 'medium' | 'critical'
+    suggested_fix: string
   }>
   groups?: Array<{  // Legacy format, kept for backward compatibility
     title: string
@@ -67,6 +65,9 @@ export interface AuditIssuesJson {
     count: number
   }>
   auditedUrls?: string[]
+  total_issues?: number
+  pages_with_issues?: number
+  pages_audited?: number
   // Note: issues now stored in issues table, issues_json kept as backup/legacy
 }
 

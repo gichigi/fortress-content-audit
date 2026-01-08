@@ -166,7 +166,7 @@ export async function GET(request: Request) {
           metrics: {
             totalActive: 0,
             totalCritical: 0,
-            bySeverity: { low: 0, medium: 0, high: 0 },
+            bySeverity: { low: 0, medium: 0, critical: 0 },
             criticalPages: 0,
             pagesWithIssues: 0,
           },
