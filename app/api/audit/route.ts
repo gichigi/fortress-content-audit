@@ -71,7 +71,14 @@ export async function POST(request: Request) {
     // Check plan and determine audit tier
     let plan = 'free'
     let auditTier: AuditTier = 'FREE'
-    if (isAuthenticated && userId) {
+    
+    // TEMPORARY: Allow tier override via query param for testing
+    const url = new URL(request.url)
+    const tierOverride = url.searchParams.get('tier') as AuditTier | null
+    if (tierOverride && ['FREE', 'PAID', 'ENTERPRISE'].includes(tierOverride)) {
+      auditTier = tierOverride
+      plan = tierOverride === 'ENTERPRISE' ? 'enterprise' : tierOverride === 'PAID' ? 'pro' : 'free'
+    } else if (isAuthenticated && userId) {
       const { data: profile } = await supabaseAdmin
         .from('profiles')
         .select('plan')

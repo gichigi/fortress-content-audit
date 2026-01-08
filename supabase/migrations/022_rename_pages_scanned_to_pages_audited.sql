@@ -3,3 +3,5 @@
 ALTER TABLE public.brand_audit_runs
 RENAME COLUMN pages_scanned TO pages_audited;
 
+
+

@@ -1,5 +1,5 @@
 {
-  "name": "my-v0-project",
+  "name": "fortress-content-audit",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -17,7 +17,8 @@
     "test:auth": "jest __tests__/auth-user-flow.test.ts",
     "generate-logos": "node scripts/generate-logo-svgs.js",
     "generate-favicons": "node scripts/generate-favicons.js",
-    "generate-icons": "pnpm generate-logos && pnpm generate-favicons"
+    "generate-icons": "pnpm generate-logos && pnpm generate-favicons",
+    "test:audit-pages": "tsx scripts/test-paid-audit-pages.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "latest",

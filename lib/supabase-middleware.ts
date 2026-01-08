@@ -8,7 +8,6 @@ import { NextResponse, type NextRequest } from 'next/server'
 const PUBLIC_ROUTES = [
   '/',
   '/sign-up',
-  '/start',
   '/demo',
   '/blog',
   '/brand-details',
@@ -16,7 +15,6 @@ const PUBLIC_ROUTES = [
   '/payment',
   '/api/scrape',
   '/api/preview',
-  '/api/generate-styleguide',
   '/api/analyze-brand',
   '/api/clarifying-questions',
   '/api/ab-comparison',

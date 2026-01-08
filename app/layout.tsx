@@ -13,8 +13,8 @@ const cormorantGaramond = Cormorant_Garamond({ subsets: ["latin"], weight: ["300
 
 export const metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://aistyleguide.com'),
-  title: "Brand voice is the moat | Fortress",
-  description: "Build unbreachable brand voice guidelines for consistent and compelling content, everywhere.",
+  title: "Content Audit | Fortress",
+  description: "AI-powered content auditing to identify inconsistencies, terminology conflicts, and voice issues across your website.",
   icons: {
     icon: [
       { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
@@ -30,29 +30,29 @@ export const metadata = {
   creator: 'Fortress',
   publisher: 'Fortress',
   openGraph: {
-    title: "Brand voice is the moat | Fortress",
-    description: "Build unbreachable brand voice guidelines for consistent and compelling content, everywhere.",
+    title: "Content Audit | Fortress",
+    description: "AI-powered content auditing to identify inconsistencies, terminology conflicts, and voice issues across your website.",
     url: 'https://aistyleguide.com',
     siteName: 'Fortress',
     type: 'website',
     locale: 'en_US',
     images: [
       {
-        url: 'https://aistyleguide.com/brand-voice-guidelines.png',
-        width: 1200,
-        height: 630,
-        alt: 'Fortress - Build unbreachable brand voice guidelines',
-        type: 'image/png',
+        url: 'https://aistyleguide.com/logo-wordmark.svg',
+        width: 184,
+        height: 32,
+        alt: 'Fortress - Content Audit Platform',
+        type: 'image/svg+xml',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: "Brand voice is the moat | Fortress",
-    description: "Build unbreachable brand voice guidelines for consistent and compelling content, everywhere.",
+    title: "Content Audit | Fortress",
+    description: "AI-powered content auditing to identify inconsistencies, terminology conflicts, and voice issues across your website.",
     creator: '@tahigichigi',
     site: '@aistyleguide',
-    images: ['https://aistyleguide.com/brand-voice-guidelines.png'],
+    images: ['https://aistyleguide.com/logo-wordmark.svg'],
   },
   robots: {
     index: true,
@@ -85,8 +85,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
         
         {/* Explicit meta tags for compatibility */}
-        <title>Brand voice is the moat | Fortress</title>
-        <meta name="description" content="Build unbreachable brand voice guidelines for consistent and compelling content, everywhere." />
+        <title>Content Audit | Fortress</title>
+        <meta name="description" content="AI-powered content auditing to identify inconsistencies, terminology conflicts, and voice issues across your website." />
         
         {/* WebPage Schema */}
         <script
@@ -96,10 +96,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               "@context": "https://schema.org",
               "@type": "WebPage",
               "@id": "https://aistyleguide.com#webpage",
-              "name": "Fortress — Brand voice is the moat",
-              "description": "Build unbreachable brand voice guidelines for consistent and compelling content, everywhere.",
+              "name": "Fortress — Content Audit",
+              "description": "AI-powered content auditing to identify inconsistencies, terminology conflicts, and voice issues across your website.",
               "url": "https://aistyleguide.com",
-              "primaryImageOfPage": "https://aistyleguide.com/brand-voice-guidelines.png",
+              "primaryImageOfPage": "https://aistyleguide.com/logo-wordmark.svg",
               "inLanguage": "en",
               "isPartOf": {
                 "@id": "https://aistyleguide.com#website"
@@ -123,7 +123,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               "@id": "https://aistyleguide.com#website",
               "name": "Fortress",
               "url": "https://aistyleguide.com",
-              "description": "Build unbreachable brand voice guidelines for consistent and compelling content, everywhere.",
+              "description": "AI-powered content auditing to identify inconsistencies, terminology conflicts, and voice issues across your website.",
             })
           }}
         />
@@ -137,7 +137,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               "@type": "SoftwareApplication",
               "@id": "https://aistyleguide.com#software",
               "name": "Fortress",
-              "description": "Build unbreachable brand voice guidelines for consistent and compelling content, everywhere.",
+              "description": "AI-powered content auditing to identify inconsistencies, terminology conflicts, and voice issues across your website.",
               "brand": {
                 "@type": "Brand",
                 "name": "Fortress"
@@ -168,58 +168,42 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               "mainEntity": [
                 {
                   "@type": "Question",
-                  "name": "What if I don't have a brand yet?",
+                  "name": "How does content auditing work?",
                   "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": "Our tool helps you define your brand voice from scratch. Just answer a few questions about your audience and goals."
+                    "text": "Enter your website URL and Fortress automatically crawls up to 10 pages, analyzing content for terminology conflicts, contradictory claims, voice inconsistencies, and naming conflicts using AI."
                   }
                 },
                 {
                   "@type": "Question",
-                  "name": "How long does it take?",
+                  "name": "How long does an audit take?",
                   "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": "Most style guides are generated in under 2 minutes. You can review, download in multiple formats, and share with your team."
+                    "text": "Most audits complete in 5-10 minutes. You'll receive a detailed report with prioritized issues, specific examples, and URLs where problems were found."
                   }
                 },
                 {
                   "@type": "Question",
-                  "name": "What formats can I download?",
+                  "name": "What types of issues does Fortress find?",
                   "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": "Your style guide is available in PDF, Word, HTML, and Markdown formats for easy sharing and integration with any workflow."
+                    "text": "Fortress identifies 4 core issue types: terminology conflicts (same concept called different names), contradictory claims (facts/numbers that don't match), voice inconsistencies (formal vs casual tone switching), and naming conflicts (product/brand names spelled differently)."
                   }
                 },
                 {
                   "@type": "Question",
-                  "name": "What's included in the style guide?",
+                  "name": "Can I save and track audits over time?",
                   "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": "You'll get a brand voice definition, up to 99+ writing rules, tone guidelines, and practical examples tailored to your brand."
+                    "text": "Yes! Sign up to save audits to your dashboard, track your health score over time, and export reports in PDF or JSON format."
                   }
                 },
                 {
                   "@type": "Question",
-                  "name": "Can I edit my style guide?",
+                  "name": "Is there a free option?",
                   "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": "Absolutely. Once generated, you can download Word, HTML, or Markdown, then edit however you like before saving or sharing."
-                  }
-                },
-                {
-                  "@type": "Question",
-                  "name": "Is this better than hiring a copywriter?",
-                  "acceptedAnswer": {
-                    "@type": "Answer",
-                    "text": "We deliver 90% of what most brands need in minutes instead of weeks, at a fraction of the cost of hiring a professional writer."
-                  }
-                },
-                {
-                  "@type": "Question",
-                  "name": "Can I share with my team?",
-                  "acceptedAnswer": {
-                    "@type": "Answer",
-                    "text": "Yes! Share your style guide with your entire team. You receive a permanent access link plus downloadable files."
+                    "text": "Yes, you can run free 10-page audits without signing up. Create an account to save results, track progress, and access unlimited audits with paid plans."
                   }
                 },
                 {
@@ -250,23 +234,23 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             __html: JSON.stringify({
               "@context": "https://schema.org",
               "@type": "HowTo",
-              "name": "How to Create a Brand Style Guide",
-              "description": "Generate a comprehensive style guide with just a few clicks",
+              "name": "How to Audit Your Website Content",
+              "description": "Run a comprehensive content audit in minutes",
               "step": [
                 {
                   "@type": "HowToStep",
-                  "name": "Answer a few questions",
-                  "text": "Tell us about your brand or let our AI extract details from your website"
+                  "name": "Enter your website URL",
+                  "text": "Paste your website URL on the homepage. Fortress will automatically crawl up to 10 pages."
                 },
                 {
                   "@type": "HowToStep",
-                  "name": "Get personalized rules",
-                  "text": "Receive a tailored tone of voice + 99+ writing rules for your brand"
+                  "name": "Review audit results",
+                  "text": "Get a detailed report with prioritized issues, specific examples, and URLs where problems were found."
                 },
                 {
                   "@type": "HowToStep",
-                  "name": "Export and share",
-                  "text": "Download in multiple formats: PDF, Word, HTML, or Markdown for any workflow"
+                  "name": "Save and track progress",
+                  "text": "Sign up to save audits to your dashboard, track your health score over time, and export reports in PDF or JSON."
                 }
               ]
             })

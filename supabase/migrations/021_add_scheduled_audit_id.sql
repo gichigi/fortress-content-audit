@@ -7,3 +7,5 @@ CREATE INDEX IF NOT EXISTS idx_brand_audit_runs_scheduled_audit_id
 ON public.brand_audit_runs(scheduled_audit_id) 
 WHERE scheduled_audit_id IS NOT NULL;
 
+
+
