@@ -18,6 +18,8 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ domain: string }> }
 ) {
+  // Immediately await params to prevent Next.js 15 enumeration warnings
+  const { domain } = await params
   try {
     const token = getBearer(request)
     if (!token) {
@@ -29,9 +31,6 @@ export async function DELETE(
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
     }
     const userId = userData.user.id
-
-    // Get domain from params
-    const { domain } = await params
     if (!domain) {
       return NextResponse.json({ error: 'Domain parameter required' }, { status: 400 })
     }

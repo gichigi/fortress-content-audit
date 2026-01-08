@@ -20,6 +20,90 @@ function getBearer(req: Request) {
   return a.split(' ')[1]
 }
 
+// GET handler - poll by runId (for homepage mini audits)
+export async function GET(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const runId = searchParams.get('runId')
+    const session_token = searchParams.get('session_token')
+    
+    if (!runId) {
+      return NextResponse.json({ error: 'Missing runId parameter' }, { status: 400 })
+    }
+    
+    const token = getBearer(request)
+    let userId: string | null = null
+    let isAuthenticated = false
+    
+    if (token) {
+      const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(token)
+      if (!userErr && userData?.user?.id) {
+        userId = userData.user.id
+        isAuthenticated = true
+      }
+    }
+    
+    // Query audit run from database
+    let query = supabaseAdmin
+      .from('brand_audit_runs')
+      .select('id, domain, issues_json, created_at')
+      .eq('id', runId)
+    
+    if (isAuthenticated && userId) {
+      query = query.eq('user_id', userId)
+    } else if (session_token) {
+      query = query.eq('session_token', session_token)
+    }
+    
+    const { data: auditRun, error } = await query.maybeSingle()
+    
+    if (error || !auditRun) {
+      return NextResponse.json({ error: 'Audit not found' }, { status: 404 })
+    }
+    
+    const issuesJson = auditRun.issues_json as any || {}
+    const status = issuesJson.status || 'pending'
+    const issues = issuesJson.issues || []
+    const auditedUrls = issuesJson.auditedUrls || []
+    
+    console.log(`[Poll GET] runId=${runId}, status=${status}, issues=${issues.length}`)
+    
+    // If completed, return full results
+    if (status === 'completed') {
+      return NextResponse.json({
+        runId: auditRun.id,
+        domain: auditRun.domain,
+        status: 'completed',
+        issues,
+        totalIssues: issues.length,
+        auditedUrls,
+        meta: {
+          pagesAudited: auditedUrls.length || 1,
+          auditedUrls,
+          tier: issuesJson.tier || 'FREE',
+        }
+      })
+    }
+    
+    // Still pending
+    return NextResponse.json({
+      runId: auditRun.id,
+      domain: auditRun.domain,
+      status: 'pending',
+      issues: [],
+      totalIssues: 0,
+      meta: {
+        pagesAudited: 0,
+        auditedUrls: [],
+        tier: issuesJson.tier || 'FREE',
+      }
+    })
+  } catch (error) {
+    console.error('[Poll GET] Error:', error)
+    return NextResponse.json({ error: 'Failed to poll audit status' }, { status: 500 })
+  }
+}
+
 export async function POST(request: Request) {
   // Log deprecation warning
   console.warn('[Poll] DEPRECATED: Poll endpoint called. All audits now complete synchronously.')
@@ -192,7 +276,6 @@ export async function POST(request: Request) {
           pagesAudited: result.pagesAudited || 0,
           issuesFound: result.issues?.length || 0,
           auditedUrls: result.auditedUrls || [],
-          reasoningSummaries: result.reasoningSummaries || [],
         },
       })
     }

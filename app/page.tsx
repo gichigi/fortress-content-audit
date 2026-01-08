@@ -161,8 +161,153 @@ export default function Home() {
     }
     checkAuth()
   }, [])
+  
+  // Check for pending audit from localStorage on mount (for page refresh during audit)
+  useEffect(() => {
+    const checkAuthAndRestoreAudit = async () => {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      setIsAuthenticated(!!session)
+      setAuthToken(session?.access_token || null)
 
-  // Polling removed - all audits now complete synchronously
+      const pendingRunId = localStorage.getItem('pending_audit_runId')
+      const storedSessionToken = localStorage.getItem('audit_session_token')
+      if (pendingRunId && storedSessionToken) {
+        console.log('[Homepage] Found pending audit in localStorage:', pendingRunId)
+        
+        // Quick check to see if audit is already failed/completed
+        try {
+          const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
+          const checkUrl = `${baseUrl}/api/audit/poll?runId=${pendingRunId}&session_token=${storedSessionToken}`
+          const checkResponse = await fetch(checkUrl, {
+            headers: session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}
+          })
+          
+          if (checkResponse.ok) {
+            const checkData = await checkResponse.json()
+            if (checkData.status === 'failed') {
+              console.log('[Homepage] Pending audit is failed, clearing localStorage')
+              localStorage.removeItem('pending_audit_runId')
+              localStorage.removeItem('audit_session_token')
+              return // Don't restore failed audits
+            }
+            if (checkData.status === 'completed') {
+              console.log('[Homepage] Pending audit is completed, loading results')
+              localStorage.removeItem('pending_audit_runId')
+              localStorage.removeItem('audit_session_token')
+              setLoading(false)
+              setAuditResults(checkData)
+              return
+            }
+          }
+        } catch (e) {
+          console.log('[Homepage] Could not check audit status, assuming pending')
+        }
+        
+        // Restore pending audit
+        setSessionToken(storedSessionToken)
+        setAuditResults({
+          runId: pendingRunId,
+          status: 'pending',
+          sessionToken: storedSessionToken,
+        })
+        setLoading(true)
+      }
+    }
+    checkAuthAndRestoreAudit()
+  }, [])
+
+  // Poll for audit completion (for pending audits)
+  useEffect(() => {
+    if (!loading || !auditResults?.runId) return
+    
+    // Only poll for pending audits
+    if (auditResults.status !== 'pending') return
+    
+    // Get session token from auditResults or state
+    const token = auditResults.sessionToken || sessionToken
+    if (!token && !authToken) {
+      console.log('[Homepage] No session token or auth token available for polling')
+      return
+    }
+    
+    console.log('[Homepage] Starting poll for audit completion:', auditResults.runId, 'token:', token ? 'present' : 'missing')
+    
+    let attempts = 0
+    const maxAttempts = 120 // 8 minutes max (120 * 4s)
+    let timeoutId: NodeJS.Timeout
+    
+    const poll = async () => {
+      try {
+        const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
+        // For unauthenticated users, use session token in query param
+        const pollUrl = token 
+          ? `${baseUrl}/api/audit/poll?runId=${auditResults.runId}&session_token=${token}`
+          : `${baseUrl}/api/audit/${auditResults.runId}`
+        
+        const pollResponse = await fetch(pollUrl, {
+          headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+        })
+        
+        if (pollResponse.ok) {
+          const pollData = await pollResponse.json()
+          console.log('[Homepage] Poll response:', pollData.status)
+          
+          if (pollData.status === 'completed') {
+            // Clear pending audit from localStorage
+            localStorage.removeItem('pending_audit_runId')
+            localStorage.removeItem('audit_session_token')
+            setLoading(false)
+            setAuditResults(pollData)
+            return
+          }
+          
+          // Stop polling if audit failed
+          if (pollData.status === 'failed') {
+            console.log('[Homepage] Audit failed, stopping poll')
+            localStorage.removeItem('pending_audit_runId')
+            localStorage.removeItem('audit_session_token')
+            setLoading(false)
+            setApiError('Audit failed. Please try again.')
+            return
+          }
+          
+          // Update progress info if available
+          if (pollData.meta?.pagesAudited) {
+            setProgressInfo(prev => ({
+              ...prev,
+              pagesAudited: pollData.meta.pagesAudited,
+            }))
+          }
+        }
+        
+        attempts++
+        if (attempts < maxAttempts) {
+          timeoutId = setTimeout(poll, 4000)
+        } else {
+          console.log('[Homepage] Poll timeout reached')
+          setLoading(false)
+          setApiError('Audit is taking longer than expected. Please refresh the page to check results.')
+        }
+      } catch (error) {
+        console.error('[Homepage] Poll error:', error)
+        attempts++
+        if (attempts < maxAttempts) {
+          timeoutId = setTimeout(poll, 4000)
+        } else {
+          setLoading(false)
+        }
+      }
+    }
+    
+    // Start polling immediately, then every 4 seconds
+    poll()
+    
+    // Cleanup on unmount or when loading stops
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId)
+    }
+  }, [loading, auditResults?.runId, auditResults?.status, auditResults?.sessionToken, sessionToken, authToken])
 
   // Scroll to results when audit completes
   useEffect(() => {
@@ -248,38 +393,41 @@ export default function Home() {
           return
         }
 
-        // Handle response body in background (interstitial stays open via loading state)
-        ;(async () => {
-          try {
-            const data = await response.json()
-            setLoading(false)
-            
-            if (data.status === 'completed') {
-              setAuditResults(data)
-              
-              // Store session token if provided (for unauthenticated users)
-              // This enables claiming the audit after signup
-              if (data.sessionToken) {
-                setSessionToken(data.sessionToken)
-                // Store in localStorage for auto-claim on dashboard
-                localStorage.setItem('audit_session_token', data.sessionToken)
-                console.log('[Homepage] Received session token for audit:', data.sessionToken)
-              }
-            } else {
-              // Bot protection or other errors - check for bot protection message
-              const botProtectionMsg = data.error?.toLowerCase().includes('bot protection')
-                ? data.error
-                : null
-              setApiError(botProtectionMsg || data.error || "Audit failed")
-            }
-          } catch (error) {
-            console.error('Error parsing audit response:', error)
-            setLoading(false)
-            setApiError("Failed to parse audit response. Please try again.")
-          }
-        })()
+        // Parse JSON response
+        const data = await response.json()
         
-        // Return early - interstitial will stay open via loading state
+        // Store session token if provided (for unauthenticated users)
+        if (data.sessionToken) {
+          setSessionToken(data.sessionToken)
+          // Store in localStorage for auto-claim on dashboard
+          localStorage.setItem('audit_session_token', data.sessionToken)
+          // Also store runId for persistence
+          localStorage.setItem('pending_audit_runId', data.runId)
+          console.log('[Homepage] Received session token for audit:', data.sessionToken)
+        }
+        
+        if (data.status === 'completed') {
+          setLoading(false)
+          setAuditResults(data)
+        } else if (data.status === 'pending' && data.runId) {
+          // Set audit results with pending status - polling will be handled by useEffect
+          console.log('[Homepage] Audit pending, starting poll for runId:', data.runId)
+          setAuditResults({
+            runId: data.runId,
+            status: 'pending',
+            sessionToken: data.sessionToken,
+          })
+          // Keep loading=true to show interstitial - polling will update when complete
+        } else {
+          setLoading(false)
+          // Bot protection or other errors - check for bot protection message
+          const botProtectionMsg = data.error?.toLowerCase().includes('bot protection')
+            ? data.error
+            : null
+          setApiError(botProtectionMsg || data.error || "Audit failed")
+        }
+        
+        // Return early - interstitial will stay open via loading state for pending audits
         return
       } else {
         // Validation errors - show inline
@@ -342,9 +490,10 @@ export default function Home() {
       }
       
       setApiError(errorMessage)
-    } finally {
       setLoading(false)
     }
+    // Note: Don't use finally { setLoading(false) } here - 
+    // for pending audits, we need loading to stay true until polling completes
   }
 
   return (
@@ -438,7 +587,7 @@ export default function Home() {
             </div>
             <div className="flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-green-600" />
-              <span>Search your whole website</span>
+              <span>Audit your up to 10 pages</span>
             </div>
             <div className="flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-green-600" />
@@ -455,7 +604,6 @@ export default function Home() {
         description="Scanning pages and identifying content issues. This may take a moment."
         pagesAudited={progressInfo.pagesAudited}
         pagesBeingCrawled={progressInfo.pagesBeingCrawled}
-        reasoningSummaries={progressInfo.reasoningSummaries}
       />
 
       {/* API Error Message (for errors that occur after submission) */}
@@ -468,7 +616,7 @@ export default function Home() {
       )}
 
       {/* Audit Results Preview */}
-      {!loading && auditResults && auditResults.runId && (
+      {!loading && auditResults && auditResults.runId && auditResults.status === 'completed' && (
         <div 
           ref={resultsRef}
           className="@container/main flex flex-1 flex-col gap-2 animate-in fade-in duration-500"
@@ -537,7 +685,7 @@ export default function Home() {
       )}
 
       {/* No Issues Success State - shown when audit completes but no issues found */}
-      {!loading && auditResults && auditResults.runId && !isLoading && (testEmptyState || tableRows.length === 0) && (
+      {!loading && auditResults && auditResults.runId && auditResults.status === 'completed' && !isLoading && (testEmptyState || tableRows.length === 0) && (
         <EmptyAuditState 
           pagesAudited={testEmptyState ? 5 : (auditResults.meta?.pagesAudited ?? auditResults.pagesAudited ?? undefined)}
           variant="card"

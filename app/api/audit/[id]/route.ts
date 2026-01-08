@@ -13,6 +13,8 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Immediately await params to prevent Next.js 15 enumeration warnings
+  const { id } = await params
   try {
     const token = getBearer(request)
     if (!token) return NextResponse.json({ error: 'Please sign in to continue.' }, { status: 401 })
@@ -21,7 +23,6 @@ export async function GET(
       return NextResponse.json({ error: 'Your session has expired. Please sign in again.' }, { status: 401 })
     }
     const userId = userData.user.id
-    const { id } = await params
 
     const { data: run, error } = await supabaseAdmin
       .from('brand_audit_runs')

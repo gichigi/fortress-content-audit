@@ -20,6 +20,8 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Immediately await params to prevent Next.js 15 enumeration warnings
+  const { id } = await params
   // Log deprecation warning
   console.warn('[Resume] DEPRECATED: Resume endpoint called. All audits now complete synchronously.')
   
@@ -34,7 +36,6 @@ export async function POST(
       return NextResponse.json({ error: 'Your session has expired. Please sign in again.' }, { status: 401 })
     }
     const userId = userData.user.id
-    const { id } = await params
 
     // Fetch the audit run
     const { data: auditRun, error: fetchErr } = await supabaseAdmin

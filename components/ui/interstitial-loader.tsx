@@ -59,45 +59,48 @@ const InterstitialLoader = React.forwardRef<HTMLDivElement, InterstitialLoaderPr
     const [currentSummaryIndex, setCurrentSummaryIndex] = React.useState(0)
     const [isVisible, setIsVisible] = React.useState(true)
 
-    // Rotate through reasoning summaries with fade animation
+    // Canned reasoning summaries in the same style as model output
+    const cannedSummaries = [
+      "Reviewing homepage content and structure",
+      "Checking for spelling and grammar issues",
+      "Analyzing page consistency and formatting",
+      "Identifying broken links and navigation issues",
+      "Reviewing calls to action and messaging",
+      "Assessing content clarity and readability",
+      "Checking for factual accuracy and claims",
+      "Analyzing user experience and flow",
+      "Reviewing footer and contact information",
+      "Compiling findings and recommendations",
+    ]
+
+    // Use canned summaries instead of reasoningSummaries prop
+    const summaries = cannedSummaries
+
+    // Rotate through summaries with fade animation
     React.useEffect(() => {
-      if (reasoningSummaries.length === 0) {
+      if (summaries.length === 0) {
         setCurrentSummaryIndex(0)
         setIsVisible(true)
         return
       }
 
-      // Reset to first summary when summaries change
-      if (currentSummaryIndex >= reasoningSummaries.length) {
+      // Reset to first summary if index is out of bounds
+      if (currentSummaryIndex >= summaries.length) {
         setCurrentSummaryIndex(0)
       }
 
       const interval = setInterval(() => {
         setIsVisible(false)
         setTimeout(() => {
-          setCurrentSummaryIndex((prev) => (prev + 1) % reasoningSummaries.length)
+          setCurrentSummaryIndex((prev) => (prev + 1) % summaries.length)
           setIsVisible(true)
         }, 300) // Wait for fade out
       }, 5000) // Change every 5 seconds
 
       return () => clearInterval(interval)
-    }, [reasoningSummaries.length, currentSummaryIndex])
+    }, [summaries.length, currentSummaryIndex])
 
     if (!open) return null
-
-    // Extract clean text from reasoning summary (remove markdown formatting)
-    const getCleanSummary = (summary: string): string => {
-      // Remove markdown bold (**text**)
-      let clean = summary.replace(/\*\*(.*?)\*\*/g, '$1')
-      // Remove markdown headers (# Header)
-      clean = clean.replace(/^#+\s+/gm, '')
-      // Get first sentence or first 150 chars
-      const firstSentence = clean.split('.')[0]
-      if (firstSentence.length > 0 && firstSentence.length <= 150) {
-        return firstSentence + '.'
-      }
-      return clean.substring(0, 150) + (clean.length > 150 ? '...' : '')
-    }
 
     return (
       <div
@@ -118,17 +121,17 @@ const InterstitialLoader = React.forwardRef<HTMLDivElement, InterstitialLoaderPr
           )}
           {description && <p className="text-muted-foreground mb-4">{description}</p>}
           
-          {/* Reasoning summaries carousel */}
-          {reasoningSummaries.length > 0 && currentSummaryIndex < reasoningSummaries.length && (
-            <div className="mt-6 mb-6 min-h-[80px] flex items-center justify-center">
+          {/* Canned summaries carousel */}
+          {summaries.length > 0 && currentSummaryIndex < summaries.length && (
+            <div className="mt-6 mb-6 min-h-[100px] flex items-center justify-center">
               <div
                 key={currentSummaryIndex}
                 className={cn(
-                  "text-sm text-muted-foreground italic max-w-lg transition-opacity duration-300 ease-in-out",
+                  "text-base text-muted-foreground italic max-w-lg transition-opacity duration-300 ease-in-out",
                   isVisible ? "opacity-100" : "opacity-0"
                 )}
               >
-                "{getCleanSummary(reasoningSummaries[currentSummaryIndex])}"
+                "{summaries[currentSummaryIndex]}"
               </div>
             </div>
           )}

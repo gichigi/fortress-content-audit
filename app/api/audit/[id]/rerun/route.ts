@@ -14,6 +14,8 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Immediately await params to prevent Next.js 15 enumeration warnings
+  const { id } = await params
   try {
     const token = getBearer(request)
     if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -23,7 +25,6 @@ export async function POST(
     }
     const userId = userData.user.id
     const userEmail = userData.user.email || null
-    const { id } = await params
 
     // Check plan
     const { data: profile } = await supabaseAdmin

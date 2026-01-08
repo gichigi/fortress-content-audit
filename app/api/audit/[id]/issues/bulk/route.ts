@@ -15,6 +15,8 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Immediately await params to prevent Next.js 15 enumeration warnings
+  const { id: auditId } = await params
   try {
     // Auth check
     const token = getBearer(request)
@@ -27,9 +29,6 @@ export async function PATCH(
       return NextResponse.json({ error: 'Your session has expired. Please sign in again.' }, { status: 401 })
     }
     const userId = userData.user.id
-
-    // Get params
-    const { id: auditId } = await params
 
     // Parse request body
     const body = await request.json().catch(() => ({}))

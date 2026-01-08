@@ -22,16 +22,48 @@ function sendSSE(controller: ReadableStreamDefaultController, event: string, dat
 }
 
 export async function GET(request: Request) {
-  // Log deprecation warning
-  console.warn('[Stream] DEPRECATED: Stream endpoint called. All audits now complete synchronously.')
-  
   const { searchParams } = new URL(request.url)
-  const responseId = searchParams.get('responseId')
+  let responseId = searchParams.get('responseId')
   const runId = searchParams.get('runId')
   const session_token = searchParams.get('session_token')
 
+  // If no responseId but runId provided, try to get it from database
+  if (!responseId && runId) {
+    let query = supabaseAdmin
+      .from('brand_audit_runs')
+      .select('issues_json, user_id, session_token')
+      .eq('id', runId)
+    
+    const token = getBearer(request)
+    let userId: string | null = null
+    let isAuthenticated = false
+    
+    if (token) {
+      const { data: userData } = await supabaseAdmin.auth.getUser(token)
+      if (userData?.user?.id) {
+        userId = userData.user.id
+        isAuthenticated = true
+      }
+    }
+    
+    if (isAuthenticated && userId) {
+      query = query.eq('user_id', userId)
+    } else if (session_token) {
+      query = query.eq('session_token', session_token)
+    }
+    
+    const { data: auditRun } = await query.maybeSingle()
+    
+    if (auditRun?.issues_json && typeof auditRun.issues_json === 'object') {
+      const issuesJson = auditRun.issues_json as any
+      if (issuesJson.responseId && typeof issuesJson.responseId === 'string') {
+        responseId = issuesJson.responseId
+      }
+    }
+  }
+
   if (!responseId) {
-    return NextResponse.json({ error: 'Missing responseId' }, { status: 400 })
+    return NextResponse.json({ error: 'Missing responseId. Provide responseId or runId parameter.' }, { status: 400 })
   }
 
   const token = getBearer(request)

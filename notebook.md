@@ -8,10 +8,7 @@ finalise sidebar
 will be rewritten
 
 ## other
-update metadata to reflect this project not aistyleguide
-create simple logo
 re-enable daily audit limit for plans & paid plan temporary override in route.ts
-- deslop
 
 Remove domain email and twitter handle for aistyleguide
 

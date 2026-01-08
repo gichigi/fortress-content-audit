@@ -24,6 +24,11 @@ export type AuditTier = keyof typeof AUDIT_TIERS
 const AUDIT_PROMPT_ID = process.env.OPENAI_AUDIT_PROMPT_ID || "pmpt_695e4d1f54048195a54712ce6446be87061fc1380da21889"
 const AUDIT_PROMPT_VERSION = process.env.OPENAI_AUDIT_PROMPT_VERSION || "13"
 
+// Mini audit prompt ID for free tier (with reasoning summaries)
+// Set via OPENAI_MINI_AUDIT_PROMPT_ID env var or use default
+const MINI_AUDIT_PROMPT_ID = process.env.OPENAI_MINI_AUDIT_PROMPT_ID || "pmpt_695fd80f94188197ab2151841cf20d6a00213764662a5853"
+const MINI_AUDIT_PROMPT_VERSION = process.env.OPENAI_MINI_AUDIT_PROMPT_VERSION || "1"
+
 // Zod schemas for structured audit output (new prompt format)
 const NewPromptIssueSchema = z.object({
   page_url: z.string(),
@@ -68,7 +73,6 @@ export type AuditResult = {
   tier?: AuditTier
   modelDurationMs?: number // Time taken for model to respond (in milliseconds)
   rawStatus?: string // Raw status from OpenAI API
-  reasoningSummaries?: string[] // Reasoning summaries from the model's thinking process
 }
 
 // Legacy JSON schema removed - using new prompt format with Zod validation
@@ -90,7 +94,10 @@ function extractDomainHostname(domain: string): string {
 // ============================================================================
 // Mini Audit - Free tier (GPT-5.1 with web_search)
 // ============================================================================
-export async function miniAudit(domain: string): Promise<AuditResult> {
+export async function miniAudit(
+  domain: string, 
+  existingResponseId?: string
+): Promise<AuditResult> {
   const tier = AUDIT_TIERS.FREE
 
   // Normalize domain URL
@@ -106,41 +113,53 @@ export async function miniAudit(domain: string): Promise<AuditResult> {
     Logger.info(`[MiniAudit] Starting GPT-5 web_search audit for ${normalizedDomain}`)
     const modelStartTime = Date.now()
     
-    Logger.debug(`[MiniAudit] Sending request to GPT-5.1 with web_search`)
-    const params: any = {
-      model: "gpt-5.1-2025-11-13",
-      prompt: {
-        id: AUDIT_PROMPT_ID,
-        version: AUDIT_PROMPT_VERSION,
-        variables: {
-          url: normalizedDomain
-        }
-      },
-      tools: [{
-        type: "web_search",
-        filters: {
-          allowed_domains: [domainHostname]
-        }
-      }],
-      max_tool_calls: tier.maxToolCalls, // Allow opening homepage + key pages
-      max_output_tokens: 20000, // Increased for full JSON response
-      include: ["web_search_call.action.sources"], // Include sources to get URLs
-      text: {
-        verbosity: "low"
-      },
+    let response: any
+    let finalResponse: any
+    
+    if (existingResponseId) {
+      // Use existing response (for SSE streaming scenario)
+      Logger.debug(`[MiniAudit] Using existing responseId: ${existingResponseId}`)
+      finalResponse = await openai.responses.retrieve(existingResponseId)
+      response = { id: existingResponseId } // Store id for return value
+    } else {
+      // Create new response
+      Logger.debug(`[MiniAudit] Sending request to GPT-5.1 with web_search`)
+      const params: any = {
+        model: "gpt-5.1-2025-11-13",
+        prompt: {
+          id: MINI_AUDIT_PROMPT_ID,
+          version: MINI_AUDIT_PROMPT_VERSION,
+          variables: {
+            url: normalizedDomain
+          }
+        },
+        tools: [{
+          type: "web_search",
+          filters: {
+            allowed_domains: [domainHostname]
+          }
+        }],
+        max_tool_calls: tier.maxToolCalls, // Allow opening homepage + key pages
+        max_output_tokens: 20000, // Increased for full JSON response
+        include: ["web_search_call.action.sources"], // Include sources to get URLs
+        text: {
+          verbosity: "low"
+        },
+      }
+      
+      response = await openai.responses.create(params)
+      finalResponse = response
     }
     
-    const response = await openai.responses.create(params)
-    
     // Poll for completion if needed
-    let status = response.status as string
-    let finalResponse = response
+    let status = finalResponse.status as string
     let attempts = 0
     const maxAttempts = 60 // 60 seconds max
+    const currentResponseId = existingResponseId || response.id
     
     while ((status === "queued" || status === "in_progress") && attempts < maxAttempts) {
       await new Promise(resolve => setTimeout(resolve, 1000))
-      finalResponse = await openai.responses.retrieve(response.id)
+      finalResponse = await openai.responses.retrieve(currentResponseId)
       status = finalResponse.status as string
       attempts++
       if (attempts % 10 === 0) {
@@ -259,6 +278,7 @@ export async function miniAudit(domain: string): Promise<AuditResult> {
       status: "completed",
       tier: "FREE",
       modelDurationMs,
+      responseId: currentResponseId,
     }
   } catch (error) {
     Logger.error(`[MiniAudit] Error`, error instanceof Error ? error : undefined)
@@ -496,9 +516,6 @@ export async function pollAuditStatus(responseId: string, tier?: AuditTier): Pro
       // Calculate pagesAudited from auditedUrls (accurate count from opened pages)
       const pagesAudited = auditedUrls.length > 0 ? auditedUrls.length : 0
       
-      // Extract reasoning summaries from response output
-      const reasoningSummaries = extractReasoningSummaries(response)
-      
       return {
         issues,
         pagesAudited,
@@ -506,7 +523,6 @@ export async function pollAuditStatus(responseId: string, tier?: AuditTier): Pro
         responseId,
         status: status === "queued" ? "queued" : "in_progress",
         rawStatus: status,
-        reasoningSummaries,
       }
     }
 
@@ -545,9 +561,6 @@ export async function pollAuditStatus(responseId: string, tier?: AuditTier): Pro
       if (actualCrawledUrls.length > 0) {
         result.auditedUrls = actualCrawledUrls
       }
-      // Extract reasoning summaries from response output
-      const reasoningSummaries = extractReasoningSummaries(response)
-      result.reasoningSummaries = reasoningSummaries
       
       console.log(`[Audit] ✅ Complete: ${result.issues.length} issues, ${result.pagesAudited} pages audited, ${actualCrawledUrls.length} URLs`)
       return result
@@ -772,28 +785,6 @@ function extractCrawledUrls(response: any): string[] {
   return Array.from(crawledUrls).sort()
 }
 
-// Extract reasoning summaries from Deep Research response output
-function extractReasoningSummaries(response: any): string[] {
-  const summaries: string[] = []
-  
-  if (Array.isArray(response.output)) {
-    for (const item of response.output) {
-      if (item.type === 'reasoning' && Array.isArray(item.summary)) {
-        for (const summaryItem of item.summary) {
-          if (summaryItem.type === 'summary_text' && summaryItem.text) {
-            // Extract just the text content, removing markdown formatting
-            const text = summaryItem.text.trim()
-            if (text && !summaries.includes(text)) {
-              summaries.push(text)
-            }
-          }
-        }
-      }
-    }
-  }
-  
-  return summaries
-}
 
 // Check if response indicates bot protection/firewall
 function detectBotProtection(text: string): boolean {

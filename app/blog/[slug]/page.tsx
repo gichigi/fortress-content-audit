@@ -72,6 +72,7 @@ export async function generateMetadata({
 }: {
   params: Promise<{ slug: string }>
 }): Promise<Metadata> {
+  // Immediately await params to prevent Next.js 15 enumeration warnings
   const resolvedParams = await params
   
   // Check if user is admin to allow fetching unpublished posts for metadata
@@ -217,6 +218,7 @@ export default async function BlogPostPage({
 }: {
   params: Promise<{ slug: string }>
 }) {
+  // Immediately await params to prevent Next.js 15 enumeration warnings
   const resolvedParams = await params
   
   // Check if user is authenticated as admin to allow viewing unpublished posts

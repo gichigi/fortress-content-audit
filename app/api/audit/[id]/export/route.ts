@@ -16,6 +16,8 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Immediately await params to prevent Next.js 15 enumeration warnings
+  const { id } = await params
   const startTime = Date.now()
   try {
     const token = getBearer(request)
@@ -28,7 +30,6 @@ export async function GET(
       return NextResponse.json({ error: 'Your session has expired. Please sign in again.' }, { status: 401 })
     }
     const userId = userData.user.id
-    const { id } = await params
 
     // Get format from query params
     const url = new URL(request.url)

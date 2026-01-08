@@ -113,6 +113,7 @@ export default async function BlogPage({
 }: {
   searchParams: Promise<{ page?: string; category?: string }>
 }) {
+  // Immediately await searchParams to prevent Next.js 15 enumeration warnings
   const resolvedSearchParams = await searchParams
   const currentPage = parseInt(resolvedSearchParams.page || '1')
   const selectedCategory = resolvedSearchParams.category

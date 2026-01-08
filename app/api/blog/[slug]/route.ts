@@ -21,9 +21,10 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
+  // Immediately await params to prevent Next.js 15 enumeration warnings
+  const resolvedParams = await params
+  const { slug } = resolvedParams
   try {
-    const resolvedParams = await params
-    const { slug } = resolvedParams
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     
@@ -61,13 +62,13 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
+  // Immediately await params to prevent Next.js 15 enumeration warnings
+  const resolvedParams = await params
   try {
     // Check admin authentication
     if (!(await isAdminAuthenticated())) {
       return NextResponse.json({ error: 'Unauthorized - Please log in' }, { status: 401 })
     }
-
-    const resolvedParams = await params
     const { slug } = resolvedParams
     const body = await request.json()
     
@@ -112,13 +113,13 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
+  // Immediately await params to prevent Next.js 15 enumeration warnings
+  const resolvedParams = await params
   try {
     // Check admin authentication
     if (!(await isAdminAuthenticated())) {
       return NextResponse.json({ error: 'Unauthorized - Please log in' }, { status: 401 })
     }
-
-    const resolvedParams = await params
     const { slug } = resolvedParams
     const body = await request.json()
     const action = body.action // 'publish' or 'unpublish'
@@ -175,13 +176,13 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
+  // Immediately await params to prevent Next.js 15 enumeration warnings
+  const resolvedParams = await params
   try {
     // Check admin authentication
     if (!(await isAdminAuthenticated())) {
       return NextResponse.json({ error: 'Unauthorized - Please log in' }, { status: 401 })
     }
-
-    const resolvedParams = await params
     const { slug } = resolvedParams
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)

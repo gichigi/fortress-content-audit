@@ -208,6 +208,7 @@ export async function POST(request: Request) {
     // ========================================================================
     
     // Start background audit (fire and forget - don't await)
+    // Note: SSE streaming for reasoning summaries is handled via polling after audit completes
     // Use an IIFE to run async code without blocking the response
     const backgroundAudit = async () => {
       try {
@@ -232,6 +233,7 @@ export async function POST(request: Request) {
         } else {
           // Run audit based on tier
           console.log(`[API] Running ${auditTier} audit for ${normalized} (background)`)
+          
           result = auditTier === 'FREE' 
             ? await miniAudit(normalized)
             : await auditSite(normalized, auditTier)
@@ -249,7 +251,7 @@ export async function POST(request: Request) {
           return
         }
         
-        // Filter issues for FREE tier
+        // Filter issues for FREE tier (homepage only)
         let filteredIssues = result.issues || []
         if (auditTier === 'FREE' && !useMockData) {
           const homepageUrls = [
@@ -260,16 +262,15 @@ export async function POST(request: Request) {
             normalized.replace(/^https?:\/\//, 'https://www.') + '/',
           ]
           
+          // New schema uses page_url directly, not locations array
           filteredIssues = filteredIssues.filter((issue: any) => {
-            if (!issue.locations || !Array.isArray(issue.locations)) return false
-            return issue.locations.some((loc: any) => {
-              const locUrl = loc.url || ''
-              return homepageUrls.some(homepageUrl => 
-                locUrl === homepageUrl || 
-                locUrl.startsWith(homepageUrl + '/') ||
-                locUrl.replace(/\/$/, '') === homepageUrl.replace(/\/$/, '')
-              )
-            })
+            const issueUrl = issue.page_url || ''
+            if (!issueUrl) return false
+            return homepageUrls.some(homepageUrl => 
+              issueUrl === homepageUrl || 
+              issueUrl.startsWith(homepageUrl + '/') ||
+              issueUrl.replace(/\/$/, '') === homepageUrl.replace(/\/$/, '')
+            )
           })
           
           // If no issues found on homepage, log it (no mock fallback)
@@ -283,6 +284,7 @@ export async function POST(request: Request) {
           issues: filteredIssues,
           auditedUrls: result.auditedUrls || [],
           status: 'completed',
+          tier: auditTier,
         }
         
         const { error: updateErr } = await supabaseAdmin
