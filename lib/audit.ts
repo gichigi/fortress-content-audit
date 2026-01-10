@@ -150,7 +150,8 @@ export async function miniAudit(
           verbosity: "low"
         },
         reasoning: {
-          effort: "medium"
+          effort: "medium",
+          summary: null // Explicitly disable reasoning summaries (version 3 optimized for speed)
         },
         store: true
       }
@@ -361,7 +362,8 @@ export async function auditSite(
         verbosity: "low"
       },
       reasoning: {
-        effort: "medium"
+        effort: "medium",
+        summary: null // Explicitly disable reasoning summaries for full audit
       },
       store: true
     }
