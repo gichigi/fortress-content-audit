@@ -117,23 +117,22 @@ export async function POST(request: Request) {
         }
       }
 
-      // TEMPORARILY DISABLED: Daily limit check for testing
       // Check daily audit limit for this domain (pass email for test account exception)
       // Use storageDomain to match database format (no protocol)
-      // const dailyCheck = await checkDailyLimit(userId, storageDomain, plan, userEmail)
-      // if (!dailyCheck.allowed) {
-      //   return NextResponse.json(
-      //     {
-      //       error: 'Daily limit reached',
-      //       message: `You've reached your daily limit of ${dailyCheck.limit} audit${dailyCheck.limit === 1 ? '' : 's'} for this domain. Try again tomorrow or upgrade to Pro for 5 domains.`,
-      //       limit: dailyCheck.limit,
-      //       used: dailyCheck.used,
-      //       resetAt: dailyCheck.resetAt,
-      //       upgradeRequired: plan === 'free',
-      //     },
-      //     { status: 429 }
-      //   )
-      // }
+      const dailyCheck = await checkDailyLimit(userId, storageDomain, plan, userEmail)
+      if (!dailyCheck.allowed) {
+        return NextResponse.json(
+          {
+            error: 'Daily limit reached',
+            message: `You've reached your daily limit of ${dailyCheck.limit} audit${dailyCheck.limit === 1 ? '' : 's'} for this domain. Try again tomorrow or upgrade to Pro for 5 domains.`,
+            limit: dailyCheck.limit,
+            used: dailyCheck.used,
+            resetAt: dailyCheck.resetAt,
+            upgradeRequired: plan === 'free',
+          },
+          { status: 429 }
+        )
+      }
     }
 
     // Check if mock data mode is enabled

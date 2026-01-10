@@ -152,6 +152,17 @@ export function NewAuditDialog({ open, onOpenChange, onSuccess }: NewAuditDialog
     }
   }, [open, loadUsageInfo])
 
+  // Listen for payment success to refresh plan data
+  useEffect(() => {
+    const handlePaymentSuccess = () => {
+      loadUsageInfo()
+    }
+    window.addEventListener('paymentSuccess', handlePaymentSuccess)
+    return () => {
+      window.removeEventListener('paymentSuccess', handlePaymentSuccess)
+    }
+  }, [loadUsageInfo])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     

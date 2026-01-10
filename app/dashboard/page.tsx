@@ -69,6 +69,7 @@ export default function DashboardPage() {
   const [scheduledAuditsLoading, setScheduledAuditsLoading] = useState(false)
   const [startingAudit, setStartingAudit] = useState(false)
   const [rerunningAuditId, setRerunningAuditId] = useState<string | null>(null)
+  const [pendingAuditId, setPendingAuditId] = useState<string | null>(null)
   
   // Use shared hook to fetch issues from database
   const mostRecentAudit = audits.length > 0 ? audits[0] : null
@@ -206,124 +207,7 @@ export default function DashboardPage() {
     }
   }, [])
 
-  // Track if this is the initial load to avoid double-loading
-  const isInitialLoad = useRef(true)
-  
-  // Reload data when selected domain changes (but not on initial load)
-  useEffect(() => {
-    if (isInitialLoad.current) {
-      isInitialLoad.current = false
-      return
-    }
-    
-    if (selectedDomain && authToken) {
-      console.log('[Dashboard] Reloading data for domain:', selectedDomain)
-      const reloadData = async () => {
-        const supabase = createClient()
-        const { data: { session } } = await supabase.auth.getSession()
-        if (session) {
-          await Promise.all([
-            loadAudits(session.access_token, selectedDomain),
-            loadHealthScore(session.access_token)
-          ])
-          // Also reload usage info for the new domain
-          try {
-            const url = `/api/audit/usage?domain=${encodeURIComponent(selectedDomain)}`
-            const response = await fetch(url, {
-              headers: { 'Authorization': `Bearer ${session.access_token}` }
-            })
-            if (response.ok) {
-              const data = await response.json()
-              setUsageInfo(data)
-            }
-          } catch (error) {
-            console.error("Error loading usage info:", error)
-          }
-        }
-      }
-      reloadData()
-    }
-  }, [selectedDomain, authToken])
-
-  useEffect(() => {
-    // Check for payment success query param
-    const urlParams = new URLSearchParams(window.location.search)
-    if (urlParams.get('payment') === 'success') {
-      toast({
-        title: "Payment successful!",
-        description: "Your subscription is now active.",
-      })
-      // Clear query param
-      router.replace('/dashboard', { scroll: false })
-    }
-  }, [router, toast])
-
-  // Claim pending audit from localStorage (set during unauthenticated audit + email signup)
-  const claimPendingAudit = async (token: string) => {
-    try {
-      // Check for direct sessionToken first (as per roadmap)
-      let sessionToken: string | null = localStorage.getItem('audit_session_token')
-      
-      // Fallback to pendingAudit for backward compatibility
-      if (!sessionToken) {
-        const pendingAuditStr = localStorage.getItem('pendingAudit')
-        if (pendingAuditStr) {
-          try {
-            const pendingAudit = JSON.parse(pendingAuditStr)
-            // Check if expired (24 hours)
-            if (pendingAudit.expiry && Date.now() > pendingAudit.expiry) {
-              console.log('[Dashboard] Pending audit expired, clearing')
-              localStorage.removeItem('pendingAudit')
-              return
-            }
-            sessionToken = pendingAudit.sessionToken
-          } catch (e) {
-            console.log('[Dashboard] Failed to parse pendingAudit, clearing')
-            localStorage.removeItem('pendingAudit')
-            return
-          }
-        }
-      }
-
-      if (!sessionToken) {
-        return
-      }
-
-      console.log('[Dashboard] Claiming pending audit with session token:', sessionToken)
-
-      const response = await fetch('/api/audit/claim', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ sessionToken })
-      })
-
-      if (response.ok) {
-        const result = await response.json()
-        console.log('[Dashboard] Audit claimed successfully:', result)
-        toast({
-          title: "Audit saved!",
-          description: `Your audit for ${result.domain || 'your site'} has been saved to your account.`
-        })
-      } else {
-        const error = await response.json().catch(() => ({}))
-        console.log('[Dashboard] Failed to claim audit:', error)
-        // Don't show error to user - audit may have already been claimed or doesn't exist
-      }
-
-      // Clear both storage methods after successful claim
-      localStorage.removeItem('audit_session_token')
-      localStorage.removeItem('pendingAudit')
-    } catch (error) {
-      console.error('[Dashboard] Error claiming pending audit:', error)
-      localStorage.removeItem('audit_session_token')
-      localStorage.removeItem('pendingAudit')
-    }
-  }
-
-  // Define load functions BEFORE checkAuthAndLoad to avoid initialization order issues
+  // Define load functions BEFORE useEffects that use them to avoid initialization order issues
   const loadAudits = useCallback(async (token: string, domain?: string | null) => {
     // #region agent log
     fetch('http://127.0.0.1:7242/ingest/46d3112f-6e93-4e4c-a7bb-bc54c7690dac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard/page.tsx:451',message:'loadAudits called',data:{hasToken:!!token,domain},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
@@ -357,6 +241,15 @@ export default function DashboardPage() {
         pages_audited: audit.pages_audited ?? audit.pages_scanned ?? null,
       }))
       setAudits(mappedAudits)
+      
+      // Check for pending audits
+      const pendingAudit = mappedAudits.find((a: any) => a.issues_json?.status === 'pending')
+      if (pendingAudit) {
+        setPendingAuditId(pendingAudit.id)
+        console.log('[Dashboard] Found pending audit:', pendingAudit.id)
+      } else {
+        setPendingAuditId(null)
+      }
       
       // Issues are now loaded via useAuditIssues hook when mostRecentAudit changes
     } catch (error) {
@@ -422,6 +315,209 @@ export default function DashboardPage() {
       console.error("Error loading usage info:", error)
     }
   }, [])
+
+  // Track if this is the initial load to avoid double-loading
+  const isInitialLoad = useRef(true)
+  
+  // Reload data when selected domain changes (but not on initial load)
+  useEffect(() => {
+    if (isInitialLoad.current) {
+      isInitialLoad.current = false
+      return
+    }
+    
+    if (selectedDomain && authToken) {
+      console.log('[Dashboard] Reloading data for domain:', selectedDomain)
+      const reloadData = async () => {
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session) {
+          await Promise.all([
+            loadAudits(session.access_token, selectedDomain),
+            loadHealthScore(session.access_token)
+          ])
+          // Also reload usage info for the new domain
+          try {
+            const url = `/api/audit/usage?domain=${encodeURIComponent(selectedDomain)}`
+            const response = await fetch(url, {
+              headers: { 'Authorization': `Bearer ${session.access_token}` }
+            })
+            if (response.ok) {
+              const data = await response.json()
+              setUsageInfo(data)
+            }
+          } catch (error) {
+            console.error("Error loading usage info:", error)
+          }
+        }
+      }
+      reloadData()
+    }
+  }, [selectedDomain, authToken])
+
+  useEffect(() => {
+    // Check for payment success query param
+    const urlParams = new URLSearchParams(window.location.search)
+    if (urlParams.get('payment') === 'success') {
+      toast({
+        title: "Payment successful!",
+        description: "Your subscription is now active.",
+      })
+      // Dispatch event to refresh plan data in components
+      window.dispatchEvent(new Event('paymentSuccess'))
+      // Reload page to refresh plan data in all components
+      setTimeout(() => {
+        window.location.href = '/dashboard'
+      }, 500) // Small delay to allow event to propagate
+    }
+  }, [router, toast])
+
+  // Poll for pending audit detected on page load
+  useEffect(() => {
+    if (!pendingAuditId || !authToken) return
+
+    const pollPendingAudit = async () => {
+      const maxAttempts = 60 // ~4 minutes max (4s intervals)
+      let attempts = 0
+
+      const poll = async () => {
+        try {
+          const pollResponse = await fetch(`/api/audit/${pendingAuditId}`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+          })
+
+          if (!pollResponse.ok) {
+            attempts++
+            if (attempts < maxAttempts) {
+              setTimeout(poll, 4000)
+            } else {
+              console.log('[Dashboard] Poll timeout for pending audit, clearing')
+              setPendingAuditId(null)
+            }
+            return
+          }
+
+          const pollData = await pollResponse.json()
+
+          if (pollData.status === 'completed') {
+            setPendingAuditId(null)
+            toast({
+              title: "Audit completed",
+              description: "Your audit results are ready.",
+            })
+            // Reload all data
+            const supabase = createClient()
+            const { data: { session } } = await supabase.auth.getSession()
+            if (session) {
+              await Promise.all([
+                loadAudits(session.access_token, selectedDomain),
+                loadHealthScore(session.access_token)
+              ])
+              await loadUsageInfo(session.access_token, selectedDomain)
+            }
+            return
+          }
+
+          if (pollData.status === 'failed') {
+            setPendingAuditId(null)
+            toast({
+              title: "Audit failed",
+              description: pollData.error || "The audit encountered an error.",
+              variant: "error",
+            })
+            return
+          }
+
+          // Still pending - continue polling
+          attempts++
+          if (attempts < maxAttempts) {
+            setTimeout(poll, 4000)
+          } else {
+            console.log('[Dashboard] Poll timeout for pending audit, clearing')
+            setPendingAuditId(null)
+          }
+        } catch (pollError) {
+          console.error('[Dashboard] Poll error for pending audit:', pollError)
+          attempts++
+          if (attempts < maxAttempts) {
+            setTimeout(poll, 4000)
+          } else {
+            setPendingAuditId(null)
+          }
+        }
+      }
+
+      // Start polling after initial delay
+      setTimeout(poll, 4000)
+    }
+
+    pollPendingAudit()
+  }, [pendingAuditId, authToken, selectedDomain, loadAudits, loadHealthScore, loadUsageInfo, toast])
+
+  // Claim pending audit from localStorage (set during unauthenticated audit + email signup)
+  const claimPendingAudit = async (token: string) => {
+    try {
+      // Check for direct sessionToken first (as per roadmap)
+      let sessionToken: string | null = localStorage.getItem('audit_session_token')
+      
+      // Fallback to pendingAudit for backward compatibility
+      if (!sessionToken) {
+        const pendingAuditStr = localStorage.getItem('pendingAudit')
+        if (pendingAuditStr) {
+          try {
+            const pendingAudit = JSON.parse(pendingAuditStr)
+            // Check if expired (24 hours)
+            if (pendingAudit.expiry && Date.now() > pendingAudit.expiry) {
+              console.log('[Dashboard] Pending audit expired, clearing')
+              localStorage.removeItem('pendingAudit')
+              return
+            }
+            sessionToken = pendingAudit.sessionToken
+          } catch (e) {
+            console.log('[Dashboard] Failed to parse pendingAudit, clearing')
+            localStorage.removeItem('pendingAudit')
+            return
+          }
+        }
+      }
+
+      if (!sessionToken) {
+        return
+      }
+
+      console.log('[Dashboard] Claiming pending audit with session token:', sessionToken)
+
+      const response = await fetch('/api/audit/claim', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ sessionToken })
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        console.log('[Dashboard] Audit claimed successfully:', result)
+        toast({
+          title: "Audit saved!",
+          description: `Your audit for ${result.domain || 'your site'} has been saved to your account.`
+        })
+      } else {
+        const error = await response.json().catch(() => ({}))
+        console.log('[Dashboard] Failed to claim audit:', error)
+        // Don't show error to user - audit may have already been claimed or doesn't exist
+      }
+
+      // Clear both storage methods after successful claim
+      localStorage.removeItem('audit_session_token')
+      localStorage.removeItem('pendingAudit')
+    } catch (error) {
+      console.error('[Dashboard] Error claiming pending audit:', error)
+      localStorage.removeItem('audit_session_token')
+      localStorage.removeItem('pendingAudit')
+    }
+  }
 
   // Polling removed - all audits now complete synchronously
 
@@ -765,12 +861,25 @@ export default function DashboardPage() {
             
             if (data.status === 'completed') {
               // Audit already completed (very fast or mock)
+              setPendingAuditId(null)
+              setStartingAudit(false)
               toast({
                 title: "Audit completed",
                 description: "Your audit results are ready.",
               })
-              window.location.reload()
+              // Reload all data
+              const supabase = createClient()
+              const { data: { session } } = await supabase.auth.getSession()
+              if (session) {
+                await Promise.all([
+                  loadAudits(session.access_token, selectedDomain),
+                  loadHealthScore(session.access_token)
+                ])
+                await loadUsageInfo(session.access_token, selectedDomain)
+              }
             } else if (data.status === 'pending') {
+              // Set pending audit ID to show banner
+              setPendingAuditId(data.runId)
               // Audit running in background - poll until complete
               const pollForCompletion = async () => {
                 const maxAttempts = 15 // ~60 seconds max (4s intervals)
@@ -796,15 +905,27 @@ export default function DashboardPage() {
                     const pollData = await pollResponse.json()
                     
                     if (pollData.status === 'completed') {
+                      setPendingAuditId(null)
+                      setStartingAudit(false)
                       toast({
                         title: "Audit completed",
                         description: "Your audit results are ready.",
                       })
-                      window.location.reload()
+                      // Reload all data instead of full page reload
+                      const supabase = createClient()
+                      const { data: { session } } = await supabase.auth.getSession()
+                      if (session) {
+                        await Promise.all([
+                          loadAudits(session.access_token, selectedDomain),
+                          loadHealthScore(session.access_token)
+                        ])
+                        await loadUsageInfo(session.access_token, selectedDomain)
+                      }
                       return
                     }
                     
                     if (pollData.status === 'failed') {
+                      setPendingAuditId(null)
                       setStartingAudit(false)
                       toast({
                         title: "Audit failed",
@@ -821,7 +942,17 @@ export default function DashboardPage() {
                     } else {
                       // Timeout - reload anyway
                       console.log('[Dashboard] Poll timeout, reloading anyway')
-                      window.location.reload()
+                      setPendingAuditId(null)
+                      setStartingAudit(false)
+                      const supabase = createClient()
+                      const { data: { session } } = await supabase.auth.getSession()
+                      if (session) {
+                        await Promise.all([
+                          loadAudits(session.access_token, selectedDomain),
+                          loadHealthScore(session.access_token)
+                        ])
+                        await loadUsageInfo(session.access_token, selectedDomain)
+                      }
                     }
                   } catch (pollError) {
                     console.error('[Dashboard] Poll error:', pollError)
@@ -829,7 +960,17 @@ export default function DashboardPage() {
                     if (attempts < maxAttempts) {
                       setTimeout(poll, 4000)
                     } else {
-                      window.location.reload()
+                      setPendingAuditId(null)
+                      setStartingAudit(false)
+                      const supabase = createClient()
+                      const { data: { session } } = await supabase.auth.getSession()
+                      if (session) {
+                        await Promise.all([
+                          loadAudits(session.access_token, selectedDomain),
+                          loadHealthScore(session.access_token)
+                        ])
+                        await loadUsageInfo(session.access_token, selectedDomain)
+                      }
                     }
                   }
                 }
@@ -840,6 +981,7 @@ export default function DashboardPage() {
               
               pollForCompletion()
             } else if (data.status === 'failed') {
+              setPendingAuditId(null)
               setStartingAudit(false)
               // Check for bot protection error message
               const botProtectionMsg = data.error?.toLowerCase().includes('bot protection')
@@ -852,6 +994,7 @@ export default function DashboardPage() {
               })
             } else {
               // Unknown status - treat as error
+              setPendingAuditId(null)
               setStartingAudit(false)
               toast({
                 title: "Audit failed",
@@ -1157,6 +1300,19 @@ export default function DashboardPage() {
               </div>
             )}
 
+            {/* Pending Audit Banner */}
+            {pendingAuditId && (
+              <div className="px-4 lg:px-6 pt-4">
+                <Alert className="border-blue-500 bg-blue-50 dark:bg-blue-950 dark:border-blue-800">
+                  <Loader2 className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400" />
+                  <AlertTitle className="text-blue-900 dark:text-blue-100">Audit in progress</AlertTitle>
+                  <AlertDescription className="text-blue-800 dark:text-blue-200">
+                    Your audit is running. Results will appear automatically when complete.
+                  </AlertDescription>
+                </Alert>
+              </div>
+            )}
+
             <div className="flex flex-1 flex-col gap-4 py-4 md:gap-6 md:py-6">
                 <div className="flex items-center justify-between px-4 lg:px-6">
                   <h2 className="font-serif text-2xl font-semibold">
@@ -1260,6 +1416,7 @@ export default function DashboardPage() {
 
                 {/* Health Score Section - Available to all authenticated users */}
                 <HealthScoreCards
+                  loading={healthScoreLoading || !!pendingAuditId}
                   currentScore={metrics.score !== undefined ? {
                     score: metrics.score,
                     metrics: {
@@ -1271,7 +1428,7 @@ export default function DashboardPage() {
                   } : healthScoreData?.currentScore}
                   pagesAudited={mostRecentAudit?.pages_audited ?? null}
                   previousScore={previousScore}
-                  loading={tableRowsLoading || healthScoreLoading}
+                  loading={tableRowsLoading || healthScoreLoading || !!pendingAuditId}
                 />
 
                 {/* Health Score Chart - Show if we have data (historical or current) */}

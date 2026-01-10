@@ -96,6 +96,41 @@ export function DomainSwitcher() {
 
     loadDomains()
 
+    // Listen for payment success to refresh plan
+    const handlePaymentSuccess = async () => {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('plan')
+        .eq('user_id', user.id)
+        .maybeSingle()
+      
+      if (profile) {
+        setPlan(profile.plan || 'free')
+      }
+      
+      // Reload usage info to get updated domain limits
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        try {
+          const response = await fetch('/api/audit/usage', {
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`
+            }
+          })
+          if (response.ok) {
+            const data = await response.json()
+            setUsageInfo(data)
+          }
+        } catch (error) {
+          console.error("Error loading usage info:", error)
+        }
+      }
+    }
+
     // Listen for custom events
     const handleCustomStorageChange = () => {
       const domain = localStorage.getItem('selectedDomain')
@@ -161,10 +196,12 @@ export function DomainSwitcher() {
     
     window.addEventListener('domainChanged', handleCustomStorageChange)
     window.addEventListener('domainsReload', handleDomainsReload)
-
+    window.addEventListener('paymentSuccess', handlePaymentSuccess)
+    
     return () => {
       window.removeEventListener('domainChanged', handleCustomStorageChange)
       window.removeEventListener('domainsReload', handleDomainsReload)
+      window.removeEventListener('paymentSuccess', handlePaymentSuccess)
     }
   }, [])
 

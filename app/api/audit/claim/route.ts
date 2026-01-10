@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import Logger from '@/lib/logger'
+import { incrementAuditUsage } from '@/lib/audit-rate-limit'
 
 function getBearer(req: Request) {
   const a = req.headers.get('authorization') || req.headers.get('Authorization')
@@ -70,6 +71,17 @@ export async function POST(request: Request) {
     }
 
     console.log(`[Audit Claim] Successfully claimed audit ${audit.id} for user ${userId}`)
+
+    // Backfill usage for the claimed audit
+    if (audit.domain) {
+      try {
+        await incrementAuditUsage(userId, audit.domain)
+        console.log(`[Audit Claim] Backfilled usage for domain ${audit.domain}`)
+      } catch (error) {
+        console.error('[Audit Claim] Failed to backfill usage:', error)
+        // Don't fail the claim if usage backfill fails
+      }
+    }
 
     return NextResponse.json({
       success: true,

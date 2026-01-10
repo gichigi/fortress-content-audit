@@ -24,10 +24,10 @@ export type AuditTier = keyof typeof AUDIT_TIERS
 const AUDIT_PROMPT_ID = process.env.OPENAI_AUDIT_PROMPT_ID || "pmpt_695e4d1f54048195a54712ce6446be87061fc1380da21889"
 const AUDIT_PROMPT_VERSION = process.env.OPENAI_AUDIT_PROMPT_VERSION || "13"
 
-// Mini audit prompt ID for free tier (with reasoning summaries)
+// Mini audit prompt ID for free tier (1 audit pass, no reasoning summaries for faster processing)
 // Set via OPENAI_MINI_AUDIT_PROMPT_ID env var or use default
 const MINI_AUDIT_PROMPT_ID = process.env.OPENAI_MINI_AUDIT_PROMPT_ID || "pmpt_695fd80f94188197ab2151841cf20d6a00213764662a5853"
-const MINI_AUDIT_PROMPT_VERSION = process.env.OPENAI_MINI_AUDIT_PROMPT_VERSION || "1"
+const MINI_AUDIT_PROMPT_VERSION = process.env.OPENAI_MINI_AUDIT_PROMPT_VERSION || "3"
 
 // Zod schemas for structured audit output (new prompt format)
 const NewPromptIssueSchema = z.object({
@@ -123,6 +123,8 @@ export async function miniAudit(
       response = { id: existingResponseId } // Store id for return value
     } else {
       // Create new response
+      // Note: Model config params (effort, summary, store, text.format, verbosity) 
+      // are configured in the prompt definition itself - don't override here
       Logger.debug(`[MiniAudit] Sending request to GPT-5.1 with web_search`)
       const params: any = {
         model: "gpt-5.1-2025-11-13",
@@ -142,13 +144,26 @@ export async function miniAudit(
         max_tool_calls: tier.maxToolCalls, // Allow opening homepage + key pages
         max_output_tokens: 20000, // Increased for full JSON response
         include: ["web_search_call.action.sources"], // Include sources to get URLs
+        // Model config params (matching prompt definition settings)
         text: {
+          format: { type: "text" },
           verbosity: "low"
         },
+        reasoning: {
+          effort: "medium"
+        },
+        store: true
       }
       
-      response = await openai.responses.create(params)
-      finalResponse = response
+      try {
+        response = await openai.responses.create(params)
+        finalResponse = response
+      } catch (createError) {
+        Logger.error(`[MiniAudit] Error creating response`, createError instanceof Error ? createError : undefined, {
+          params: JSON.stringify(params, null, 2)
+        })
+        throw createError
+      }
     }
     
     // Poll for completion if needed
@@ -281,6 +296,13 @@ export async function miniAudit(
       responseId: currentResponseId,
     }
   } catch (error) {
+    // Log full error details for debugging
+    if (error instanceof Error) {
+      console.error(`[MiniAudit] ❌ Full error:`, error.message)
+      console.error(`[MiniAudit] Stack:`, error.stack)
+    } else {
+      console.error(`[MiniAudit] ❌ Unknown error:`, error)
+    }
     Logger.error(`[MiniAudit] Error`, error instanceof Error ? error : undefined)
     throw handleAuditError(error)
   }
@@ -333,12 +355,26 @@ export async function auditSite(
       max_tool_calls: tierConfig.maxToolCalls, // Limit tool calls based on tier
       max_output_tokens: 20000, // Increased for full JSON response
       include: ["web_search_call.action.sources"], // Include sources to get URLs
+      // Model config params (matching prompt definition settings)
       text: {
+        format: { type: "text" },
         verbosity: "low"
       },
+      reasoning: {
+        effort: "medium"
+      },
+      store: true
     }
     
-    const response = await openai.responses.create(params)
+    let response: any
+    try {
+      response = await openai.responses.create(params)
+    } catch (createError) {
+      Logger.error(`[AuditSite] Error creating response`, createError instanceof Error ? createError : undefined, {
+        params: JSON.stringify(params, null, 2)
+      })
+      throw createError
+    }
     
     // Poll for completion if needed (synchronous polling)
     let status = response.status as string

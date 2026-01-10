@@ -127,7 +127,7 @@ export function HealthScoreCards({ currentScore, pagesAudited, previousScore, lo
           <CardDescription>Pages with Issues</CardDescription>
           <CardTitle className="@[250px]/card:text-3xl text-2xl font-semibold tabular-nums">
             {pagesAudited !== null && pagesAudited !== undefined 
-              ? `[${metrics.pagesWithIssues || 0}/${pagesAudited}]`
+              ? `${metrics.pagesWithIssues || 0}/${pagesAudited}`
               : (metrics.pagesWithIssues || 0)
             }
           </CardTitle>

@@ -173,45 +173,48 @@ export default function Home() {
       const pendingRunId = localStorage.getItem('pending_audit_runId')
       const storedSessionToken = localStorage.getItem('audit_session_token')
       if (pendingRunId && storedSessionToken) {
-        console.log('[Homepage] Found pending audit in localStorage:', pendingRunId)
-        
-        // Quick check to see if audit is already failed/completed
+        // Check audit status first
         try {
-          const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
-          const checkUrl = `${baseUrl}/api/audit/poll?runId=${pendingRunId}&session_token=${storedSessionToken}`
+          const checkUrl = `/api/audit/poll?runId=${pendingRunId}&session_token=${storedSessionToken}`
           const checkResponse = await fetch(checkUrl, {
             headers: session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}
           })
           
           if (checkResponse.ok) {
             const checkData = await checkResponse.json()
+            
+            // Clear failed audits immediately
             if (checkData.status === 'failed') {
-              console.log('[Homepage] Pending audit is failed, clearing localStorage')
               localStorage.removeItem('pending_audit_runId')
               localStorage.removeItem('audit_session_token')
-              return // Don't restore failed audits
+              return
             }
+            
+            // Load completed audits
             if (checkData.status === 'completed') {
-              console.log('[Homepage] Pending audit is completed, loading results')
               localStorage.removeItem('pending_audit_runId')
-              localStorage.removeItem('audit_session_token')
               setLoading(false)
               setAuditResults(checkData)
               return
             }
+            
+            // Only restore if still pending
+            if (checkData.status === 'pending') {
+              setSessionToken(storedSessionToken)
+              setAuditResults({
+                runId: pendingRunId,
+                status: 'pending',
+                sessionToken: storedSessionToken,
+              })
+              setLoading(true)
+              return
+            }
           }
         } catch (e) {
-          console.log('[Homepage] Could not check audit status, assuming pending')
+          // If check fails, assume failed and clear
+          localStorage.removeItem('pending_audit_runId')
+          localStorage.removeItem('audit_session_token')
         }
-        
-        // Restore pending audit
-        setSessionToken(storedSessionToken)
-        setAuditResults({
-          runId: pendingRunId,
-          status: 'pending',
-          sessionToken: storedSessionToken,
-        })
-        setLoading(true)
       }
     }
     checkAuthAndRestoreAudit()
@@ -221,76 +224,57 @@ export default function Home() {
   useEffect(() => {
     if (!loading || !auditResults?.runId) return
     
-    // Only poll for pending audits
+    // Only poll for pending audits - stop if completed/failed
     if (auditResults.status !== 'pending') return
     
-    // Get session token from auditResults or state
     const token = auditResults.sessionToken || sessionToken
-    if (!token && !authToken) {
-      console.log('[Homepage] No session token or auth token available for polling')
-      return
-    }
+    if (!token && !authToken) return
     
-    console.log('[Homepage] Starting poll for audit completion:', auditResults.runId, 'token:', token ? 'present' : 'missing')
-    
-    let attempts = 0
-    const maxAttempts = 120 // 8 minutes max (120 * 4s)
+    let isCancelled = false
     let timeoutId: NodeJS.Timeout
+    let attempts = 0
+    const maxAttempts = 60 // 4 minutes max
     
     const poll = async () => {
+      if (isCancelled) return
+      
       try {
-        const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
-        // For unauthenticated users, use session token in query param
-        const pollUrl = token 
-          ? `${baseUrl}/api/audit/poll?runId=${auditResults.runId}&session_token=${token}`
-          : `${baseUrl}/api/audit/${auditResults.runId}`
-        
+        const pollUrl = `/api/audit/poll?runId=${auditResults.runId}&session_token=${token}`
         const pollResponse = await fetch(pollUrl, {
           headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
         })
         
+        if (isCancelled) return
+        
         if (pollResponse.ok) {
           const pollData = await pollResponse.json()
-          console.log('[Homepage] Poll response:', pollData.status)
           
           if (pollData.status === 'completed') {
-            // Clear pending audit from localStorage
             localStorage.removeItem('pending_audit_runId')
-            localStorage.removeItem('audit_session_token')
             setLoading(false)
             setAuditResults(pollData)
             return
           }
           
-          // Stop polling if audit failed
           if (pollData.status === 'failed') {
-            console.log('[Homepage] Audit failed, stopping poll')
             localStorage.removeItem('pending_audit_runId')
             localStorage.removeItem('audit_session_token')
             setLoading(false)
+            setAuditResults((prev: any) => prev ? { ...prev, status: 'failed' } : null)
             setApiError('Audit failed. Please try again.')
             return
-          }
-          
-          // Update progress info if available
-          if (pollData.meta?.pagesAudited) {
-            setProgressInfo(prev => ({
-              ...prev,
-              pagesAudited: pollData.meta.pagesAudited,
-            }))
           }
         }
         
         attempts++
-        if (attempts < maxAttempts) {
+        if (!isCancelled && attempts < maxAttempts) {
           timeoutId = setTimeout(poll, 4000)
-        } else {
-          console.log('[Homepage] Poll timeout reached')
+        } else if (!isCancelled) {
           setLoading(false)
-          setApiError('Audit is taking longer than expected. Please refresh the page to check results.')
+          setApiError('Audit timed out. Please try again.')
         }
       } catch (error) {
-        console.error('[Homepage] Poll error:', error)
+        if (isCancelled) return
         attempts++
         if (attempts < maxAttempts) {
           timeoutId = setTimeout(poll, 4000)
@@ -300,11 +284,10 @@ export default function Home() {
       }
     }
     
-    // Start polling immediately, then every 4 seconds
     poll()
     
-    // Cleanup on unmount or when loading stops
     return () => {
+      isCancelled = true
       if (timeoutId) clearTimeout(timeoutId)
     }
   }, [loading, auditResults?.runId, auditResults?.status, auditResults?.sessionToken, sessionToken, authToken])

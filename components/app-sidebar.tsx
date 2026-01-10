@@ -4,7 +4,6 @@ import * as React from "react"
 import { LayoutDashboardIcon, Sparkles } from "lucide-react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase-browser"
-import { useToast } from "@/hooks/use-toast"
 
 import { NavUser } from "@/components/nav-user"
 import { DomainSwitcher } from "@/components/domain-switcher"
@@ -20,10 +19,8 @@ import {
 } from "@/components/ui/sidebar"
 
 function UpgradeButton() {
-  const { toast } = useToast()
   const [plan, setPlan] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(true)
-  const [checkoutLoading, setCheckoutLoading] = React.useState(false)
 
   React.useEffect(() => {
     const loadPlan = async () => {
@@ -50,47 +47,17 @@ function UpgradeButton() {
     }
 
     loadPlan()
-  }, [])
 
-  const handleUpgrade = async () => {
-    setCheckoutLoading(true)
-    try {
-      const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
-      
-      if (!session) {
-        window.location.href = '/sign-up?next=' + encodeURIComponent('/dashboard')
-        return
-      }
-
-      const response = await fetch('/api/create-checkout-session', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({}),
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to create checkout session')
-      }
-
-      const { url } = await response.json()
-      if (url) {
-        window.location.href = url
-      }
-    } catch (error) {
-      console.error('[UpgradeButton] Error:', error)
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to start checkout",
-        variant: "destructive",
-      })
-      setCheckoutLoading(false)
+    // Listen for payment success to refresh plan
+    const handlePaymentSuccess = () => {
+      loadPlan()
     }
-  }
+    window.addEventListener('paymentSuccess', handlePaymentSuccess)
+    
+    return () => {
+      window.removeEventListener('paymentSuccess', handlePaymentSuccess)
+    }
+  }, [])
 
   // Only show for free users
   if (loading || plan !== 'free') {
@@ -101,12 +68,13 @@ function UpgradeButton() {
     <SidebarMenu>
       <SidebarMenuItem>
         <SidebarMenuButton
-          onClick={handleUpgrade}
-          disabled={checkoutLoading}
+          asChild
           className="bg-primary/10 hover:bg-primary/20 group-data-[collapsible=icon]:hidden"
         >
-          <Sparkles className="h-4 w-4" />
-          <span>Upgrade to Pro</span>
+          <Link href="/pricing">
+            <Sparkles className="h-4 w-4" />
+            <span>Upgrade to Pro</span>
+          </Link>
         </SidebarMenuButton>
       </SidebarMenuItem>
     </SidebarMenu>
