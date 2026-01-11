@@ -5,17 +5,25 @@ import PostHogClient from "@/lib/posthog"
 import { supabaseAdmin } from "@/lib/supabase-admin"
 
 type StripeMode = 'test' | 'live'
-const mode = (process.env.STRIPE_MODE as StripeMode) || 'test'
-const STRIPE_SECRET_KEY =
-  mode === 'test' ? process.env.STRIPE_TEST_SECRET_KEY : process.env.STRIPE_SECRET_KEY
 
-const stripe = new Stripe(STRIPE_SECRET_KEY!)
-
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-const PRO_PRICE_ID =
-  mode === 'test' ? process.env.STRIPE_TEST_PRO_PRICE_ID : process.env.STRIPE_PRO_PRICE_ID
+function getStripe() {
+  const mode = (process.env.STRIPE_MODE as StripeMode) || 'test'
+  const STRIPE_SECRET_KEY =
+    mode === 'test' ? process.env.STRIPE_TEST_SECRET_KEY : process.env.STRIPE_SECRET_KEY
+  
+  if (!STRIPE_SECRET_KEY) {
+    throw new Error(`Missing Stripe secret key for ${mode} mode`)
+  }
+  
+  return new Stripe(STRIPE_SECRET_KEY, { apiVersion: "2025-03-31.basil" })
+}
 
 export async function POST(request: Request) {
+  const mode = (process.env.STRIPE_MODE as StripeMode) || 'test'
+  const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  const PRO_PRICE_ID =
+    mode === 'test' ? process.env.STRIPE_TEST_PRO_PRICE_ID : process.env.STRIPE_PRO_PRICE_ID
+  const stripe = getStripe()
   const startTime = Date.now()
   try {
     // Optional body for future use (e.g., emailCaptureToken)

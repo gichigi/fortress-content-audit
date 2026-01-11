@@ -4,14 +4,23 @@ import Stripe from "stripe"
 import { supabaseAdmin } from "@/lib/supabase-admin"
 
 type StripeMode = 'test' | 'live'
-const mode = (process.env.STRIPE_MODE as StripeMode) || 'test'
-const STRIPE_SECRET_KEY =
-  mode === 'test' ? process.env.STRIPE_TEST_SECRET_KEY : process.env.STRIPE_SECRET_KEY
 
-const stripe = new Stripe(STRIPE_SECRET_KEY!)
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+function getStripe() {
+  const mode = (process.env.STRIPE_MODE as StripeMode) || 'test'
+  const STRIPE_SECRET_KEY =
+    mode === 'test' ? process.env.STRIPE_TEST_SECRET_KEY : process.env.STRIPE_SECRET_KEY
+  
+  if (!STRIPE_SECRET_KEY) {
+    throw new Error(`Missing Stripe secret key for ${mode} mode`)
+  }
+  
+  return new Stripe(STRIPE_SECRET_KEY, { apiVersion: "2025-03-31.basil" })
+}
 
 export async function POST(request: Request) {
+  const mode = (process.env.STRIPE_MODE as StripeMode) || 'test'
+  const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  const stripe = getStripe()
   try {
     let customerId: string | undefined
     try {
