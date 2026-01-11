@@ -6,19 +6,22 @@ import { supabaseAdmin } from "@/lib/supabase-admin"
 
 // Pick the right Stripe secret key and webhook secret based on STRIPE_MODE
 type StripeMode = 'test' | 'live';
-const mode = (process.env.STRIPE_MODE as StripeMode) || 'test';
-const STRIPE_SECRET_KEY =
-  mode === 'test'
-    ? process.env.STRIPE_TEST_SECRET_KEY
-    : process.env.STRIPE_SECRET_KEY;
-const STRIPE_WEBHOOK_SECRET =
-  mode === 'test'
-    ? process.env.STRIPE_TEST_WEBHOOK_SECRET
-    : process.env.STRIPE_WEBHOOK_SECRET;
 
-const stripe = new Stripe(STRIPE_SECRET_KEY!, {
-  apiVersion: "2025-03-31.basil",
-})
+function getStripe() {
+  const mode = (process.env.STRIPE_MODE as StripeMode) || 'test';
+  const STRIPE_SECRET_KEY =
+    mode === 'test'
+      ? process.env.STRIPE_TEST_SECRET_KEY
+      : process.env.STRIPE_SECRET_KEY;
+  
+  if (!STRIPE_SECRET_KEY) {
+    throw new Error(`Missing Stripe secret key for ${mode} mode`);
+  }
+  
+  return new Stripe(STRIPE_SECRET_KEY, {
+    apiVersion: "2025-03-31.basil",
+  });
+}
 
 // Helper function to check if email has been sent (using database)
 async function hasEmailBeenSent(emailKey: string): Promise<boolean> {
@@ -229,11 +232,22 @@ export async function POST(request: Request) {
   }
 
   try {
+    const mode = (process.env.STRIPE_MODE as StripeMode) || 'test';
+    const STRIPE_WEBHOOK_SECRET =
+      mode === 'test'
+        ? process.env.STRIPE_TEST_WEBHOOK_SECRET
+        : process.env.STRIPE_WEBHOOK_SECRET;
+    
+    if (!STRIPE_WEBHOOK_SECRET) {
+      throw new Error(`Missing Stripe webhook secret for ${mode} mode`);
+    }
+    
+    const stripe = getStripe();
     // Verify webhook signature using raw buffer
     const event = stripe.webhooks.constructEvent(
       payloadBuffer,
       sig,
-      STRIPE_WEBHOOK_SECRET!
+      STRIPE_WEBHOOK_SECRET
     )
 
     // Log successful verification
