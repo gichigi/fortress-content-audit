@@ -1,17 +1,31 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
-// Supabase configuration
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+// Lazy-initialized client to avoid module-load-time issues during build
+let _supabase: SupabaseClient | null = null
 
-if (!supabaseUrl || !supabaseKey) {
-  throw new Error(
-    'Missing Supabase environment variables. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY'
-  )
+function getSupabase(): SupabaseClient {
+  if (_supabase) return _supabase
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error(
+      'Missing Supabase environment variables. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY'
+    )
+  }
+
+  _supabase = createClient(supabaseUrl, supabaseKey)
+  return _supabase
 }
 
-// Create and export Supabase client
-export const supabase = createClient(supabaseUrl, supabaseKey)
+// Export proxy object that lazily initializes
+export const supabase = {
+  get from() { return getSupabase().from.bind(getSupabase()) },
+  get auth() { return getSupabase().auth },
+  get storage() { return getSupabase().storage },
+  get rpc() { return getSupabase().rpc.bind(getSupabase()) },
+} as SupabaseClient
 
 // Email capture types
 export interface EmailCapture {
