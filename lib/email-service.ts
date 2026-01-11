@@ -3,8 +3,6 @@
 
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
 export type EmailTemplate = "purchase-confirmation" | "implementation-tips"
 
 export interface EmailOptions {
@@ -119,6 +117,7 @@ class EmailService {
         return { success: false, error: 'No API key configured' };
       }
 
+      const resend = new Resend(process.env.RESEND_API_KEY);
       const result = await resend.emails.send({
         from: 'Tahi from Fortress <support@aistyleguide.com>',
         to: data.to,
