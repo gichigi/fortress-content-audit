@@ -112,21 +112,22 @@ async function handlePaymentSuccess(session: Stripe.Checkout.Session) {
     }
     
     // Send personal follow-up email from Tahi
-    console.log('🔄 Sending thank you email...')
-    const emailResult = await emailService.sendThankYouEmail({
-      customerEmail,
-      customerName: customerName || undefined,
-      sessionId: session.id,
-      amount,
-      currency,
-    });
+    // TEMP DISABLED: Subscription emails temporarily disabled
+    console.log('⚠️ Subscription email temporarily disabled (skipping sendThankYouEmail)')
+    // const emailResult = await emailService.sendThankYouEmail({
+    //   customerEmail,
+    //   customerName: customerName || undefined,
+    //   sessionId: session.id,
+    //   amount,
+    //   currency,
+    // });
     
-    if (emailResult.success) {
-      await markEmailAsSent(emailKey, customerEmail);
-      console.log('✅ Personal follow-up email sent successfully to:', customerEmail);
-    } else {
-      console.error('❌ Failed to send personal follow-up email:', emailResult.error);
-    }
+    // if (emailResult.success) {
+    //   await markEmailAsSent(emailKey, customerEmail);
+    //   console.log('✅ Personal follow-up email sent successfully to:', customerEmail);
+    // } else {
+    //   console.error('❌ Failed to send personal follow-up email:', emailResult.error);
+    // }
     
     // Mark email capture as payment completed to prevent abandoned cart emails
     const emailCaptureToken = session.metadata?.email_capture_token;
