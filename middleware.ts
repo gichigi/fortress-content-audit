@@ -1,11 +1,25 @@
 // Global middleware for Supabase auth session management and route protection
 // This refreshes auth tokens and protects routes that require authentication
 
-import { type NextRequest } from 'next/server'
+import { type NextRequest, NextResponse } from 'next/server'
 import { updateSession } from '@/lib/supabase-middleware'
+import Logger from '@/lib/logger'
 
 export async function middleware(request: NextRequest) {
-  return await updateSession(request)
+  try {
+    return await updateSession(request)
+  } catch (error) {
+    // Log middleware error for debugging
+    const err = error instanceof Error ? error : new Error('Unknown middleware error')
+    Logger.error('[Middleware] Session update failed', err, {
+      pathname: request.nextUrl.pathname,
+      method: request.method,
+    })
+    
+    // Fail open: allow request to proceed without auth checks
+    // Route handlers will handle auth requirements
+    return NextResponse.next()
+  }
 }
 
 export const config = {
