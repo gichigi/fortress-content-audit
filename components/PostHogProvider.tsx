@@ -13,17 +13,20 @@ export function PostHogProvider({ children }: PostHogProviderProps) {
   useEffect(() => {
     if (typeof window === 'undefined') return
 
-    // Skip PostHog initialization in development to prevent errors
-    if (process.env.NODE_ENV === "development") {
-      console.log('[PostHog] Skipping initialization in development mode')
+    // Skip PostHog initialization in development or if key is missing
+    if (process.env.NODE_ENV === "development" || !process.env.NEXT_PUBLIC_POSTHOG_KEY) {
+      console.log('[PostHog] Skipping initialization in development mode or missing key')
       return
     }
 
-    posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY!, {
+    posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY, {
       api_host: "/ingest",
       ui_host: "https://us.posthog.com",
-      capture_exceptions: true,
+      capture_exceptions: false, // Disable exception capture to prevent console errors
       debug: false,
+      loaded: (posthog) => {
+        if (process.env.NODE_ENV === 'development') posthog.debug()
+      },
     })
 
     // PostHog identification and user setup
