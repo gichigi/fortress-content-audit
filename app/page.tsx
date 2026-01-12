@@ -582,14 +582,8 @@ export default function Home() {
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="font-serif text-xl font-semibold">Fortress</div>
             <div className="flex items-center gap-8">
-              <Link href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                Documentation
-              </Link>
-              <Link href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+              <Link href="/pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
                 Pricing
-              </Link>
-              <Link href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                Contact
               </Link>
             </div>
             <p className="text-sm text-muted-foreground">© 2025 Fortress. All rights reserved.</p>

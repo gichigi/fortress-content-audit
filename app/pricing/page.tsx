@@ -85,7 +85,7 @@ export default function PricingPage() {
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
           {/* Free Plan */}
-          <Card className="border border-border">
+          <Card className="border border-border flex flex-col">
             <CardHeader>
               <div className="flex items-center justify-between mb-2">
                 <CardTitle className="font-serif text-2xl font-semibold">
@@ -101,49 +101,49 @@ export default function PricingPage() {
                 Perfect for trying out content audits
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
-              <ul className="space-y-3">
+            <CardContent className="flex-1 flex flex-col">
+              <ul className="space-y-3 mb-6">
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">{PLAN_FEATURES.free.pagesAnalyzed}</span>
+                  <span className="text-sm">Homepage + 1 key page</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">{PLAN_FEATURES.free.issueCategories}</span>
+                  <span className="text-sm">Language issues</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Basic issue detection</span>
+                  <span className="text-sm">Facts & consistency</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">SEO gaps detection</span>
+                  <span className="text-sm">Links & formatting</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Broken links detection</span>
+                  <span className="text-sm">Audit once per day</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Issue lifecycle management</span>
+                  <span className="text-sm">PDF, JSON, Markdown exports</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">Track your content health</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">No credit card required</span>
                 </li>
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">1 audit per day</span>
-                </li>
               </ul>
-              <Button variant="outline" className="w-full" asChild>
+              <Button variant="outline" className="w-full mt-auto" asChild>
                 <Link href="/">Get Started</Link>
               </Button>
             </CardContent>
           </Card>
 
           {/* Pro Plan */}
-          <Card className="border-2 border-foreground">
+          <Card className="border-2 border-foreground flex flex-col">
             <CardHeader>
               <div className="flex items-center justify-between mb-2">
                 <CardTitle className="font-serif text-2xl font-semibold">
@@ -159,55 +159,51 @@ export default function PricingPage() {
                 For teams serious about content quality
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
-              <ul className="space-y-3">
+            <CardContent className="flex-1 flex flex-col">
+              <ul className="space-y-3 mb-6">
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">{PLAN_FEATURES.pro.pagesAnalyzed}</span>
+                  <span className="text-sm">10-20 key pages</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">{PLAN_FEATURES.pro.issueCategories}</span>
+                  <span className="text-sm">Enhanced audits</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Issue lifecycle management</span>
+                  <span className="text-sm">Up to 5 domains</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">{PLAN_FEATURES.pro.exportFormat} exports</span>
+                  <span className="text-sm">Language issues</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Historical reports</span>
+                  <span className="text-sm">Facts & consistency</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Background execution</span>
+                  <span className="text-sm">Links & formatting</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">SEO gaps detection</span>
+                  <span className="text-sm">Audit once per day</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Broken links detection</span>
+                  <span className="text-sm">PDF, JSON, Markdown exports</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">1 audit per day</span>
+                  <span className="text-sm">Track your content health</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">Auto weekly audits</span>
                 </li>
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">5 domains</span>
-                </li>
               </ul>
               <Button 
-                className="w-full" 
+                className="w-full mt-auto" 
                 onClick={handleSubscribe}
                 disabled={checkoutLoading}
               >
@@ -226,7 +222,7 @@ export default function PricingPage() {
           </Card>
 
           {/* Enterprise Plan */}
-          <Card className="border border-border">
+          <Card className="border border-border flex flex-col">
             <CardHeader>
               <div className="flex items-center justify-between mb-2">
                 <CardTitle className="font-serif text-2xl font-semibold">
@@ -241,68 +237,72 @@ export default function PricingPage() {
                 For organizations with advanced needs
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
-              <ul className="space-y-3">
+            <CardContent className="flex-1 flex flex-col">
+              <ul className="space-y-3 mb-6">
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">{PLAN_FEATURES.enterprise.pagesAnalyzed}</span>
+                  <span className="text-sm">Enhanced audits</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">{PLAN_FEATURES.enterprise.issueCategories}</span>
+                  <span className="text-sm">Unlimited pages</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Advanced SEO analysis</span>
+                  <span className="text-sm">Unlimited domains</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Broken links detection</span>
+                  <span className="text-sm">Unlimited audits</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Competitor analysis</span>
+                  <span className="text-sm">Language issues</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Custom audit requests</span>
+                  <span className="text-sm">Facts & consistency</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">1 audit per day</span>
+                  <span className="text-sm">Links & formatting</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">SEO issues and gaps</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">Custom audit issues</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">Daily email digests</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">Autofix pull requests</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">Slack/Teams integration</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">PDF, JSON, Markdown exports</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">Track your content health</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">Auto weekly audits</span>
                 </li>
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">IA/Taxonomy recommendations</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Team sharing</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Webhook support</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Real-time alerts</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Priority + dedicated support</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Unlimited audits and domains</span>
-                </li>
               </ul>
               <Button 
                 variant="outline" 
-                className="w-full" 
+                className="w-full mt-auto" 
                 asChild
               >
                 <a href="https://calendly.com/l-gichigi/customer-chat" target="_blank" rel="noopener noreferrer">
