@@ -71,17 +71,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/* Google tag (gtag.js) - only in production */}
-        {process.env.NODE_ENV === 'production' ? (
-          <>
-            <script async src="https://www.googletagmanager.com/gtag/js?id=AW-943197631"></script>
-            <script
-              dangerouslySetInnerHTML={{
-                __html: 'window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag("js", new Date()); gtag("config", "AW-943197631");',
-              }}
-            />
-          </>
-        ) : null}
+        {/* Google tag (gtag.js) - checks hostname at runtime to avoid localhost errors */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: 'if(window.location.hostname!=="localhost"){var s=document.createElement("script");s.async=true;s.src="https://www.googletagmanager.com/gtag/js?id=AW-943197631";document.head.appendChild(s);window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag("js",new Date());gtag("config","AW-943197631");}',
+          }}
+        />
         
         {/* Explicit meta tags for compatibility */}
         <title>Content Audit | Fortress</title>
