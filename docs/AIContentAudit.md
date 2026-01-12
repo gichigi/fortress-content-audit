@@ -73,7 +73,7 @@ Use **Deep Research as the primary analysis engine**
 1. Pass top-level domain to Deep Research agent (e.g., `example.com`).
 2. Agent auto-crawls and analyzes multiple pages (up to plan limit) without needing preselected URLs.
 3. Agent synthesizes all issues across crawled pages into a single site-wide audit.
-4. Results include all audited URLs and grouped issues with citations.
+4. Results include all pages opened (audited URLs) and grouped issues with citations.
 
 Rationale:
 

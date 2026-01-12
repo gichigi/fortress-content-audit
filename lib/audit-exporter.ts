@@ -8,8 +8,37 @@ import puppeteer from 'puppeteer'
  */
 export function generateAuditMarkdown(audit: AuditRun, issues: Issue[]): string {
   const issuesJson = audit.issues_json as any
-  const auditedUrls = Array.isArray(issuesJson?.auditedUrls) ? issuesJson.auditedUrls : []
   const domain = audit.domain || 'Unknown domain'
+  
+  // Filter auditedUrls to only include URLs from the audit domain
+  // Also include URLs from issues to ensure consistency with dashboard
+  const rawAuditedUrls = Array.isArray(issuesJson?.auditedUrls) ? issuesJson.auditedUrls : []
+  const issueUrls = issues
+    .map(issue => issue.page_url)
+    .filter((url): url is string => !!url && typeof url === 'string')
+  
+  // Extract domain from audit domain (handle both with and without protocol)
+  let auditDomain: string | null = null
+  try {
+    const domainUrl = domain.startsWith('http') ? domain : `https://${domain}`
+    const urlObj = new URL(domainUrl)
+    auditDomain = urlObj.hostname
+  } catch {
+    // If domain parsing fails, use domain as-is
+    auditDomain = domain.replace(/^https?:\/\//, '').replace(/\/$/, '')
+  }
+  
+  // Filter URLs to only include those from the audit domain
+  const auditedUrls = [...new Set([...rawAuditedUrls, ...issueUrls])]
+    .filter((url: string) => {
+      if (!url || typeof url !== 'string') return false
+      try {
+        const urlObj = new URL(url.startsWith('http') ? url : `https://${url}`)
+        return urlObj.hostname === auditDomain || urlObj.hostname.endsWith(`.${auditDomain}`)
+      } catch {
+        return false
+      }
+    })
   const pagesAudited = audit.pages_audited || audit.pages_scanned || 0
   // Calculate pages with issues from issue locations
   const pagesWithIssues = new Set<string>()
@@ -88,7 +117,7 @@ ${impactPrefix ? `**Impact**: ${impactPrefix}\n` : ''}
   }
 
   if (auditedUrls.length > 0) {
-    markdown += `## Audited URLs\n\n`
+    markdown += `## Pages Opened\n\n`
     auditedUrls.forEach((url: string) => {
       markdown += `- ${url}\n`
     })
@@ -590,7 +619,7 @@ function generateAuditHTML(
 
   ${auditedUrls.length > 0 ? `
     <div class="audited-urls">
-      <h2>Audited URLs</h2>
+      <h2>Pages Opened</h2>
       <ul>
         ${auditedUrls.map(url => `<li>${escapeHtml(url)}</li>`).join('')}
       </ul>
