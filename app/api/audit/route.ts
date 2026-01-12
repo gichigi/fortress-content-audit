@@ -1,6 +1,5 @@
 // fortress v1 - Deep Research powered audit
 import { NextResponse } from 'next/server'
-import { after } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { validateUrl } from '@/lib/url-validation'
 import { auditSite, miniAudit, AuditTier, AuditResult } from '@/lib/audit'
@@ -164,11 +163,10 @@ export async function POST(request: Request) {
     const title = `${brandName} Audit`
     
     // ========================================================================
-    // VALIDATION PASSED - Create pending audit record and return immediately
-    // The audit will run in background after we respond
+    // VALIDATION PASSED - Create audit record and run audit synchronously
     // ========================================================================
     
-    // Create pending audit record first (so we can return runId immediately)
+    // Create audit record first
     const { data: run, error: runErr } = await supabaseAdmin
       .from('brand_audit_runs')
       .insert({
@@ -201,201 +199,188 @@ export async function POST(request: Request) {
       )
     }
     
-    console.log(`[Audit] Created pending audit: ${runId}, authenticated: ${isAuthenticated}, tier: ${auditTier}`)
+    console.log(`[Audit] Created audit record: ${runId}, authenticated: ${isAuthenticated}, tier: ${auditTier}`)
     
     // ========================================================================
-    // RESPOND IMMEDIATELY - Dialog can close now, audit runs in background
+    // RUN AUDIT SYNCHRONOUSLY - Wait for completion before responding
     // ========================================================================
     
-    // Start background audit (fire and forget - don't await)
-    // Note: SSE streaming for reasoning summaries is handled via polling after audit completes
-    // Use an IIFE to run async code without blocking the response
-    const backgroundAudit = async () => {
-      // #region agent log
-      // DEBUG: Log when background audit actually starts executing
-      console.log(`[DEBUG-B] backgroundAudit STARTED for runId=${runId}`)
-      fetch('http://127.0.0.1:7242/ingest/46d3112f-6e93-4e4c-a7bb-bc54c7690dac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/audit/route.ts:213',message:'backgroundAudit STARTED',data:{runId,auditTier,useMockData},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
-      try {
-        let result: AuditResult
+    try {
+      let result: AuditResult
 
-        if (useMockData) {
-          // Mock data mode: generate mock audit results
-          console.log(`[API] Mock data mode enabled - generating mock audit for ${normalized}`)
-          
-          // Simulate audit delay (2-3 seconds)
-          const delay = 2000 + Math.random() * 1000
-          await new Promise(resolve => setTimeout(resolve, delay))
-          
-          const mockData = createMockAuditData(normalized, 10)
-          result = {
-            issues: mockData.issues,
-            pagesAudited: mockData.pagesAudited,
-            auditedUrls: mockData.auditedUrls,
-            status: 'completed',
-            tier: auditTier,
-          }
-        } else {
-          // Run audit based on tier
-          console.log(`[API] Running ${auditTier} audit for ${normalized} (background)`)
-          
-          result = auditTier === 'FREE' 
-            ? await miniAudit(normalized)
-            : await auditSite(normalized, auditTier)
-        }
+      if (useMockData) {
+        // Mock data mode: generate mock audit results
+        console.log(`[API] Mock data mode enabled - generating mock audit for ${normalized}`)
         
-        if (result.status !== 'completed') {
-          console.error(`[Audit] Background audit failed: ${result.status}`)
-          // Update audit record with error status
-          await supabaseAdmin
-            .from('brand_audit_runs')
-            .update({ 
-              issues_json: { issues: [], auditedUrls: [], status: 'failed', error: 'Audit did not complete' }
-            })
-            .eq('id', runId)
-          return
-        }
+        // Simulate audit delay (2-3 seconds)
+        const delay = 2000 + Math.random() * 1000
+        await new Promise(resolve => setTimeout(resolve, delay))
         
-        // Filter issues for FREE tier (homepage only)
-        let filteredIssues = result.issues || []
-        if (auditTier === 'FREE' && !useMockData) {
-          const homepageUrls = [
-            normalized,
-            normalized.replace(/\/$/, ''),
-            normalized + '/',
-            normalized.replace(/^https?:\/\//, 'https://www.'),
-            normalized.replace(/^https?:\/\//, 'https://www.') + '/',
-          ]
-          
-          // New schema uses page_url directly, not locations array
-          filteredIssues = filteredIssues.filter((issue: any) => {
-            const issueUrl = issue.page_url || ''
-            if (!issueUrl) return false
-            return homepageUrls.some(homepageUrl => 
-              issueUrl === homepageUrl || 
-              issueUrl.startsWith(homepageUrl + '/') ||
-              issueUrl.replace(/\/$/, '') === homepageUrl.replace(/\/$/, '')
-            )
-          })
-          
-          // If no issues found on homepage, log it (no mock fallback)
-          if (filteredIssues.length === 0) {
-            console.log(`[API] No issues found on homepage for ${normalized} - returning empty results`)
-          }
-        }
-        
-        // Update audit record with results
-        const issuesJson = {
-          issues: filteredIssues,
-          auditedUrls: result.auditedUrls || [],
+        const mockData = createMockAuditData(normalized, 10)
+        result = {
+          issues: mockData.issues,
+          pagesAudited: mockData.pagesAudited,
+          auditedUrls: mockData.auditedUrls,
           status: 'completed',
           tier: auditTier,
         }
+      } else {
+        // Run audit based on tier
+        console.log(`[API] Running ${auditTier} audit for ${normalized}`)
         
-        const { error: updateErr } = await supabaseAdmin
-          .from('brand_audit_runs')
-          .update({
-            pages_audited: result.pagesAudited,
-            issues_json: issuesJson,
-          })
-          .eq('id', runId)
-        
-        if (updateErr) {
-          console.error('[Audit] Failed to update audit run:', updateErr)
-          return
-        }
-        
-        console.log(`[Audit] ✅ Background audit complete: ${runId}, ${filteredIssues.length} issues`)
-        // #region agent log
-        // DEBUG: Log successful completion
-        fetch('http://127.0.0.1:7242/ingest/46d3112f-6e93-4e4c-a7bb-bc54c7690dac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/audit/route.ts:310',message:'backgroundAudit COMPLETED successfully',data:{runId,issueCount:filteredIssues.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-        // #endregion
-        
-        // Save issues to issues table
-        if (filteredIssues.length > 0) {
-          try {
-            const issuesToInsert = filteredIssues.map((issue) => ({
-              audit_id: runId,
-              page_url: issue.page_url,
-              category: issue.category || null,
-              issue_description: issue.issue_description,
-              severity: issue.severity,
-              suggested_fix: issue.suggested_fix,
-              status: 'active',
-            }))
-
-            const { error: issuesErr } = await (supabaseAdmin as any)
-              .from('issues')
-              .insert(issuesToInsert)
-
-            if (issuesErr) {
-              console.error('[Audit] Failed to save issues:', issuesErr)
-            } else {
-              console.log(`[Audit] Saved ${issuesToInsert.length} issues to issues table`)
-            }
-          } catch (error) {
-            console.error('[Audit] Error saving issues:', error)
-          }
-        }
-        
-        // Increment audit usage (only for authenticated users)
-        if (isAuthenticated && userId) {
-          try {
-            await incrementAuditUsage(userId, storageDomain)
-          } catch (error) {
-            console.error('[Audit] Failed to increment audit usage:', error)
-          }
-        }
-      } catch (error) {
-        console.error('[Audit] Background audit error:', error)
-        // #region agent log
-        // DEBUG: Log background audit error
-        const errorMsg = error instanceof Error ? error.message : 'Unknown error'
-        fetch('http://127.0.0.1:7242/ingest/46d3112f-6e93-4e4c-a7bb-bc54c7690dac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/audit/route.ts:350',message:'backgroundAudit ERROR',data:{runId,error:errorMsg},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-        // #endregion
+        result = auditTier === 'FREE' 
+          ? await miniAudit(normalized)
+          : await auditSite(normalized, auditTier)
+      }
+      
+      if (result.status !== 'completed') {
+        console.error(`[Audit] Audit failed: ${result.status}`)
         // Update audit record with error status
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
         await supabaseAdmin
           .from('brand_audit_runs')
           .update({ 
-            issues_json: { issues: [], auditedUrls: [], status: 'failed', error: errorMessage }
+            issues_json: { issues: [], auditedUrls: [], status: 'failed', error: 'Audit did not complete' }
           })
           .eq('id', runId)
+        
+        return NextResponse.json(
+          { error: 'Audit did not complete. Please try again.' },
+          { status: 500 }
+        )
       }
-    }
-    
-    // #region agent log
-    // DEBUG: Log before background audit starts
-    console.log(`[DEBUG-A] About to schedule backgroundAudit with after() for runId=${runId}`)
-    fetch('http://127.0.0.1:7242/ingest/46d3112f-6e93-4e4c-a7bb-bc54c7690dac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/audit/route.ts:352',message:'About to schedule backgroundAudit with after()',data:{runId,auditTier},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
-
-    // Use after() to run audit after response is sent
-    // This keeps the serverless function alive until the background work completes
-    // Critical for Vercel deployment where "fire and forget" doesn't work
-    after(backgroundAudit)
-
-    // #region agent log
-    // DEBUG: Log after backgroundAudit scheduled (before response)
-    console.log(`[DEBUG-A] backgroundAudit scheduled with after(), about to return response for runId=${runId}`)
-    fetch('http://127.0.0.1:7242/ingest/46d3112f-6e93-4e4c-a7bb-bc54c7690dac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/audit/route.ts:358',message:'backgroundAudit scheduled with after(), returning response',data:{runId},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
-
-    // Return immediately with pending status
-    return NextResponse.json({
-      runId,
-      preview: !isAuthenticated,
-      status: 'pending', // Changed from 'completed' - frontend should poll for results
-      issues: [], // No issues yet - audit running in background
-      totalIssues: 0,
-      sessionToken: finalSessionToken,
-      usage: null, // Will be available after audit completes
-      meta: { 
-        pagesAudited: 0,
-        auditedUrls: [],
+      
+      // Filter issues for FREE tier (homepage only)
+      let filteredIssues = result.issues || []
+      if (auditTier === 'FREE' && !useMockData) {
+        const homepageUrls = [
+          normalized,
+          normalized.replace(/\/$/, ''),
+          normalized + '/',
+          normalized.replace(/^https?:\/\//, 'https://www.'),
+          normalized.replace(/^https?:\/\//, 'https://www.') + '/',
+        ]
+        
+        // New schema uses page_url directly, not locations array
+        filteredIssues = filteredIssues.filter((issue: any) => {
+          const issueUrl = issue.page_url || ''
+          if (!issueUrl) return false
+          return homepageUrls.some(homepageUrl => 
+            issueUrl === homepageUrl || 
+            issueUrl.startsWith(homepageUrl + '/') ||
+            issueUrl.replace(/\/$/, '') === homepageUrl.replace(/\/$/, '')
+          )
+        })
+        
+        // If no issues found on homepage, log it (no mock fallback)
+        if (filteredIssues.length === 0) {
+          console.log(`[API] No issues found on homepage for ${normalized} - returning empty results`)
+        }
+      }
+      
+      // Update audit record with results
+      const issuesJson = {
+        issues: filteredIssues,
+        auditedUrls: result.auditedUrls || [],
+        status: 'completed',
         tier: auditTier,
-      },
-    })
+      }
+      
+      const { error: updateErr } = await supabaseAdmin
+        .from('brand_audit_runs')
+        .update({
+          pages_audited: result.pagesAudited,
+          issues_json: issuesJson,
+        })
+        .eq('id', runId)
+      
+      if (updateErr) {
+        console.error('[Audit] Failed to update audit run:', updateErr)
+        return NextResponse.json(
+          { error: 'Failed to save audit results. Please try again.' },
+          { status: 500 }
+        )
+      }
+      
+      console.log(`[Audit] ✅ Audit complete: ${runId}, ${filteredIssues.length} issues`)
+      
+      // Save issues to issues table
+      if (filteredIssues.length > 0) {
+        try {
+          const issuesToInsert = filteredIssues.map((issue) => ({
+            audit_id: runId,
+            page_url: issue.page_url,
+            category: issue.category || null,
+            issue_description: issue.issue_description,
+            severity: issue.severity,
+            suggested_fix: issue.suggested_fix,
+            status: 'active',
+          }))
+
+          const { error: issuesErr } = await (supabaseAdmin as any)
+            .from('issues')
+            .insert(issuesToInsert)
+
+          if (issuesErr) {
+            console.error('[Audit] Failed to save issues:', issuesErr)
+          } else {
+            console.log(`[Audit] Saved ${issuesToInsert.length} issues to issues table`)
+          }
+        } catch (error) {
+          console.error('[Audit] Error saving issues:', error)
+        }
+      }
+      
+      // Increment audit usage (only for authenticated users)
+      if (isAuthenticated && userId) {
+        try {
+          await incrementAuditUsage(userId, storageDomain)
+        } catch (error) {
+          console.error('[Audit] Failed to increment audit usage:', error)
+        }
+      }
+      
+      // Get usage info for response
+      let usage = null
+      if (isAuthenticated && userId) {
+        try {
+          usage = await getAuditUsage(userId, storageDomain, plan)
+        } catch (error) {
+          console.error('[Audit] Failed to get audit usage:', error)
+        }
+      }
+      
+      // Return completed results directly
+      return NextResponse.json({
+        runId,
+        preview: !isAuthenticated,
+        status: 'completed',
+        issues: filteredIssues,
+        totalIssues: filteredIssues.length,
+        sessionToken: finalSessionToken,
+        usage,
+        meta: { 
+          pagesAudited: result.pagesAudited,
+          auditedUrls: result.auditedUrls || [],
+          tier: auditTier,
+        },
+      })
+    } catch (error) {
+      console.error('[Audit] Audit error:', error)
+      // Update audit record with error status
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      await supabaseAdmin
+        .from('brand_audit_runs')
+        .update({ 
+          issues_json: { issues: [], auditedUrls: [], status: 'failed', error: errorMessage }
+        })
+        .eq('id', runId)
+      
+      // Return error response
+      return NextResponse.json(
+        { error: errorMessage },
+        { status: 500 }
+      )
+    }
   } catch (e) {
     const duration = Date.now() - startTime
     const error = e instanceof Error ? e : new Error('Unknown error')

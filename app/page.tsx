@@ -162,135 +162,11 @@ export default function Home() {
     checkAuth()
   }, [])
   
-  // Check for pending audit from localStorage on mount (for page refresh during audit)
+  // Clean up any old localStorage entries from previous polling architecture
   useEffect(() => {
-    const checkAuthAndRestoreAudit = async () => {
-      const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
-      setIsAuthenticated(!!session)
-      setAuthToken(session?.access_token || null)
-
-      const pendingRunId = localStorage.getItem('pending_audit_runId')
-      const storedSessionToken = localStorage.getItem('audit_session_token')
-      if (pendingRunId && storedSessionToken) {
-        // Check audit status first
-        try {
-          const checkUrl = `/api/audit/poll?runId=${pendingRunId}&session_token=${storedSessionToken}`
-          const checkResponse = await fetch(checkUrl, {
-            headers: session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}
-          })
-          
-          if (checkResponse.ok) {
-            const checkData = await checkResponse.json()
-            
-            // Clear failed audits immediately
-            if (checkData.status === 'failed') {
-              localStorage.removeItem('pending_audit_runId')
-              localStorage.removeItem('audit_session_token')
-              return
-            }
-            
-            // Load completed audits
-            if (checkData.status === 'completed') {
-              localStorage.removeItem('pending_audit_runId')
-              setLoading(false)
-              setAuditResults(checkData)
-              return
-            }
-            
-            // Only restore if still pending
-            if (checkData.status === 'pending') {
-              setSessionToken(storedSessionToken)
-              setAuditResults({
-                runId: pendingRunId,
-                status: 'pending',
-                sessionToken: storedSessionToken,
-              })
-              setLoading(true)
-              return
-            }
-          }
-        } catch (e) {
-          // If check fails, assume failed and clear
-          localStorage.removeItem('pending_audit_runId')
-          localStorage.removeItem('audit_session_token')
-        }
-      }
-    }
-    checkAuthAndRestoreAudit()
+    localStorage.removeItem('pending_audit_runId')
+    // Keep audit_session_token for dashboard claim functionality
   }, [])
-
-  // Poll for audit completion (for pending audits)
-  useEffect(() => {
-    if (!loading || !auditResults?.runId) return
-    
-    // Only poll for pending audits - stop if completed/failed
-    if (auditResults.status !== 'pending') return
-    
-    const token = auditResults.sessionToken || sessionToken
-    if (!token && !authToken) return
-    
-    let isCancelled = false
-    let timeoutId: NodeJS.Timeout
-    let attempts = 0
-    const maxAttempts = 60 // 4 minutes max
-    
-    const poll = async () => {
-      if (isCancelled) return
-      
-      try {
-        const pollUrl = `/api/audit/poll?runId=${auditResults.runId}&session_token=${token}`
-        const pollResponse = await fetch(pollUrl, {
-          headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
-        })
-        
-        if (isCancelled) return
-        
-        if (pollResponse.ok) {
-          const pollData = await pollResponse.json()
-          
-          if (pollData.status === 'completed') {
-            localStorage.removeItem('pending_audit_runId')
-            setLoading(false)
-            setAuditResults(pollData)
-            return
-          }
-          
-          if (pollData.status === 'failed') {
-            localStorage.removeItem('pending_audit_runId')
-            localStorage.removeItem('audit_session_token')
-            setLoading(false)
-            setAuditResults((prev: any) => prev ? { ...prev, status: 'failed' } : null)
-            setApiError('Audit failed. Please try again.')
-            return
-          }
-        }
-        
-        attempts++
-        if (!isCancelled && attempts < maxAttempts) {
-          timeoutId = setTimeout(poll, 4000)
-        } else if (!isCancelled) {
-          setLoading(false)
-          setApiError('Audit timed out. Please try again.')
-        }
-      } catch (error) {
-        if (isCancelled) return
-        attempts++
-        if (attempts < maxAttempts) {
-          timeoutId = setTimeout(poll, 4000)
-        } else {
-          setLoading(false)
-        }
-      }
-    }
-    
-    poll()
-    
-    return () => {
-      isCancelled = true
-      if (timeoutId) clearTimeout(timeoutId)
-    }
-  }, [loading, auditResults?.runId, auditResults?.status, auditResults?.sessionToken, sessionToken, authToken])
 
   // Scroll to results when audit completes
   useEffect(() => {
@@ -379,28 +255,17 @@ export default function Home() {
         // Parse JSON response
         const data = await response.json()
         
-        // Store session token if provided (for unauthenticated users)
+        // Store session token if provided (for unauthenticated users - used for dashboard claim)
         if (data.sessionToken) {
           setSessionToken(data.sessionToken)
-          // Store in localStorage for auto-claim on dashboard
           localStorage.setItem('audit_session_token', data.sessionToken)
-          // Also store runId for persistence
-          localStorage.setItem('pending_audit_runId', data.runId)
           console.log('[Homepage] Received session token for audit:', data.sessionToken)
         }
         
+        // Audit now completes synchronously - should always be 'completed' or error
         if (data.status === 'completed') {
           setLoading(false)
           setAuditResults(data)
-        } else if (data.status === 'pending' && data.runId) {
-          // Set audit results with pending status - polling will be handled by useEffect
-          console.log('[Homepage] Audit pending, starting poll for runId:', data.runId)
-          setAuditResults({
-            runId: data.runId,
-            status: 'pending',
-            sessionToken: data.sessionToken,
-          })
-          // Keep loading=true to show interstitial - polling will update when complete
         } else {
           setLoading(false)
           // Bot protection or other errors - check for bot protection message
@@ -410,7 +275,6 @@ export default function Home() {
           setApiError(botProtectionMsg || data.error || "Audit failed")
         }
         
-        // Return early - interstitial will stay open via loading state for pending audits
         return
       } else {
         // Validation errors - show inline

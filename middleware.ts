@@ -6,16 +6,6 @@ import { updateSession } from '@/lib/supabase-middleware'
 import Logger from '@/lib/logger'
 
 export async function middleware(request: NextRequest) {
-  const pathname = request.nextUrl.pathname
-  
-  // #region agent log
-  // DEBUG: Log middleware invocation for all requests (hypothesis E - rewrite conflict)
-  if (pathname.startsWith('/api/audit') || pathname.startsWith('/ingest')) {
-    console.log(`[DEBUG-E] Middleware hit: ${pathname}`)
-    fetch('http://127.0.0.1:7242/ingest/46d3112f-6e93-4e4c-a7bb-bc54c7690dac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'middleware.ts:12',message:'Middleware invoked',data:{pathname,method:request.method},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})}).catch(()=>{});
-  }
-  // #endregion
-
   try {
     return await updateSession(request)
   } catch (error) {
