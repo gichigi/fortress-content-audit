@@ -209,9 +209,6 @@ export default function DashboardPage() {
 
   // Define load functions BEFORE useEffects that use them to avoid initialization order issues
   const loadAudits = useCallback(async (token: string, domain?: string | null) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/46d3112f-6e93-4e4c-a7bb-bc54c7690dac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard/page.tsx:451',message:'loadAudits called',data:{hasToken:!!token,domain},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
     try {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
@@ -258,9 +255,6 @@ export default function DashboardPage() {
   }, [selectedDomain])
 
   const loadHealthScore = useCallback(async (token: string) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/46d3112f-6e93-4e4c-a7bb-bc54c7690dac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard/page.tsx:483',message:'loadHealthScore called',data:{hasToken:!!token,selectedDomain},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
     // Load health score for all authenticated users
     if (!selectedDomain) {
       setHealthScoreData(null)
@@ -293,9 +287,6 @@ export default function DashboardPage() {
   }, [selectedDomain])
 
   const loadUsageInfo = useCallback(async (token: string, domain?: string | null) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/46d3112f-6e93-4e4c-a7bb-bc54c7690dac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard/page.tsx:507',message:'loadUsageInfo called',data:{hasToken:!!token,domain},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
     try {
       // Pass domain to get domain-specific usage
       const url = domain 
@@ -455,7 +446,7 @@ export default function DashboardPage() {
   }, [pendingAuditId, authToken, selectedDomain, loadAudits, loadHealthScore, loadUsageInfo, toast])
 
   // Claim pending audit from localStorage (set during unauthenticated audit + email signup)
-  const claimPendingAudit = async (token: string) => {
+  const claimPendingAudit = async (token: string): Promise<{ claimed: boolean; domain?: string }> => {
     try {
       // Check for direct sessionToken first (as per roadmap)
       let sessionToken: string | null = localStorage.getItem('audit_session_token')
@@ -470,19 +461,19 @@ export default function DashboardPage() {
             if (pendingAudit.expiry && Date.now() > pendingAudit.expiry) {
               console.log('[Dashboard] Pending audit expired, clearing')
               localStorage.removeItem('pendingAudit')
-              return
+              return { claimed: false }
             }
             sessionToken = pendingAudit.sessionToken
           } catch (e) {
             console.log('[Dashboard] Failed to parse pendingAudit, clearing')
             localStorage.removeItem('pendingAudit')
-            return
+            return { claimed: false }
           }
         }
       }
 
       if (!sessionToken) {
-        return
+        return { claimed: false }
       }
 
       console.log('[Dashboard] Claiming pending audit with session token:', sessionToken)
@@ -503,28 +494,31 @@ export default function DashboardPage() {
           title: "Audit saved!",
           description: `Your audit for ${result.domain || 'your site'} has been saved to your account.`
         })
+        // Clear storage and return success with domain
+        localStorage.removeItem('audit_session_token')
+        localStorage.removeItem('pendingAudit')
+        return { claimed: true, domain: result.domain }
       } else {
         const error = await response.json().catch(() => ({}))
         console.log('[Dashboard] Failed to claim audit:', error)
         // Don't show error to user - audit may have already been claimed or doesn't exist
       }
 
-      // Clear both storage methods after successful claim
+      // Clear both storage methods after attempt
       localStorage.removeItem('audit_session_token')
       localStorage.removeItem('pendingAudit')
+      return { claimed: false }
     } catch (error) {
       console.error('[Dashboard] Error claiming pending audit:', error)
       localStorage.removeItem('audit_session_token')
       localStorage.removeItem('pendingAudit')
+      return { claimed: false }
     }
   }
 
   // Polling removed - all audits now complete synchronously
 
   const checkAuthAndLoad = async () => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/46d3112f-6e93-4e4c-a7bb-bc54c7690dac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard/page.tsx:365',message:'checkAuthAndLoad entry',data:{loadAuditsType:typeof loadAudits,loadHealthScoreType:typeof loadHealthScore,loadUsageInfoType:typeof loadUsageInfo},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
     try {
       const supabase = createClient()
       
@@ -548,7 +542,8 @@ export default function DashboardPage() {
       setAuthToken(session.access_token)
 
       // Check for pending audit to claim (from localStorage)
-      await claimPendingAudit(session.access_token)
+      // This may add a new audit to the user's account
+      const claimResult = await claimPendingAudit(session.access_token)
 
       // Load profile to get plan
       const { data: profile } = await supabase
@@ -561,7 +556,7 @@ export default function DashboardPage() {
         setPlan(profile.plan || 'free')
       }
 
-      // Load domains first to determine selected domain
+      // Load domains (this now includes any newly claimed audit)
       await loadDomains(session.access_token)
       
       // Get available domains and validate saved domain
@@ -575,19 +570,24 @@ export default function DashboardPage() {
         (domainData || []).map(a => a.domain).filter((d): d is string => d !== null)
       ))
       
-      // Validate saved domain exists, otherwise use first available
-      const savedDomain = localStorage.getItem('selectedDomain')
-      const isValidDomain = savedDomain && availableDomains.includes(savedDomain)
-      const initialDomain = isValidDomain ? savedDomain : (availableDomains[0] || null)
+      // If we just claimed an audit, use that domain; otherwise use saved or first available
+      let initialDomain: string | null = null
+      if (claimResult.claimed && claimResult.domain) {
+        // Use the newly claimed audit's domain
+        initialDomain = claimResult.domain
+        console.log('[Dashboard] Using claimed audit domain:', initialDomain)
+      } else {
+        // Validate saved domain exists, otherwise use first available
+        const savedDomain = localStorage.getItem('selectedDomain')
+        const isValidDomain = savedDomain && availableDomains.includes(savedDomain)
+        initialDomain = isValidDomain ? savedDomain : (availableDomains[0] || null)
+      }
       
       if (initialDomain) {
         setSelectedDomain(initialDomain)
         localStorage.setItem('selectedDomain', initialDomain)
       }
 
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/46d3112f-6e93-4e4c-a7bb-bc54c7690dac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard/page.tsx:427',message:'About to call loadAudits',data:{loadAuditsType:typeof loadAudits,initialDomain},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       // Load audits (now with domain set)
       await loadAudits(session.access_token, initialDomain)
       
