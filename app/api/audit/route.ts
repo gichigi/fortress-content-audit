@@ -1,5 +1,6 @@
 // fortress v1 - Deep Research powered audit
 import { NextResponse } from 'next/server'
+import { after } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { validateUrl } from '@/lib/url-validation'
 import { auditSite, miniAudit, AuditTier, AuditResult } from '@/lib/audit'
@@ -210,6 +211,11 @@ export async function POST(request: Request) {
     // Note: SSE streaming for reasoning summaries is handled via polling after audit completes
     // Use an IIFE to run async code without blocking the response
     const backgroundAudit = async () => {
+      // #region agent log
+      // DEBUG: Log when background audit actually starts executing
+      console.log(`[DEBUG-B] backgroundAudit STARTED for runId=${runId}`)
+      fetch('http://127.0.0.1:7242/ingest/46d3112f-6e93-4e4c-a7bb-bc54c7690dac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/audit/route.ts:213',message:'backgroundAudit STARTED',data:{runId,auditTier,useMockData},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       try {
         let result: AuditResult
 
@@ -300,6 +306,10 @@ export async function POST(request: Request) {
         }
         
         console.log(`[Audit] ✅ Background audit complete: ${runId}, ${filteredIssues.length} issues`)
+        // #region agent log
+        // DEBUG: Log successful completion
+        fetch('http://127.0.0.1:7242/ingest/46d3112f-6e93-4e4c-a7bb-bc54c7690dac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/audit/route.ts:310',message:'backgroundAudit COMPLETED successfully',data:{runId,issueCount:filteredIssues.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
         
         // Save issues to issues table
         if (filteredIssues.length > 0) {
@@ -338,6 +348,11 @@ export async function POST(request: Request) {
         }
       } catch (error) {
         console.error('[Audit] Background audit error:', error)
+        // #region agent log
+        // DEBUG: Log background audit error
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+        fetch('http://127.0.0.1:7242/ingest/46d3112f-6e93-4e4c-a7bb-bc54c7690dac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/audit/route.ts:350',message:'backgroundAudit ERROR',data:{runId,error:errorMsg},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
         // Update audit record with error status
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
         await supabaseAdmin
@@ -349,8 +364,22 @@ export async function POST(request: Request) {
       }
     }
     
-    // Fire and forget - start audit but don't wait for it
-    backgroundAudit()
+    // #region agent log
+    // DEBUG: Log before background audit starts
+    console.log(`[DEBUG-A] About to schedule backgroundAudit with after() for runId=${runId}`)
+    fetch('http://127.0.0.1:7242/ingest/46d3112f-6e93-4e4c-a7bb-bc54c7690dac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/audit/route.ts:352',message:'About to schedule backgroundAudit with after()',data:{runId,auditTier},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+
+    // Use after() to run audit after response is sent
+    // This keeps the serverless function alive until the background work completes
+    // Critical for Vercel deployment where "fire and forget" doesn't work
+    after(backgroundAudit)
+
+    // #region agent log
+    // DEBUG: Log after backgroundAudit scheduled (before response)
+    console.log(`[DEBUG-A] backgroundAudit scheduled with after(), about to return response for runId=${runId}`)
+    fetch('http://127.0.0.1:7242/ingest/46d3112f-6e93-4e4c-a7bb-bc54c7690dac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/audit/route.ts:358',message:'backgroundAudit scheduled with after(), returning response',data:{runId},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
 
     // Return immediately with pending status
     return NextResponse.json({
