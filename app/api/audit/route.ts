@@ -124,7 +124,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             error: 'Daily limit reached',
-            message: `You've reached your daily limit of ${dailyCheck.limit} audit${dailyCheck.limit === 1 ? '' : 's'} for this domain. Try again tomorrow or upgrade to Pro for 5 domains.`,
+            message: `You've reached your daily limit of ${dailyCheck.limit} audit${dailyCheck.limit === 1 ? '' : 's'} for this domain. Try again tomorrow or upgrade to Pro.`,
             limit: dailyCheck.limit,
             used: dailyCheck.used,
             resetAt: dailyCheck.resetAt,

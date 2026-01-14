@@ -208,9 +208,12 @@ export function NewAuditDialog({ open, onOpenChange, onSuccess }: NewAuditDialog
         const data = await response.json()
         
         // Close dialog and show "started" toast immediately
+        const durationText = plan === 'pro' || plan === 'enterprise' 
+          ? ' This may take up to 15 minutes.' 
+          : ' This may take a few minutes.'
         toast({
           title: "Audit started",
-          description: `Auditing ${normalizedDomain}... This may take up to a minute.`,
+          description: `Auditing ${normalizedDomain}...${durationText}`,
         })
         onOpenChange(false)
         setDomain("")

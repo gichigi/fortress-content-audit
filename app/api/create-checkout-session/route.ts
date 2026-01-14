@@ -77,14 +77,12 @@ export async function POST(request: Request) {
       },
     }
 
-    // Pre-fill email if authenticated
-    if (userEmail) {
-      sessionConfig.customer_email = userEmail
-    }
-
-    // Reuse existing customer if available
+    // Use existing customer if available, otherwise pre-fill email
+    // Stripe doesn't allow both customer and customer_email parameters
     if (customerId) {
       sessionConfig.customer = customerId
+    } else if (userEmail) {
+      sessionConfig.customer_email = userEmail
     }
 
     const session = await stripe.checkout.sessions.create(sessionConfig)

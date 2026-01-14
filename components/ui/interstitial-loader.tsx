@@ -56,8 +56,7 @@ const InterstitialLoader = React.forwardRef<HTMLDivElement, InterstitialLoaderPr
     },
     ref
   ) => {
-    const [currentSummaryIndex, setCurrentSummaryIndex] = React.useState(0)
-    const [isVisible, setIsVisible] = React.useState(true)
+    const [shownSummaries, setShownSummaries] = React.useState<string[]>([])
 
     // Canned reasoning summaries in the same style as model output
     const cannedSummaries = [
@@ -76,29 +75,36 @@ const InterstitialLoader = React.forwardRef<HTMLDivElement, InterstitialLoaderPr
     // Use canned summaries instead of reasoningSummaries prop
     const summaries = cannedSummaries
 
-    // Rotate through summaries with fade animation
+    // Add summaries one by one, accumulating them on screen
     React.useEffect(() => {
-      if (summaries.length === 0) {
-        setCurrentSummaryIndex(0)
-        setIsVisible(true)
+      if (!open || summaries.length === 0) {
+        setShownSummaries([])
         return
       }
 
-      // Reset to first summary if index is out of bounds
-      if (currentSummaryIndex >= summaries.length) {
-        setCurrentSummaryIndex(0)
+      // Show first summary immediately
+      setShownSummaries([summaries[0]])
+
+      // Add remaining summaries one by one with delay
+      const timeouts: NodeJS.Timeout[] = []
+      for (let i = 1; i < summaries.length; i++) {
+        const summaryToAdd = summaries[i] // Capture summary value in closure
+        const timeout = setTimeout(() => {
+          setShownSummaries((prev) => {
+            // Only add if we haven't added this summary yet
+            if (!prev.includes(summaryToAdd) && prev.length < summaries.length) {
+              return [...prev, summaryToAdd]
+            }
+            return prev
+          })
+        }, i * 10000) // 10 seconds between each message (second at 10s, third at 20s, etc.)
+        timeouts.push(timeout)
       }
 
-      const interval = setInterval(() => {
-        setIsVisible(false)
-        setTimeout(() => {
-          setCurrentSummaryIndex((prev) => (prev + 1) % summaries.length)
-          setIsVisible(true)
-        }, 300) // Wait for fade out
-      }, 5000) // Change every 5 seconds
-
-      return () => clearInterval(interval)
-    }, [summaries.length, currentSummaryIndex])
+      return () => {
+        timeouts.forEach((timeout) => clearTimeout(timeout))
+      }
+    }, [open]) // Reset when open changes
 
     if (!open) return null
 
@@ -121,18 +127,18 @@ const InterstitialLoader = React.forwardRef<HTMLDivElement, InterstitialLoaderPr
           )}
           {description && <p className="text-muted-foreground mb-4">{description}</p>}
           
-          {/* Canned summaries carousel */}
-          {summaries.length > 0 && currentSummaryIndex < summaries.length && (
-            <div className="mt-6 mb-6 min-h-[100px] flex items-center justify-center">
-              <div
-                key={currentSummaryIndex}
-                className={cn(
-                  "text-base text-muted-foreground italic max-w-lg transition-opacity duration-300 ease-in-out",
-                  isVisible ? "opacity-100" : "opacity-0"
-                )}
-              >
-                "{summaries[currentSummaryIndex]}"
-              </div>
+          {/* Accumulating summaries list */}
+          {shownSummaries.length > 0 && (
+            <div className="mt-6 mb-6 min-h-[100px] flex flex-col items-center justify-center space-y-3 max-w-lg mx-auto">
+              {shownSummaries.map((summary, idx) => (
+                <div
+                  key={idx}
+                  className="text-base text-muted-foreground italic animate-in fade-in slide-in-from-bottom-2 duration-500"
+                  style={{ animationDelay: `${idx * 100}ms` }}
+                >
+                  "{summary}"
+                </div>
+              ))}
             </div>
           )}
           

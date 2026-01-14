@@ -6,17 +6,36 @@ import Link from "next/link"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { createClient } from "@/lib/supabase-browser"
 
 export function SiteHeader() {
   const router = useRouter()
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [plan, setPlan] = useState<string | null>(null)
 
   useEffect(() => {
     const checkAuth = async () => {
       const supabase = createClient()
       const { data: { session } } = await supabase.auth.getSession()
       setIsAuthenticated(!!session)
+      
+      // Load plan if authenticated
+      if (session) {
+        try {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('plan')
+            .eq('user_id', session.user.id)
+            .maybeSingle()
+          
+          setPlan(profile?.plan || 'free')
+        } catch (error) {
+          console.error('[SiteHeader] Error loading plan:', error)
+        }
+      } else {
+        setPlan(null)
+      }
     }
     checkAuth()
 
@@ -26,8 +45,15 @@ export function SiteHeader() {
       checkAuth()
     })
 
+    // Listen for payment success to refresh plan
+    const handlePaymentSuccess = () => {
+      checkAuth()
+    }
+    window.addEventListener('paymentSuccess', handlePaymentSuccess)
+
     return () => {
       subscription.unsubscribe()
+      window.removeEventListener('paymentSuccess', handlePaymentSuccess)
     }
   }, [])
 
@@ -43,6 +69,14 @@ export function SiteHeader() {
           <Link href="/dashboard" className="text-2xl font-serif font-semibold tracking-tight hover:opacity-80 transition-opacity">
             Dashboard
           </Link>
+          {isAuthenticated && plan && (
+            <Badge 
+              variant={plan === 'pro' || plan === 'enterprise' ? 'default' : 'secondary'}
+              className="ml-2"
+            >
+              {plan === 'enterprise' ? 'Enterprise' : plan === 'pro' ? 'Pro' : 'Free'}
+            </Badge>
+          )}
         </div>
         <div className="flex items-center gap-4">
           {isAuthenticated ? null : (

@@ -262,4 +262,3 @@ export function getHealthScoreColor(score: number): string {
   if (score >= 50) return 'rgb(234 88 12)' // orange-600
   return 'rgb(220 38 38)' // red-600 (destructive)
 }
-

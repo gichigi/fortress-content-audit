@@ -849,9 +849,12 @@ export default function DashboardPage() {
       // If response.ok, validation passed and audit started
       if (response.ok) {
         // Show "started" toast immediately
+        const durationText = plan === 'pro' || plan === 'enterprise' 
+          ? ' This may take up to 15 minutes.' 
+          : ' This may take a few minutes.'
         toast({
           title: "Audit started",
-          description: `Auditing ${selectedDomain}...`,
+          description: `Auditing ${selectedDomain}...${durationText}`,
         })
         
         // Handle response body in background (button stays in loading state)
@@ -1403,7 +1406,7 @@ export default function DashboardPage() {
                           Running audit...
                         </>
                       ) : (
-                        "Run new audit"
+                        plan === 'pro' || plan === 'enterprise' ? 'Run Pro Audit' : 'Run Basic Audit'
                       )}
                       {/* TEMPORARILY DISABLED: Daily limit reached text */}
                       {/* ) : usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit ? (

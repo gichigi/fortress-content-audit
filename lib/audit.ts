@@ -150,7 +150,7 @@ export async function miniAudit(
           verbosity: "low"
         },
         reasoning: {
-          effort: "low",
+          effort: "medium",
           summary: null // Explicitly disable reasoning summaries (version 3 optimized for speed)
         },
         store: true

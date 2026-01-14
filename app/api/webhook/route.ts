@@ -396,6 +396,22 @@ async function handleSubscriptionActive(subscriptionId: string, customerId: stri
     console.error('Failed to update profile to pro:', error.message)
   } else {
     console.log('Profile upgraded to pro for user_id:', userId)
+    
+    // Clear today's audit usage so user can immediately run another audit
+    // Use UTC date to match audit_usage table format
+    const now = new Date()
+    const today = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`
+    const { error: usageError } = await supabaseAdmin
+      .from('audit_usage')
+      .delete()
+      .eq('user_id', userId)
+      .eq('date', today)
+    
+    if (usageError) {
+      console.error('Failed to clear today\'s audit usage:', usageError.message)
+    } else {
+      console.log('Cleared today\'s audit usage for upgraded user:', userId)
+    }
   }
 }
 
