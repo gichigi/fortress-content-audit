@@ -62,11 +62,6 @@ function getNextResetTime(): string {
 }
 
 /**
- * Test account email that gets unlimited audits
- */
-const TEST_ACCOUNT_EMAIL = 'l.gichigi@gmail.com'
-
-/**
  * Check if user has exceeded daily audit limit for a domain
  */
 export async function checkDailyLimit(
@@ -75,16 +70,6 @@ export async function checkDailyLimit(
   plan: string,
   userEmail?: string | null
 ): Promise<{ allowed: boolean; used: number; limit: number; resetAt: string }> {
-  // Test account exception: unlimited audits
-  if (userEmail === TEST_ACCOUNT_EMAIL) {
-    return {
-      allowed: true,
-      used: 0,
-      limit: Infinity,
-      resetAt: getNextResetTime(),
-    }
-  }
-
   const limits = getAuditLimits(plan)
   
   // Enterprise users have unlimited audits (legacy check, but now all users have 1 per day)
@@ -278,17 +263,6 @@ export async function getAuditUsage(
   plan: string,
   userEmail?: string | null
 ): Promise<AuditUsage> {
-  // Test account exception: unlimited audits
-  if (userEmail === TEST_ACCOUNT_EMAIL) {
-    return {
-      today: 0,
-      limit: 0, // 0 means unlimited in UI
-      domains: 0,
-      domainLimit: 0,
-      resetAt: getNextResetTime(),
-    }
-  }
-
   const limits = getAuditLimits(plan)
   const today = getTodayUTC()
 

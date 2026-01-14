@@ -72,15 +72,6 @@ describe('audit-rate-limit', () => {
       expect(result.used).toBe(1)
       expect(result.limit).toBe(1)
     })
-
-    it('should allow audit for test account email', async () => {
-      const testEmail = 'l.gichigi@gmail.com'
-      const result = await checkDailyLimit(mockUserId, mockDomain, 'free', testEmail)
-
-      expect(result.allowed).toBe(true)
-      expect(result.limit).toBe(Infinity)
-      expect(supabaseAdmin.from).not.toHaveBeenCalled()
-    })
   })
 
   describe('checkDomainLimit', () => {
