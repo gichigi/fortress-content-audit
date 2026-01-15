@@ -73,6 +73,18 @@ A powerful web application that automatically audits websites for content incons
 4. View detailed audit results with prioritized issues
 5. Save audits to your dashboard (sign up required)
 
+## Deployment
+
+### Vercel Requirements
+
+This application requires **Vercel Pro plan** for production deployment due to long-running audit operations:
+
+- **Serverless Function Timeout**: The audit API route requires `maxDuration = 900` (15 minutes) to support PAID and ENTERPRISE tier audits that can take up to 10-15 minutes
+- **Vercel Hobby plan** only supports up to 300 seconds (5 minutes), which is insufficient for thorough audits
+- **Vercel Pro plan** supports up to 900 seconds (15 minutes), matching the maximum audit duration
+
+The application uses Next.js 15's `after()` utility to run audits in the background while immediately returning a `pending` status, allowing the frontend to poll for completion.
+
 ## Project Structure
 
 - `app/` - Next.js app router pages and API routes
