@@ -84,21 +84,21 @@ export default function PricingPage() {
         </div>
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
-          {/* Free Plan */}
+          {/* Tier 1 */}
           <Card className="border border-border flex flex-col">
             <CardHeader>
               <div className="flex items-center justify-between mb-2">
                 <CardTitle className="font-serif text-2xl font-semibold">
                   {PLAN_NAMES.free}
                 </CardTitle>
-                <Badge variant="outline">Free</Badge>
+                <Badge variant="outline">Tier 1</Badge>
               </div>
               <div className="mt-4">
                 <span className="text-4xl font-light">${PLAN_PRICES.free}</span>
                 <span className="text-muted-foreground">/month</span>
               </div>
               <CardDescription className="mt-4">
-                Perfect for trying out content audits
+                Free homepage audit
               </CardDescription>
             </CardHeader>
             <CardContent className="flex-1 flex flex-col">
@@ -142,14 +142,14 @@ export default function PricingPage() {
             </CardContent>
           </Card>
 
-          {/* Pro Plan */}
+          {/* Tier 2 */}
           <Card className="border-2 border-foreground flex flex-col">
             <CardHeader>
               <div className="flex items-center justify-between mb-2">
                 <CardTitle className="font-serif text-2xl font-semibold">
                   {PLAN_NAMES.pro}
                 </CardTitle>
-                <Badge>Pro</Badge>
+                <Badge>Tier 2</Badge>
               </div>
               <div className="mt-4">
                 <span className="text-4xl font-light">${PLAN_PRICES.pro}</span>
@@ -221,20 +221,20 @@ export default function PricingPage() {
             </CardContent>
           </Card>
 
-          {/* Enterprise Plan */}
+          {/* Tier 3 */}
           <Card className="border border-border flex flex-col">
             <CardHeader>
               <div className="flex items-center justify-between mb-2">
                 <CardTitle className="font-serif text-2xl font-semibold">
                   {PLAN_NAMES.enterprise}
                 </CardTitle>
-                <Badge variant="outline">Enterprise</Badge>
+                <Badge variant="outline">Tier 3</Badge>
               </div>
               <div className="mt-4">
                 <span className="text-2xl font-light text-muted-foreground">Custom pricing</span>
               </div>
               <CardDescription className="mt-4">
-                For organizations with advanced needs
+                Full-site audits for larger organizations
               </CardDescription>
             </CardHeader>
             <CardContent className="flex-1 flex flex-col">

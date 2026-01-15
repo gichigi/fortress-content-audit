@@ -73,7 +73,7 @@ function UpgradeButton() {
         >
           <Link href="/pricing">
             <Sparkles className="h-4 w-4" />
-            <span>Upgrade to Pro</span>
+            <span>Upgrade to Tier 2</span>
           </Link>
         </SidebarMenuButton>
       </SidebarMenuItem>

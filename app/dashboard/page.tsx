@@ -1347,7 +1347,7 @@ export default function DashboardPage() {
                           Running audit...
                         </>
                       ) : (
-                        plan === 'pro' || plan === 'enterprise' ? 'Run Pro Audit' : 'Run Basic Audit'
+                        plan === 'pro' || plan === 'enterprise' ? 'Run Tier 2 Audit' : 'Run Tier 1 Audit'
                       )}
                       {/* TEMPORARILY DISABLED: Daily limit reached text */}
                       {/* ) : usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit ? (

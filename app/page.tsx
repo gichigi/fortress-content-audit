@@ -380,7 +380,7 @@ export default function Home() {
           } else if (response.status === 429) {
             errorMessage = errorData.message || errorData.error || 'Too many requests. Try again later.'
           } else if (response.status === 403) {
-            errorMessage = 'Upgrade to Pro or Enterprise'
+            errorMessage = 'Upgrade to Tier 2 or Tier 3'
           } else if (response.status === 401) {
             errorMessage = 'Please sign in'
           } else if (response.status === 500) {
@@ -537,8 +537,8 @@ export default function Home() {
       {/* Loading State */}
       <InterstitialLoader 
         open={loading}
-        title="Analyzing your website..."
-        description="Scanning pages and identifying content issues. This may take a moment."
+        title="Running Tier 1 Audit"
+        description="Reviewing your homepage and one key page. This may take up to 3 minutes."
         pagesAudited={progressInfo.pagesAudited}
         pagesBeingCrawled={progressInfo.pagesBeingCrawled}
       />

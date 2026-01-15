@@ -38,7 +38,7 @@ export interface AuditResult {
 }
 
 // Plans
-export type PlanType = 'free' | 'pro' // 'Outpost' | 'Watchtower' in UI
+export type PlanType = 'free' | 'pro' // 'Tier 1' | 'Tier 2' in UI
 
 export interface UserProfile extends Database['public']['Tables']['profiles']['Row'] {
   plan: PlanType

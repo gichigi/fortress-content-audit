@@ -330,7 +330,7 @@ export function DomainSwitcher() {
         <SidebarMenuItem>
           <SidebarMenuButton
             onClick={() => setNewAuditDialogOpen(true)}
-            tooltip={isNewDomainDisabled ? "Domain limit reached. Upgrade to Pro for 5 domains." : "New Domain"}
+            tooltip={isNewDomainDisabled ? "Domain limit reached. Upgrade to Tier 2 for 5 domains." : "New Domain"}
             disabled={isNewDomainDisabled}
           >
             <Plus className="h-4 w-4" />

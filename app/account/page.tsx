@@ -453,8 +453,8 @@ export default function AccountPage() {
             <CardHeader>
               <CardTitle className="font-serif text-2xl font-semibold">Billing</CardTitle>
               <CardDescription>
-                Current plan: <span className="font-medium">{PLAN_NAMES[profile?.plan as keyof typeof PLAN_NAMES] || 'Outpost'}</span>
-                {profile?.plan === 'free' && <span className="text-muted-foreground"> (free plan)</span>}
+                Current plan: <span className="font-medium">{PLAN_NAMES[profile?.plan as keyof typeof PLAN_NAMES] || 'Tier 1'}</span>
+                {profile?.plan === 'free' && <span className="text-muted-foreground"> (free)</span>}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
