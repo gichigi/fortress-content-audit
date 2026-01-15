@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
-import { CheckCircle2, FileText, Search, AlertCircle } from "lucide-react"
+import { CheckCircle2, Globe, Lightbulb, TrendingUp } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { InterstitialLoader } from "@/components/ui/interstitial-loader"
 import { createClient } from "@/lib/supabase-browser"
@@ -634,8 +634,8 @@ export default function Home() {
         <div className="container mx-auto px-6">
           <div className="grid md:grid-cols-3 gap-16">
             <div className="text-center animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-200">
-              <div className="inline-flex items-center justify-center w-16 h-16 border-2 border-foreground mb-6">
-                <Search className="h-8 w-8" />
+              <div className="inline-flex items-center justify-center w-14 h-14 rounded-full border border-foreground/20 bg-foreground/5 mb-6">
+                <Globe className="h-6 w-6 stroke-[1.5]" />
               </div>
               <h3 className="font-serif text-2xl font-semibold mb-4">Crawl Your Site</h3>
               <p className="text-muted-foreground leading-relaxed">
@@ -644,8 +644,8 @@ export default function Home() {
             </div>
 
             <div className="text-center animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-400">
-              <div className="inline-flex items-center justify-center w-16 h-16 border-2 border-foreground mb-6">
-                <FileText className="h-8 w-8" />
+              <div className="inline-flex items-center justify-center w-14 h-14 rounded-full border border-foreground/20 bg-foreground/5 mb-6">
+                <Lightbulb className="h-6 w-6 stroke-[1.5]" />
               </div>
               <h3 className="font-serif text-2xl font-semibold mb-4">Get Actionable Insights</h3>
               <p className="text-muted-foreground leading-relaxed">
@@ -654,8 +654,8 @@ export default function Home() {
             </div>
 
             <div className="text-center animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-600">
-              <div className="inline-flex items-center justify-center w-16 h-16 border-2 border-foreground mb-6">
-                <AlertCircle className="h-8 w-8" />
+              <div className="inline-flex items-center justify-center w-14 h-14 rounded-full border border-foreground/20 bg-foreground/5 mb-6">
+                <TrendingUp className="h-6 w-6 stroke-[1.5]" />
               </div>
               <h3 className="font-serif text-2xl font-semibold mb-4">Track Progress</h3>
               <p className="text-muted-foreground leading-relaxed">
