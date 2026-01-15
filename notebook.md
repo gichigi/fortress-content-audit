@@ -131,9 +131,9 @@ User testing session for Fortress, a website auditing tool that analyzes website
 - [x]  Fix back button navigation bug that shows blank page after viewing issues on homepage (Fixed: localStorage persistence)
 - [x]  Add progress indicators showing total steps (e.g., "3 of 10") during audit process (Fixed: Updated messaging, removed numbering, clearer timing expectations)
 - [x]  Recalibrate health score algorithm to be more encouraging - fewer issues should result in higher scores (Fixed: Reduced weights - critical 7→4, medium 3→2, low 1→0.5, criticalPages 10→5)
-- [ ]  Add warm, encouraging messaging after showing results with clear call-to-action
+- [x]  Add warm, encouraging messaging after showing results with clear call-to-action (Fixed: Replaced with breadcrumb-style workflow progress indicator for new users)
 - [x]  Change medium severity color from orange to yellow for better distinction (Fixed: Changed to yellow-500, unified 3-color scheme: rose-500/yellow-500/blue-500)
-- [ ]  Make issue resolution checkboxes more discoverable
+- [x]  Make issue resolution checkboxes more discoverable (Fixed: Replaced dropdown menu with inline Resolve/Ignore buttons in table actions column)
 - [ ]  Add gamification elements to encourage return visits and progress tracking
 - [ ]  Add explanation of tier system when "Tier 1" label appears
 - [ ]  Reorder pricing page features to show consistent features first

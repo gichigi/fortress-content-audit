@@ -15,6 +15,7 @@ import { PLAN_NAMES } from "@/lib/plans"
 import { HealthScoreChart } from "@/components/health-score-chart"
 import { HealthScoreCards } from "@/components/health-score-cards"
 import { AuditTable } from "@/components/audit-table"
+import { AuditProgress } from "@/components/audit-progress"
 import { useAuditIssues } from "@/hooks/use-audit-issues"
 import { useHealthScoreMetrics } from "@/hooks/use-health-score-metrics"
 import { transformIssuesToTableRows } from "@/lib/audit-table-adapter"
@@ -69,6 +70,7 @@ export default function DashboardPage() {
   const [startingAudit, setStartingAudit] = useState(false)
   const [rerunningAuditId, setRerunningAuditId] = useState<string | null>(null)
   const [pendingAuditId, setPendingAuditId] = useState<string | null>(null)
+  const [severityFilter, setSeverityFilter] = useState<'all' | 'critical'>('all')
   
   // Use shared hook to fetch issues from database
   const mostRecentAudit = audits.length > 0 ? audits[0] : null
@@ -208,10 +210,13 @@ export default function DashboardPage() {
       }))
       setAudits(mappedAudits)
       
-      // Check for pending audits
+      // Check for pending audits - check both issues_json.status and direct status field
       // Only set pendingAuditId if we find a pending audit
       // Don't clear it here - polling logic handles clearing when status is completed/failed
-      const pendingAudit = mappedAudits.find((a: any) => a.issues_json?.status === 'pending')
+      const pendingAudit = mappedAudits.find((a: any) => {
+        const status = a.status || a.issues_json?.status
+        return status === 'pending'
+      })
       if (pendingAudit) {
         setPendingAuditId(pendingAudit.id)
         console.log('[Dashboard] Found pending audit:', pendingAudit.id)
@@ -340,7 +345,7 @@ export default function DashboardPage() {
     if (!pendingAuditId || !authToken) return
 
     const pollPendingAudit = async () => {
-      const maxAttempts = 60 // ~4 minutes max (4s intervals)
+      const maxAttempts = 180 // ~12 minutes max (4s intervals) - supports longer audits
       let attempts = 0
 
       const poll = async () => {
@@ -834,7 +839,7 @@ export default function DashboardPage() {
           
           // Poll for completion - longer timeout for paid audits
           const pollIntervalMs = 5000 // 5 seconds
-          const maxPollMinutes = plan === 'pro' || plan === 'enterprise' ? 12 : 7 // 7min for free tier
+          const maxPollMinutes = plan === 'pro' || plan === 'enterprise' ? 15 : 12 // 12min for free tier, 15min for paid
           const maxAttempts = Math.ceil((maxPollMinutes * 60 * 1000) / pollIntervalMs)
           let attempts = 0
           
@@ -1358,6 +1363,32 @@ export default function DashboardPage() {
                 </div>
 
 
+                {/* Workflow Progress - Only show for new users */}
+                {(() => {
+                  const isNewUser = audits.length <= 5
+                  const resolvedCount = displayTableRows.filter(row => row.status === 'resolved').length
+                  const totalIssues = displayTableRows.length
+                  const allResolved = totalIssues > 0 && resolvedCount === totalIssues
+                  
+                  // Determine current step
+                  let currentStep: 'review' | 'fix' | 'reaudit' = 'review'
+                  if (allResolved) {
+                    currentStep = 'reaudit'
+                  } else if (resolvedCount > 0) {
+                    currentStep = 'fix'
+                  }
+                  
+                  const shouldShow = isNewUser && 
+                                     !loading && 
+                                     !tableRowsLoading && 
+                                     !pendingAuditId && 
+                                     totalIssues > 0
+                  
+                  return shouldShow ? (
+                    <AuditProgress currentStep={currentStep} />
+                  ) : null
+                })()}
+
                 {/* Health Score Section - Available to all authenticated users */}
                 <HealthScoreCards
                   loading={tableRowsLoading || healthScoreLoading || !!pendingAuditId}
@@ -1372,6 +1403,8 @@ export default function DashboardPage() {
                   } : healthScoreData?.currentScore}
                   pagesAudited={mostRecentAudit?.pages_audited ?? null}
                   previousScore={previousScore}
+                  onFilterChange={(filter) => setSeverityFilter(filter === null ? 'all' : filter)}
+                  activeFilter={severityFilter === 'all' ? null : severityFilter}
                 />
 
                 {/* Health Score Chart - Show if we have data (historical or current) */}
@@ -1408,12 +1441,13 @@ export default function DashboardPage() {
                     </Card>
                   </div>
                 ) : (
-                  <div className="px-4 lg:px-6">
+                  <div className="px-4 lg:px-6" data-issues-section>
                     <AuditTable
                       data={displayTableRows}
                       auditId={mostRecentAudit?.id}
                       totalIssues={displayTotalIssues}
                       onStatusUpdate={refetch}
+                      initialSeverityFilter={severityFilter}
                     />
                   </div>
                 )}

@@ -32,6 +32,7 @@ import {
   SearchIcon,
   XIcon,
   RotateCcwIcon,
+  Circle,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
@@ -129,15 +130,35 @@ function createColumns(
       enableHiding: false,
     },
     {
+      id: "actions",
+      header: () => (
+        <div className="flex items-center justify-center">
+          <span className="text-xs text-muted-foreground">Actions</span>
+        </div>
+      ),
+      cell: ({ row }) => {
+        const issueId = row.original.id
+        const currentStatus = row.original.status || 'active'
+        
+        if (!onUpdateStatus || !issueId) {
+          return null
+        }
+
+        return (
+          <IssueActions
+            issueId={issueId}
+            currentStatus={currentStatus}
+            onUpdateStatus={onUpdateStatus}
+          />
+        )
+      },
+      enableSorting: false,
+      enableHiding: false,
+    },
+    {
       accessorKey: "issue_description",
       header: "Issue",
       cell: ({ row }) => {
-        const severity = row.original.severity
-        const severityColors = {
-          critical: 'bg-red-500',
-          medium: 'bg-orange-500', 
-          low: 'bg-gray-300'
-        }
         // Parse issue_description to extract impact prefix and description
         const description = row.original.issue_description
         const colonIndex = description.indexOf(':')
@@ -145,14 +166,11 @@ function createColumns(
         const issueText = colonIndex > 0 ? description.substring(colonIndex + 1).trim() : description
         
         return (
-          <div className="flex items-center gap-3">
-            <div className={`w-1 h-4 rounded-full ${severityColors[severity]} shrink-0`} title={severity === 'critical' ? 'Critical' : severity} />
-            <div className="flex-1">
-              {impactPrefix && (
-                <span className="text-xs text-muted-foreground uppercase tracking-wide mr-2">{impactPrefix}</span>
-              )}
-              <span className="font-medium">{issueText}</span>
-            </div>
+          <div className="flex-1">
+            {impactPrefix && (
+              <span className="text-xs text-muted-foreground uppercase tracking-wide mr-2">{impactPrefix}</span>
+            )}
+            <span className="font-medium">{issueText}</span>
           </div>
         )
       },
@@ -165,11 +183,27 @@ function createColumns(
     {
       accessorKey: "suggested_fix",
       header: "Fix",
+      size: 600,
+      minSize: 400,
       cell: ({ row }) => (
-        <div className="max-w-md text-sm text-muted-foreground break-words">
+        <div className="text-sm text-muted-foreground break-words">
           {row.original.suggested_fix || '—'}
         </div>
       ),
+    },
+    {
+      accessorKey: "severity",
+      header: "Severity",
+      cell: ({ row }) => {
+        const severity = row.original.severity
+        const variant = getSeverityBadgeVariant(severity)
+        
+        return (
+          <Badge variant={variant} className="capitalize">
+            {severity}
+          </Badge>
+        )
+      },
     },
     {
       accessorKey: "page_url",
@@ -229,163 +263,115 @@ function createColumns(
         )
       },
     },
-    {
-      id: "actions",
-      cell: ({ row }) => {
-        const issueId = row.original.id
-        const currentStatus = row.original.status || 'active'
-        
-        // Issue status management available to all authenticated users
-        if (!onUpdateStatus || !issueId) {
-          return null
-        }
-
-        return (
-          <IssueActionsDropdown
-            issueId={issueId}
-            currentStatus={currentStatus}
-            onUpdateStatus={onUpdateStatus}
-            currentStateTab={currentStateTab}
-          />
-        )
-      },
-    },
   ]
 }
 
-// Issue actions dropdown component
-function IssueActionsDropdown({
+// Issue actions component (inline buttons instead of dropdown)
+function IssueActions({
   issueId,
   currentStatus,
   onUpdateStatus,
-  currentStateTab,
 }: {
   issueId: string
   currentStatus: IssueStatus
   onUpdateStatus: (issueId: string, status: IssueStatus) => Promise<void>
-  currentStateTab?: 'active' | 'ignored' | 'resolved' | 'all'
 }) {
-  const [ignoreDialogOpen, setIgnoreDialogOpen] = React.useState(false)
   const [isUpdating, setIsUpdating] = React.useState(false)
   const { toast } = useToast()
+  
+  const isResolved = currentStatus === 'resolved'
+  const isIgnored = currentStatus === 'ignored'
 
-  const handleIgnore = async () => {
+  const handleStatusUpdate = async (e: React.MouseEvent, status: IssueStatus) => {
+    e.stopPropagation()
     setIsUpdating(true)
     try {
-      await onUpdateStatus(issueId, 'ignored')
-      setIgnoreDialogOpen(false)
+      await onUpdateStatus(issueId, status)
+      
+      let title = "Status updated"
+      let description = "Issue status has been updated."
+      
+      if (status === 'resolved') {
+        title = "Issue resolved"
+        description = "Great job! The issue has been marked as resolved."
+      } else if (status === 'ignored') {
+        title = "Issue ignored"
+        description = "The issue has been moved to ignored."
+      } else if (status === 'active') {
+        title = "Issue restored"
+        description = "The issue has been restored to active."
+      }
+      
       toast({
-        title: "Issue ignored",
-        description: "The issue has been moved to ignored.",
+        title,
+        description,
       })
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to ignore issue. Please try again.",
-        variant: "destructive",
+        description: "Failed to update issue status. Please try again.",
+        variant: "error",
       })
     } finally {
       setIsUpdating(false)
     }
   }
 
-  const handleResolve = async () => {
-    setIsUpdating(true)
-    try {
-      await onUpdateStatus(issueId, 'resolved')
-      toast({
-        title: "Issue resolved",
-        description: "The issue has been marked as resolved.",
-      })
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to resolve issue. Please try again.",
-        variant: "destructive",
-      })
-    } finally {
-      setIsUpdating(false)
-    }
-  }
-
-  const handleRestore = async () => {
-    setIsUpdating(true)
-    try {
-      await onUpdateStatus(issueId, 'active')
-      toast({
-        title: "Issue restored",
-        description: "The issue has been restored to active.",
-      })
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to restore issue. Please try again.",
-        variant: "destructive",
-      })
-    } finally {
-      setIsUpdating(false)
-    }
+  if (isResolved || isIgnored) {
+    return (
+      <div className="flex items-center justify-end">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={(e) => handleStatusUpdate(e, 'active')}
+          disabled={isUpdating}
+          className="h-8 px-2 text-muted-foreground hover:text-foreground"
+          title="Restore to active"
+        >
+          {isUpdating ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <>
+              <RotateCcwIcon className="mr-2 h-3.5 w-3.5" />
+              Restore
+            </>
+          )}
+        </Button>
+      </div>
+    )
   }
 
   return (
-    <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            className="flex size-8 text-muted-foreground data-[state=open]:bg-muted"
-            size="icon"
-            onClick={(e) => e.stopPropagation()}
-            aria-label={`Actions for issue`}
-            disabled={isUpdating}
-          >
-            <MoreVerticalIcon />
-            <span className="sr-only">Open menu</span>
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent 
-          align="end" 
-          className="w-40"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {currentStatus === 'active' && (
-            <>
-              <DropdownMenuItem onClick={() => setIgnoreDialogOpen(true)}>
-                <XIcon className="mr-2 h-4 w-4" />
-                Ignore Issue
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleResolve}>
-                <CheckCircle2Icon className="mr-2 h-4 w-4" />
-                Mark Resolved
-              </DropdownMenuItem>
-            </>
-          )}
-          {(currentStatus === 'ignored' || currentStatus === 'resolved') && (
-            <DropdownMenuItem onClick={handleRestore}>
-              <RotateCcwIcon className="mr-2 h-4 w-4" />
-              Restore
-            </DropdownMenuItem>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <AlertDialog open={ignoreDialogOpen} onOpenChange={setIgnoreDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Ignore Issue</AlertDialogTitle>
-            <AlertDialogDescription>
-              This issue will be hidden from future audits and won't appear in your active issues list. You can restore it later from the Ignored tab.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleIgnore} disabled={isUpdating}>
-              {isUpdating ? 'Ignoring...' : 'Ignore Issue'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+    <div className="flex items-center justify-end gap-1">
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={(e) => handleStatusUpdate(e, 'resolved')}
+        disabled={isUpdating}
+        className="h-8 w-8 text-muted-foreground hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-950/20"
+        title="Mark as resolved"
+      >
+        {isUpdating ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <CheckCircle2Icon className="h-4 w-4" />
+        )}
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={(e) => handleStatusUpdate(e, 'ignored')}
+        disabled={isUpdating}
+        className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+        title="Ignore issue"
+      >
+        {isUpdating ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <XIcon className="h-4 w-4" />
+        )}
+      </Button>
+    </div>
   )
 }
 
@@ -393,9 +379,17 @@ function IssueActionsDropdown({
 function ExpandableRow({ row }: { row: Row<AuditTableRow> }) {
   return (
     <TableRow data-state={row.getIsSelected() && "selected"}>
-      {row.getVisibleCells().map((cell) => (
-        <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
-      ))}
+      {row.getVisibleCells().map((cell) => {
+        const isFixColumn = cell.column.id === 'suggested_fix'
+        return (
+          <TableCell 
+            key={cell.id}
+            style={isFixColumn ? { minWidth: '500px', width: '500px' } : undefined}
+          >
+            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+          </TableCell>
+        )
+      })}
     </TableRow>
   )
 }
@@ -408,6 +402,7 @@ export function DataTable({
   hideTabs = false,
   readOnly = false,
   onStatusUpdate,
+  initialSeverityFilter,
 }: {
   data: AuditTableRow[]
   auditId?: string
@@ -416,6 +411,7 @@ export function DataTable({
   hideTabs?: boolean
   readOnly?: boolean
   onStatusUpdate?: () => void
+  initialSeverityFilter?: 'all' | 'critical' | 'medium' | 'low'
 }) {
   const { toast } = useToast()
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({})
@@ -436,7 +432,16 @@ export function DataTable({
     pageIndex: 0,
     pageSize: 10,
   })
-  const [activeSeverityTab, setActiveSeverityTab] = React.useState<"all" | "critical" | "medium" | "low">("all")
+  const [activeSeverityTab, setActiveSeverityTab] = React.useState<"all" | "critical" | "medium" | "low">(
+    initialSeverityFilter || "all"
+  )
+  
+  // Update severity tab when initialSeverityFilter prop changes
+  React.useEffect(() => {
+    if (initialSeverityFilter) {
+      setActiveSeverityTab(initialSeverityFilter)
+    }
+  }, [initialSeverityFilter])
   const [activeStateTab, setActiveStateTab] = React.useState<'all' | 'active' | 'ignored' | 'resolved'>('active')
   const [isBulkProcessing, setIsBulkProcessing] = React.useState(false)
   const [globalFilter, setGlobalFilter] = React.useState("")
@@ -703,7 +708,7 @@ export function DataTable({
       toast({
         title: "Error",
         description: "Failed to resolve issues. Please try again.",
-        variant: "destructive",
+        variant: "error",
       })
     } finally {
       setIsBulkProcessing(false)
@@ -731,7 +736,7 @@ export function DataTable({
       toast({
         title: "Error",
         description: "Failed to ignore issues. Please try again.",
-        variant: "destructive",
+        variant: "error",
       })
     } finally {
       setIsBulkProcessing(false)
@@ -759,7 +764,7 @@ export function DataTable({
       toast({
         title: "Error",
         description: "Failed to restore issues. Please try again.",
-        variant: "destructive",
+        variant: "error",
       })
     } finally {
       setIsBulkProcessing(false)
@@ -788,8 +793,13 @@ export function DataTable({
                                             headerId === 'suggested_fix' ? 'Fix' :
                                             headerId === 'severity' ? 'Sev.' :
                                             headerId
+                        const isFixColumn = headerId === 'suggested_fix'
                         return (
-                          <TableHead key={header.id} colSpan={header.colSpan}>
+                          <TableHead 
+                            key={header.id} 
+                            colSpan={header.colSpan}
+                            style={isFixColumn ? { minWidth: '500px', width: '500px' } : undefined}
+                          >
                             {header.isPlaceholder ? null : (
                               <>
                                 <span className="hidden md:inline">

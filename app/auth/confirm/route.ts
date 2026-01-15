@@ -22,7 +22,8 @@ export async function GET(request: NextRequest) {
     next = '/dashboard'
   }
 
-  console.log('[Auth Confirm] Received:', { token_hash: !!token_hash, type, next })
+  const isProdOrigin = origin.includes('fortress-audit.vercel.app')
+  console.log('[Auth Confirm] Received:', { token_hash: !!token_hash, type, next, isProdOrigin })
 
   if (token_hash && type) {
     const cookieStore = await cookies()
@@ -65,6 +66,17 @@ export async function GET(request: NextRequest) {
       // Handle forwarded host for production
       const forwardedHost = request.headers.get('x-forwarded-host')
       const isLocalEnv = process.env.NODE_ENV === 'development'
+      const wantsLocalhost = searchParams.get('dev_redirect') === 'true'
+      
+      // If dev_redirect param is present and we're on prod, redirect to localhost version
+      if (wantsLocalhost && isProdOrigin) {
+        const localhostRedirect = new URL(next, 'http://localhost:3000')
+        if (type === 'recovery') {
+          localhostRedirect.searchParams.set('recovery', 'true')
+        }
+        console.log('[Auth Confirm] Redirecting to localhost:', localhostRedirect.toString())
+        return NextResponse.redirect(localhostRedirect.toString())
+      }
       
       if (isLocalEnv) {
         return NextResponse.redirect(redirectUrl.toString())

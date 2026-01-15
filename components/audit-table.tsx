@@ -19,6 +19,7 @@ interface AuditTableProps {
   hideTabs?: boolean
   readOnly?: boolean
   onStatusUpdate?: () => void
+  initialSeverityFilter?: 'all' | 'critical' | 'medium' | 'low'
 }
 
 export function AuditTable({
@@ -30,6 +31,7 @@ export function AuditTable({
   hideTabs = false,
   readOnly = false,
   onStatusUpdate,
+  initialSeverityFilter = 'all',
 }: AuditTableProps) {
   const router = useRouter()
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -83,6 +85,7 @@ export function AuditTable({
         hideTabs={hideTabs}
         readOnly={readOnly}
         onStatusUpdate={onStatusUpdate}
+        initialSeverityFilter={initialSeverityFilter}
       />
       {showPreview && remainingCount > 0 && (
         <div 

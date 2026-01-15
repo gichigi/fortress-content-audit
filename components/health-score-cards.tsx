@@ -24,9 +24,18 @@ interface HealthScoreCardsProps {
   pagesAudited?: number | null
   previousScore?: number
   loading?: boolean
+  onFilterChange?: (filter: 'all' | 'critical' | null) => void
+  activeFilter?: 'all' | 'critical' | null // null means 'all' (show all), 'critical' means filter to critical
 }
 
-export function HealthScoreCards({ currentScore, pagesAudited, previousScore, loading }: HealthScoreCardsProps) {
+export function HealthScoreCards({ 
+  currentScore, 
+  pagesAudited, 
+  previousScore, 
+  loading,
+  onFilterChange,
+  activeFilter = null
+}: HealthScoreCardsProps) {
   // Show loading state only while actively loading
   if (loading) {
     return (
@@ -98,7 +107,14 @@ export function HealthScoreCards({ currentScore, pagesAudited, previousScore, lo
         </CardFooter>
       </Card>
       
-      <Card className="@container/card border border-border">
+      <Card 
+        className={`@container/card border transition-all ${
+          onFilterChange ? 'cursor-pointer hover:shadow-md hover:border-foreground/20' : ''
+        } ${
+          activeFilter === null ? 'ring-2 ring-primary/20 border-primary/30' : ''
+        }`}
+        onClick={() => onFilterChange && onFilterChange(null)}
+      >
         <CardHeader className="relative">
           <CardDescription>Total Active Issues</CardDescription>
           <CardTitle className="@[250px]/card:text-3xl text-2xl font-semibold tabular-nums">
@@ -110,12 +126,19 @@ export function HealthScoreCards({ currentScore, pagesAudited, previousScore, lo
             Active issues in current audit
           </div>
           <div className="text-muted-foreground">
-            Excludes ignored and resolved issues
+            {onFilterChange ? 'Click to view all issues' : 'Excludes ignored and resolved issues'}
           </div>
         </CardFooter>
       </Card>
       
-      <Card className="@container/card border border-border">
+      <Card 
+        className={`@container/card border transition-all ${
+          onFilterChange ? 'cursor-pointer hover:shadow-md hover:border-rose-500/30' : ''
+        } ${
+          activeFilter === 'critical' ? 'ring-2 ring-rose-500/30 border-rose-500/50' : ''
+        }`}
+        onClick={() => onFilterChange && onFilterChange('critical')}
+      >
         <CardHeader className="relative">
           <CardDescription>Critical Issues</CardDescription>
           <CardTitle className="@[250px]/card:text-3xl text-2xl font-semibold tabular-nums text-rose-500">
@@ -127,7 +150,7 @@ export function HealthScoreCards({ currentScore, pagesAudited, previousScore, lo
             High-severity issues requiring attention
           </div>
           <div className="text-muted-foreground">
-            Issues that impact user experience
+            {onFilterChange ? 'Click to filter by critical issues' : 'Issues that impact user experience'}
           </div>
         </CardFooter>
       </Card>

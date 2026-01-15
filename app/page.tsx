@@ -87,6 +87,7 @@ export default function Home() {
     pagesBeingCrawled: [],
     reasoningSummaries: []
   })
+  const [severityFilter, setSeverityFilter] = useState<'all' | 'critical'>('all')
   
   // For authenticated users, use the hook to fetch from database
   // For unauthenticated users, use issues directly from API response
@@ -258,6 +259,8 @@ export default function Home() {
   }
 
   const handleAudit = async () => {
+    // Set loading immediately for better UX
+    setLoading(true)
     setTouched(true)
     setApiError(null) // Clear API errors on new submission
     
@@ -265,6 +268,7 @@ export default function Home() {
     const validation = validateUrlClient(url)
     if (!validation.isValid) {
       setValidationError(validation.error || "Invalid URL")
+      setLoading(false) // Reset loading on validation error
       return
     }
 
@@ -308,6 +312,7 @@ export default function Home() {
           const text = await response.text()
           console.error('Non-JSON success response:', text.substring(0, 200))
           setApiError('Server error')
+          setLoading(false) // Reset loading on error
           return
         }
 
@@ -321,10 +326,9 @@ export default function Home() {
           console.log('[Homepage] Received session token for audit:', data.sessionToken)
         }
         
-        // Handle pending status - poll for completion (only show loader once audit actually started)
+        // Handle pending status - poll for completion (loading already set at start)
         if (data.status === 'pending' && data.runId) {
-          // Audit has started - now show the loading interstitial
-          setLoading(true)
+          // Audit has started - continue with loading state (already set)
           const pollIntervalMs = 5000 // 5 seconds
           const maxPollMinutes = 7 // 7 minutes max for free tier
           const maxAttempts = Math.ceil((maxPollMinutes * 60 * 1000) / pollIntervalMs)
@@ -624,6 +628,7 @@ export default function Home() {
               </div>
             )}
             
+            
             {/* Health Score Cards */}
             <HealthScoreCards
               currentScore={!isLoading ? {
@@ -637,10 +642,13 @@ export default function Home() {
               } : undefined}
               previousScore={undefined}
               loading={isLoading}
+              onFilterChange={(filter) => setSeverityFilter(filter === null ? 'all' : filter)}
+              activeFilter={severityFilter === 'all' ? null : severityFilter}
             />
 
 
             {/* Audit Issues Table */}
+            <div data-issues-section>
             {isLoading ? (
               <div className="px-4 lg:px-6 space-y-4">
                 <Skeleton className="h-10 w-48 mb-4" />
@@ -670,9 +678,11 @@ export default function Home() {
                   hideTabs={true}
                   readOnly={true}
                   onStatusUpdate={refetch}
+                  initialSeverityFilter={severityFilter}
                 />
               </div>
             ) : null}
+            </div>
           </div>
         </div>
       )}
