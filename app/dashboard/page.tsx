@@ -223,16 +223,18 @@ export default function DashboardPage() {
     }
   }, [selectedDomain])
 
-  const loadHealthScore = useCallback(async (token: string) => {
+  const loadHealthScore = useCallback(async (token: string, domain?: string | null) => {
     // Load health score for all authenticated users
-    if (!selectedDomain) {
+    // Use provided domain or fall back to selectedDomain state
+    const domainToUse = domain !== undefined ? domain : selectedDomain
+    if (!domainToUse) {
       setHealthScoreData(null)
       return
     }
     
     setHealthScoreLoading(true)
     try {
-      const response = await fetch(`/api/health-score?days=30&domain=${encodeURIComponent(selectedDomain)}`, {
+      const response = await fetch(`/api/health-score?days=30&domain=${encodeURIComponent(domainToUse)}`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -514,26 +516,24 @@ export default function DashboardPage() {
       // This may add a new audit to the user's account
       const claimResult = await claimPendingAudit(session.access_token)
 
-      // Load profile to get plan
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('plan')
-        .eq('user_id', user.id)
-        .maybeSingle()
+      // Parallelize profile, domains loading, and domain data fetch
+      const [{ data: profile }, _, { data: domainData }] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('plan')
+          .eq('user_id', user.id)
+          .maybeSingle(),
+        loadDomains(session.access_token),
+        supabase
+          .from('brand_audit_runs')
+          .select('domain')
+          .eq('user_id', user.id)
+          .not('domain', 'is', null)
+      ])
       
       if (profile) {
         setPlan(profile.plan || 'free')
       }
-
-      // Load domains (this now includes any newly claimed audit)
-      await loadDomains(session.access_token)
-      
-      // Get available domains and validate saved domain
-      const { data: domainData } = await supabase
-        .from('brand_audit_runs')
-        .select('domain')
-        .eq('user_id', user.id)
-        .not('domain', 'is', null)
       
       const availableDomains = Array.from(new Set(
         (domainData || []).map(a => a.domain).filter((d): d is string => d !== null)
@@ -557,14 +557,13 @@ export default function DashboardPage() {
         localStorage.setItem('selectedDomain', initialDomain)
       }
 
-      // Load audits (now with domain set)
-      await loadAudits(session.access_token, initialDomain)
-      
-      // Load health score for all authenticated users
-      await loadHealthScore(session.access_token)
-      
-      // Load usage info for the initial domain
-      await loadUsageInfo(session.access_token, initialDomain)
+      // Parallelize data loading - these queries are independent
+      // Pass initialDomain explicitly since state update hasn't propagated yet
+      await Promise.all([
+        loadAudits(session.access_token, initialDomain),
+        loadHealthScore(session.access_token, initialDomain),
+        loadUsageInfo(session.access_token, initialDomain)
+      ])
       
       // Load scheduled audits for paid users
       const userPlan = profile?.plan || 'free'
