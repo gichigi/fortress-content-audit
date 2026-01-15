@@ -74,6 +74,7 @@ export default function Home() {
   const { toast } = useToast()
   const [url, setUrl] = useState("")
   const [loading, setLoading] = useState(false)
+  const [restoringAudit, setRestoringAudit] = useState(false) // Track if restoring from localStorage
   const [validationError, setValidationError] = useState<string | null>(null) // Client-side validation errors
   const [apiError, setApiError] = useState<string | null>(null) // API/server errors
   const [touched, setTouched] = useState(false) // Track if input has been interacted with
@@ -183,6 +184,51 @@ export default function Home() {
     // Keep audit_session_token for dashboard claim functionality
   }, [])
 
+  // Restore last audit results on mount
+  useEffect(() => {
+    const restoreLastAudit = async () => {
+      const lastAuditId = localStorage.getItem('last_audit_id')
+      if (!lastAuditId) return
+
+      setRestoringAudit(true)
+      
+      try {
+        const sessionToken = localStorage.getItem('audit_session_token')
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        const token = session?.access_token
+
+        // Fetch audit results
+        const pollUrl = `/api/audit/${lastAuditId}${sessionToken ? `?session_token=${sessionToken}` : ''}`
+        const pollResponse = await fetch(pollUrl, {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        })
+
+        if (pollResponse.ok) {
+          const pollData = await pollResponse.json()
+          if (pollData.status === 'completed' && pollData.runId) {
+            setAuditResults(pollData)
+            setIsAuthenticated(!!token)
+            setAuthToken(token || null)
+          } else {
+            // Audit not completed or invalid, clear it silently
+            localStorage.removeItem('last_audit_id')
+          }
+        } else {
+          // Audit not found or error, clear it silently
+          localStorage.removeItem('last_audit_id')
+        }
+      } catch (error) {
+        console.error('[Homepage] Error restoring audit:', error)
+        localStorage.removeItem('last_audit_id')
+      } finally {
+        setRestoringAudit(false)
+      }
+    }
+
+    restoreLastAudit()
+  }, [])
+
   // Scroll to results when audit completes
   useEffect(() => {
     if (!loading && auditResults?.runId && resultsRef.current) {
@@ -225,6 +271,8 @@ export default function Home() {
     setValidationError(null)
     setApiError(null)
     setAuditResults(null)
+    // Clear previous audit from localStorage when starting new one
+    localStorage.removeItem('last_audit_id')
 
     try {
       const supabase = createClient()
@@ -312,6 +360,10 @@ export default function Home() {
               if (pollData.status === 'completed') {
                 setLoading(false)
                 setAuditResults(pollData)
+                // Store audit ID for persistence
+                if (pollData.runId) {
+                  localStorage.setItem('last_audit_id', pollData.runId)
+                }
                 return
               }
               
@@ -355,6 +407,10 @@ export default function Home() {
         if (data.status === 'completed') {
           setLoading(false)
           setAuditResults(data)
+          // Store audit ID for persistence
+          if (data.runId) {
+            localStorage.setItem('last_audit_id', data.runId)
+          }
           return
         }
         
@@ -537,8 +593,8 @@ export default function Home() {
       {/* Loading State */}
       <InterstitialLoader 
         open={loading}
-        title="Running Tier 1 Audit"
-        description="Reviewing your homepage and one key page. This may take up to 3 minutes."
+        title="Running Audit"
+        description="This may take a few minutes"
         pagesAudited={progressInfo.pagesAudited}
         pagesBeingCrawled={progressInfo.pagesBeingCrawled}
       />

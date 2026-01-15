@@ -261,8 +261,8 @@ export function AuditResults({
                       >
                         <div className="flex items-start gap-3">
                           <div className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${
-                            isHigh ? 'bg-red-500 shadow-[0_0_8px_-1px_rgba(239,68,68,0.5)]' : 
-                            isMedium ? 'bg-orange-500 shadow-[0_0_8px_-1px_rgba(249,115,22,0.5)]' : 
+                            isHigh ? 'bg-rose-500 shadow-[0_0_8px_-1px_rgba(244,63,94,0.5)]' : 
+                            isMedium ? 'bg-yellow-500 shadow-[0_0_8px_-1px_rgba(245,158,11,0.5)]' : 
                             'bg-blue-500'
                           }`} />
                           <div className="flex-1 min-w-0">
@@ -321,8 +321,8 @@ export function AuditResults({
                                 {group.title}
                               </h2>
                               <div className={`px-3 py-1 text-xs font-bold uppercase tracking-wider rounded-full border shrink-0 ${
-                                isHigh ? 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-800' :
-                                isMedium ? 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/30 dark:text-orange-400 dark:border-orange-800' :
+                                isHigh ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/30 dark:text-rose-400 dark:border-rose-800' :
+                                isMedium ? 'bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-950/30 dark:text-yellow-400 dark:border-yellow-800' :
                                 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-800'
                               }`}>
                                 {group.severity}

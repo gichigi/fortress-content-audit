@@ -49,7 +49,17 @@ export function HealthScoreCards({ currentScore, pagesAudited, previousScore, lo
   }
 
   const score = Math.round(currentScore.score)
-  const metrics = currentScore.metrics || {}
+  const metrics: {
+    totalActive: number
+    totalCritical: number
+    pagesWithIssues: number
+    criticalPages: number
+  } = currentScore.metrics || {
+    totalActive: 0,
+    totalCritical: 0,
+    pagesWithIssues: 0,
+    criticalPages: 0,
+  }
   
   // Calculate trend
   const trend = previousScore !== undefined ? score - previousScore : 0
@@ -108,7 +118,7 @@ export function HealthScoreCards({ currentScore, pagesAudited, previousScore, lo
       <Card className="@container/card border border-border">
         <CardHeader className="relative">
           <CardDescription>Critical Issues</CardDescription>
-          <CardTitle className="@[250px]/card:text-3xl text-2xl font-semibold tabular-nums text-destructive">
+          <CardTitle className="@[250px]/card:text-3xl text-2xl font-semibold tabular-nums text-rose-500">
             {metrics.totalCritical || 0}
           </CardTitle>
         </CardHeader>

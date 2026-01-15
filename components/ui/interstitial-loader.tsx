@@ -130,12 +130,12 @@ const InterstitialLoader = React.forwardRef<HTMLDivElement, InterstitialLoaderPr
           {/* Accumulating summaries list */}
           {shownSummaries.length > 0 && (
             <div className="mt-6 mb-6 min-h-[100px] flex flex-col items-center justify-center space-y-3 max-w-lg mx-auto">
-              {shownSummaries.map((summary, idx) => (
+              {shownSummaries.map((summary) => (
                 <div
                   key={summary}
                   className="text-base text-muted-foreground animate-in fade-in slide-in-from-bottom-2 duration-500"
                 >
-                  {idx + 1}. {summary}
+                  {summary}
                 </div>
               ))}
             </div>

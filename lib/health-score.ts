@@ -108,12 +108,12 @@ export async function calculateHealthScore(
   const criticalPages = criticalPagesSet.size
   const pagesWithIssues = pagesWithIssuesSet.size
   
-  // Apply formula: 100 - (low×1 + medium×3 + critical×7) - (criticalPages×10)
+  // Apply formula: 100 - (low×0.5 + medium×2 + critical×4) - (criticalPages×5)
   let score = 100
-  score -= bySeverity.low * 1
-  score -= bySeverity.medium * 3
-  score -= bySeverity.critical * 7
-  score -= criticalPages * 10
+  score -= bySeverity.low * 0.5
+  score -= bySeverity.medium * 2
+  score -= bySeverity.critical * 4
+  score -= criticalPages * 5
   
   // Clamp to 0-100
   score = Math.max(0, Math.min(100, score))
@@ -215,12 +215,12 @@ export async function calculateAggregatedHealthScore(
   const criticalPages = criticalPagesSet.size
   const pagesWithIssues = pagesWithIssuesSet.size
   
-  // Apply formula
+  // Apply formula: 100 - (low×0.5 + medium×2 + critical×4) - (criticalPages×5)
   let score = 100
-  score -= bySeverity.low * 1
-  score -= bySeverity.medium * 3
-  score -= bySeverity.critical * 7
-  score -= criticalPages * 10
+  score -= bySeverity.low * 0.5
+  score -= bySeverity.medium * 2
+  score -= bySeverity.critical * 4
+  score -= criticalPages * 5
   
   // Clamp to 0-100
   score = Math.max(0, Math.min(100, score))
@@ -245,20 +245,19 @@ export async function calculateAggregatedHealthScore(
  * @returns Tailwind text color class
  */
 export function getHealthScoreTextColor(score: number): string {
-  if (score >= 95) return 'text-green-600'
-  if (score >= 80) return 'text-yellow-600'
-  if (score >= 50) return 'text-orange-600'
-  return 'text-destructive'
+  if (score >= 90) return 'text-green-600'
+  if (score >= 50) return 'text-yellow-500'
+  return 'text-rose-500' // softened red instead of destructive
 }
 
 /**
  * Get RGB color value for health score (for charts/gradients)
+ * Uses unified 3-color scheme: green (good), yellow (medium), rose (critical)
  * @param score - Health score (0-100)
  * @returns RGB color string
  */
 export function getHealthScoreColor(score: number): string {
-  if (score >= 95) return 'rgb(22 163 74)' // green-600
-  if (score >= 80) return 'rgb(202 138 4)' // yellow-600
-  if (score >= 50) return 'rgb(234 88 12)' // orange-600
-  return 'rgb(220 38 38)' // red-600 (destructive)
+  if (score >= 90) return 'rgb(22, 163, 74)' // green-600
+  if (score >= 50) return 'rgb(245, 158, 11)' // yellow-500 (correct Tailwind value)
+  return 'rgb(244, 63, 94)' // rose-500 (softened red)
 }
