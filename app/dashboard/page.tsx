@@ -209,13 +209,14 @@ export default function DashboardPage() {
       setAudits(mappedAudits)
       
       // Check for pending audits
+      // Only set pendingAuditId if we find a pending audit
+      // Don't clear it here - polling logic handles clearing when status is completed/failed
       const pendingAudit = mappedAudits.find((a: any) => a.issues_json?.status === 'pending')
       if (pendingAudit) {
         setPendingAuditId(pendingAudit.id)
         console.log('[Dashboard] Found pending audit:', pendingAudit.id)
-      } else {
-        setPendingAuditId(null)
       }
+      // Note: We don't clear pendingAuditId here - let polling logic handle it
       
       // Issues are now loaded via useAuditIssues hook when mostRecentAudit changes
     } catch (error) {
