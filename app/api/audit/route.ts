@@ -202,8 +202,8 @@ export async function POST(request: Request) {
     console.log(`[Audit] Created audit record: ${runId}, authenticated: ${isAuthenticated}, tier: ${auditTier}`)
     
     // ========================================================================
-    // FREE tier: Run synchronously, return results inline (homepage expects this)
-    // PAID/ENTERPRISE: Run in background, return pending, frontend polls
+    // All tiers: Run in background via after(), return pending immediately
+    // Frontend polls /api/audit/[id] for completion (supports auth token or session_token)
     // ========================================================================
     
     // Helper to run audit and save results
@@ -328,47 +328,7 @@ export async function POST(request: Request) {
       return { result, filteredIssues }
     }
     
-    // FREE tier: Run synchronously and return results inline
-    if (auditTier === 'FREE') {
-      try {
-        const auditResult = await runAuditAndSave()
-        
-        if (!auditResult) {
-          return NextResponse.json(
-            { error: 'Audit did not complete. Please try again.' },
-            { status: 500 }
-          )
-        }
-        
-        const { result, filteredIssues } = auditResult
-        
-        return NextResponse.json({
-          runId,
-          preview: !isAuthenticated,
-          status: 'completed',
-          issues: filteredIssues,
-          totalIssues: filteredIssues.length,
-          sessionToken: finalSessionToken,
-          meta: { 
-            pagesAudited: result.pagesAudited,
-            auditedUrls: result.auditedUrls || [],
-            tier: auditTier,
-          },
-        })
-      } catch (error) {
-        console.error('[Audit] FREE tier audit error:', error)
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-        await supabaseAdmin
-          .from('brand_audit_runs')
-          .update({ 
-            issues_json: { issues: [], auditedUrls: [], status: 'failed', error: errorMessage }
-          })
-          .eq('id', runId)
-        return NextResponse.json({ error: errorMessage }, { status: 500 })
-      }
-    }
-    
-    // PAID/ENTERPRISE: Run in background, return pending immediately
+    // All tiers: Run in background, return pending immediately
     const runAuditBackground = async () => {
       try {
         await runAuditAndSave()

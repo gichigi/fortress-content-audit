@@ -4,18 +4,17 @@ import Logger from "./logger"
 
 // ============================================================================
 // Content Audit
-// All tiers use GPT-5.1 with web_search
-// FREE: synchronous (fast, 2min max)
-// PAID: background mode with polling (thorough, 10min max)
-// ENTERPRISE: background mode with polling (thorough, 15min max)
+// All tiers use GPT-5.1 with web_search with background mode and polling
+// FREE: background mode with polling (6min max, 10 tool calls)
+// PAID: background mode with polling (10min max, 50 tool calls)
+// ENTERPRISE: background mode with polling (15min max, 100 tool calls)
 // ============================================================================
 
 // Audit tiers for cost/scope control
-// All tiers use GPT-5.1 with web_search
-// FREE: synchronous (fast, limited)
-// PAID/ENTERPRISE: background mode with polling (thorough, max 10min)
+// All tiers use GPT-5.1 with web_search with background mode and polling
+// Only difference between tiers is maxToolCalls (10/50/100)
 export const AUDIT_TIERS = {
-  FREE: { maxToolCalls: 10, background: false, model: "gpt-5.1-2025-11-13" as const, maxPollSeconds: 120 },
+  FREE: { maxToolCalls: 10, background: true, model: "gpt-5.1-2025-11-13" as const, maxPollSeconds: 360 }, // 6min max
   PAID: { maxToolCalls: 50, background: true, model: "gpt-5.1-2025-11-13" as const, maxPollSeconds: 600 }, // 10min max
   ENTERPRISE: { maxToolCalls: 100, background: true, model: "gpt-5.1-2025-11-13" as const, maxPollSeconds: 900 }, // 15min max
 } as const

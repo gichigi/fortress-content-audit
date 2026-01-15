@@ -128,6 +128,21 @@ export default function Home() {
 
   // Ref for results section to enable scrolling
   const resultsRef = useRef<HTMLDivElement>(null)
+  
+  // Refs for polling cleanup to prevent memory leaks
+  const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const isMountedRef = useRef(true)
+  
+  // Cleanup polling on unmount
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+      if (pollTimeoutRef.current) {
+        clearTimeout(pollTimeoutRef.current)
+      }
+    }
+  }, [])
 
   // Extract domain for display (remove protocol, trailing slashes)
   const displayDomain = React.useMemo(() => {
@@ -208,7 +223,6 @@ export default function Home() {
     }
 
     setValidationError(null)
-    setLoading(true)
     setApiError(null)
     setAuditResults(null)
 
@@ -241,13 +255,10 @@ export default function Home() {
 
       // If response.ok, validation passed and audit started
       if (response.ok) {
-        // Interstitial is shown via loading state (InterstitialLoader open={loading})
-        // Keep loading=true to show interstitial during audit
         // Parse JSON response
         if (!isJson) {
           const text = await response.text()
           console.error('Non-JSON success response:', text.substring(0, 200))
-          setLoading(false)
           setApiError('Server error')
           return
         }
@@ -255,25 +266,104 @@ export default function Home() {
         // Parse JSON response
         const data = await response.json()
         
-        // Store session token if provided (for unauthenticated users - used for dashboard claim)
+        // Store session token if provided (for unauthenticated users - used for polling and dashboard claim)
         if (data.sessionToken) {
           setSessionToken(data.sessionToken)
           localStorage.setItem('audit_session_token', data.sessionToken)
           console.log('[Homepage] Received session token for audit:', data.sessionToken)
         }
         
-        // Audit now completes synchronously - should always be 'completed' or error
+        // Handle pending status - poll for completion (only show loader once audit actually started)
+        if (data.status === 'pending' && data.runId) {
+          // Audit has started - now show the loading interstitial
+          setLoading(true)
+          const pollIntervalMs = 5000 // 5 seconds
+          const maxPollMinutes = 7 // 7 minutes max for free tier
+          const maxAttempts = Math.ceil((maxPollMinutes * 60 * 1000) / pollIntervalMs)
+          let attempts = 0
+          
+          const pollForCompletion = async () => {
+            // Check if component is still mounted before proceeding
+            if (!isMountedRef.current) return
+            
+            try {
+              const pollUrl = `/api/audit/${data.runId}${data.sessionToken ? `?session_token=${data.sessionToken}` : ''}`
+              const pollResponse = await fetch(pollUrl)
+              
+              // Check again after async operation
+              if (!isMountedRef.current) return
+              
+              if (!pollResponse.ok) {
+                attempts++
+                if (attempts < maxAttempts) {
+                  pollTimeoutRef.current = setTimeout(pollForCompletion, pollIntervalMs)
+                } else {
+                  setLoading(false)
+                  setApiError('The audit is taking longer than expected. Please try again.')
+                }
+                return
+              }
+              
+              const pollData = await pollResponse.json()
+              
+              // Check again after parsing
+              if (!isMountedRef.current) return
+              
+              if (pollData.status === 'completed') {
+                setLoading(false)
+                setAuditResults(pollData)
+                return
+              }
+              
+              if (pollData.status === 'failed') {
+                setLoading(false)
+                const botProtectionMsg = pollData.error?.toLowerCase().includes('bot protection')
+                  ? pollData.error
+                  : null
+                setApiError(botProtectionMsg || pollData.error || 'Audit failed')
+                return
+              }
+              
+              // Still pending - continue polling
+              attempts++
+              if (attempts < maxAttempts) {
+                pollTimeoutRef.current = setTimeout(pollForCompletion, pollIntervalMs)
+              } else {
+                setLoading(false)
+                setApiError('The audit is taking longer than expected. Please try again.')
+              }
+            } catch (pollError) {
+              console.error('[Homepage] Poll error:', pollError)
+              if (!isMountedRef.current) return
+              
+              attempts++
+              if (attempts < maxAttempts) {
+                pollTimeoutRef.current = setTimeout(pollForCompletion, pollIntervalMs)
+              } else {
+                setLoading(false)
+                setApiError('Connection error while waiting for audit. Please try again.')
+              }
+            }
+          }
+          
+          // Start polling after initial delay
+          pollTimeoutRef.current = setTimeout(pollForCompletion, pollIntervalMs)
+          return
+        }
+        
+        // Handle completed status (shouldn't happen with new flow, but keep for backwards compatibility)
         if (data.status === 'completed') {
           setLoading(false)
           setAuditResults(data)
-        } else {
-          setLoading(false)
-          // Bot protection or other errors - check for bot protection message
-          const botProtectionMsg = data.error?.toLowerCase().includes('bot protection')
-            ? data.error
-            : null
-          setApiError(botProtectionMsg || data.error || "Audit failed")
+          return
         }
+        
+        // Handle error status
+        setLoading(false)
+        const botProtectionMsg = data.error?.toLowerCase().includes('bot protection')
+          ? data.error
+          : null
+        setApiError(botProtectionMsg || data.error || "Audit failed")
         
         return
       } else {
