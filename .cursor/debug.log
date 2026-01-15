@@ -1,0 +1,26 @@
+{"sessionId":"debug-session","runId":"build-debug","hypothesisId":"A","location":"next.config.js","message":"Webpack config called","data":{"isServer":false,"dev":true,"hasCache":true},"timestamp":1768434565492}
+{"sessionId":"debug-session","runId":"build-debug","hypothesisId":"A","location":"next.config.js","message":"Webpack cache disabled in dev mode","data":{},"timestamp":1768434565492}
+{"sessionId":"debug-session","runId":"build-debug","hypothesisId":"A","location":"next.config.js","message":"Next.js config loading","data":{"timestamp":"2026-01-15T00:04:41.296Z"},"timestamp":1768435481322}
+{"sessionId":"debug-session","runId":"build-debug","hypothesisId":"A","location":"next.config.js","message":"Next.js config exported","data":{"hasRewrites":true},"timestamp":1768435481325}
+{"sessionId":"debug-session","runId":"build-debug","hypothesisId":"A","location":"next.config.js","message":"Next.js config loading","data":{"timestamp":"2026-01-15T00:04:43.104Z"},"timestamp":1768435483109}
+{"sessionId":"debug-session","runId":"build-debug","hypothesisId":"A","location":"next.config.js","message":"Next.js config exported","data":{"hasRewrites":true},"timestamp":1768435483109}
+{"sessionId":"debug-session","runId":"build-debug","hypothesisId":"A","location":"next.config.js","message":"Next.js config loading","data":{"timestamp":"2026-01-15T00:04:44.018Z"},"timestamp":1768435484018}
+{"sessionId":"debug-session","runId":"build-debug","hypothesisId":"A","location":"next.config.js","message":"Next.js config exported","data":{"hasRewrites":true},"timestamp":1768435484018}
+{"sessionId":"debug-session","runId":"build-debug","hypothesisId":"A","location":"next.config.js","message":"Webpack config called","data":{"isServer":true,"dev":true,"hasCache":true},"timestamp":1768435485142}
+{"sessionId":"debug-session","runId":"build-debug","hypothesisId":"A","location":"next.config.js","message":"Webpack cache disabled in dev mode","data":{},"timestamp":1768435485142}
+{"sessionId":"debug-session","runId":"build-debug","hypothesisId":"A","location":"next.config.js","message":"Webpack config called","data":{"isServer":true,"dev":true,"hasCache":true},"timestamp":1768435485142}
+{"sessionId":"debug-session","runId":"build-debug","hypothesisId":"A","location":"next.config.js","message":"Webpack cache disabled in dev mode","data":{},"timestamp":1768435485142}
+{"sessionId":"debug-session","runId":"build-debug","hypothesisId":"A","location":"next.config.js","message":"Webpack config called","data":{"isServer":false,"dev":true,"hasCache":true},"timestamp":1768435485142}
+{"sessionId":"debug-session","runId":"build-debug","hypothesisId":"A","location":"next.config.js","message":"Webpack cache disabled in dev mode","data":{},"timestamp":1768435485142}
+{"sessionId":"debug-session","runId":"build-debug","hypothesisId":"A","location":"next.config.js","message":"Next.js config loading","data":{"timestamp":"2026-01-15T00:12:45.605Z"},"timestamp":1768435965607}
+{"sessionId":"debug-session","runId":"build-debug","hypothesisId":"A","location":"next.config.js","message":"Next.js config exported","data":{"hasRewrites":true},"timestamp":1768435965608}
+{"sessionId":"debug-session","runId":"build-debug","hypothesisId":"A","location":"next.config.js","message":"Next.js config loading","data":{"timestamp":"2026-01-15T00:12:46.838Z"},"timestamp":1768435966839}
+{"sessionId":"debug-session","runId":"build-debug","hypothesisId":"A","location":"next.config.js","message":"Next.js config exported","data":{"hasRewrites":true},"timestamp":1768435966839}
+{"sessionId":"debug-session","runId":"build-debug","hypothesisId":"A","location":"next.config.js","message":"Next.js config loading","data":{"timestamp":"2026-01-15T00:12:47.544Z"},"timestamp":1768435967545}
+{"sessionId":"debug-session","runId":"build-debug","hypothesisId":"A","location":"next.config.js","message":"Next.js config exported","data":{"hasRewrites":true},"timestamp":1768435967545}
+{"sessionId":"debug-session","runId":"build-debug","hypothesisId":"A","location":"next.config.js","message":"Webpack config called","data":{"isServer":true,"dev":true,"hasCache":true},"timestamp":1768435968573}
+{"sessionId":"debug-session","runId":"build-debug","hypothesisId":"A","location":"next.config.js","message":"Webpack cache disabled in dev mode","data":{},"timestamp":1768435968573}
+{"sessionId":"debug-session","runId":"build-debug","hypothesisId":"A","location":"next.config.js","message":"Webpack config called","data":{"isServer":true,"dev":true,"hasCache":true},"timestamp":1768435968574}
+{"sessionId":"debug-session","runId":"build-debug","hypothesisId":"A","location":"next.config.js","message":"Webpack cache disabled in dev mode","data":{},"timestamp":1768435968574}
+{"sessionId":"debug-session","runId":"build-debug","hypothesisId":"A","location":"next.config.js","message":"Webpack config called","data":{"isServer":false,"dev":true,"hasCache":true},"timestamp":1768435968574}
+{"sessionId":"debug-session","runId":"build-debug","hypothesisId":"A","location":"next.config.js","message":"Webpack cache disabled in dev mode","data":{},"timestamp":1768435968574}

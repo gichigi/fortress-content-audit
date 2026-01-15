@@ -4,17 +4,20 @@ import Logger from "./logger"
 
 // ============================================================================
 // Content Audit
-// All tiers use GPT-5.1 with web_search (synchronous, opens pages directly)
-// Tier differences: maxToolCalls and page guidance
+// All tiers use GPT-5.1 with web_search
+// FREE: synchronous (fast, 2min max)
+// PAID: background mode with polling (thorough, 10min max)
+// ENTERPRISE: background mode with polling (thorough, 15min max)
 // ============================================================================
 
 // Audit tiers for cost/scope control
-// All tiers use GPT-5.1 with web_search (synchronous, opens pages directly)
-// Tier differences: maxToolCalls and page guidance
+// All tiers use GPT-5.1 with web_search
+// FREE: synchronous (fast, limited)
+// PAID/ENTERPRISE: background mode with polling (thorough, max 10min)
 export const AUDIT_TIERS = {
-  FREE: { maxToolCalls: 10, background: false, model: "gpt-5.1-2025-11-13" as const },
-  PAID: { maxToolCalls: 50, background: false, model: "gpt-5.1-2025-11-13" as const },
-  ENTERPRISE: { maxToolCalls: 100, background: false, model: "gpt-5.1-2025-11-13" as const },
+  FREE: { maxToolCalls: 10, background: false, model: "gpt-5.1-2025-11-13" as const, maxPollSeconds: 120 },
+  PAID: { maxToolCalls: 50, background: true, model: "gpt-5.1-2025-11-13" as const, maxPollSeconds: 600 }, // 10min max
+  ENTERPRISE: { maxToolCalls: 100, background: true, model: "gpt-5.1-2025-11-13" as const, maxPollSeconds: 900 }, // 15min max
 } as const
 
 export type AuditTier = keyof typeof AUDIT_TIERS
@@ -89,6 +92,13 @@ function extractDomainHostname(domain: string): string {
   } catch {
     return domain.replace(/^https?:\/\//, '').replace(/\/$/, '')
   }
+}
+
+// Count opened pages from response output (for progress logging)
+function extractOpenedPagesCount(response: any): number {
+  if (!response?.output || !Array.isArray(response.output)) return 0
+  const webSearchCalls = response.output.filter((item: any) => item.type === 'web_search_call')
+  return webSearchCalls.filter((call: any) => call.action?.type === 'open_page' && call.action.url).length
 }
 
 // ============================================================================
@@ -328,16 +338,18 @@ export async function auditSite(
   const normalizedDomain = normalizeDomain(domain)
   const domainHostname = extractDomainHostname(normalizedDomain)
 
+  // Use shorter timeout for initial request - polling handles long-running jobs
   const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
-    timeout: 300000, // 5min timeout
+    timeout: tierConfig.background ? 60000 : 300000, // 1min for background mode, 5min for sync
   })
 
   try {
-    Logger.info(`[AuditSite] Starting GPT-5.1 web_search audit for ${normalizedDomain} (tier: ${tier})`)
+    const useBackground = tierConfig.background
+    Logger.info(`[AuditSite] Starting GPT-5.1 web_search audit for ${normalizedDomain} (tier: ${tier}, background: ${useBackground})`)
     const modelStartTime = Date.now()
     
-    Logger.debug(`[AuditSite] Sending request to GPT-5.1 with web_search (maxToolCalls: ${tierConfig.maxToolCalls})`)
+    Logger.debug(`[AuditSite] Sending request to GPT-5.1 with web_search (maxToolCalls: ${tierConfig.maxToolCalls}, maxPoll: ${tierConfig.maxPollSeconds}s)`)
     const params: any = {
       model: tierConfig.model,
       prompt: {
@@ -353,48 +365,99 @@ export async function auditSite(
           allowed_domains: [domainHostname]
         }
       }],
-      max_tool_calls: tierConfig.maxToolCalls, // Limit tool calls based on tier
-      max_output_tokens: 20000, // Increased for full JSON response
-      include: ["web_search_call.action.sources"], // Include sources to get URLs
-      // Model config params (matching prompt definition settings)
+      max_tool_calls: tierConfig.maxToolCalls,
+      max_output_tokens: 20000,
+      include: ["web_search_call.action.sources"],
       text: {
         format: { type: "text" },
         verbosity: "low"
       },
       reasoning: {
         effort: "medium",
-        summary: null // Explicitly disable reasoning summaries for full audit
+        summary: null
       },
-      store: true
+      store: true,
+      // Enable background mode for PAID/ENTERPRISE - returns immediately, poll for completion
+      ...(useBackground && { background: true })
     }
     
+    // Create response with retry for transient errors (timeouts, rate limits)
     let response: any
-    try {
-      response = await openai.responses.create(params)
-    } catch (createError) {
-      Logger.error(`[AuditSite] Error creating response`, createError instanceof Error ? createError : undefined, {
-        params: JSON.stringify(params, null, 2)
-      })
-      throw createError
-    }
-    
-    // Poll for completion if needed (synchronous polling)
-    let status = response.status as string
-    let finalResponse = response
-    let attempts = 0
-    const maxAttempts = 60 // 60 seconds max
-    
-    while ((status === "queued" || status === "in_progress") && attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      finalResponse = await openai.responses.retrieve(response.id)
-      status = finalResponse.status as string
-      attempts++
-      if (attempts % 10 === 0) {
-        Logger.debug(`[AuditSite] Status: ${status} (${attempts}s)`)
+    const maxCreateRetries = 2
+    for (let attempt = 1; attempt <= maxCreateRetries; attempt++) {
+      try {
+        response = await openai.responses.create(params)
+        Logger.debug(`[AuditSite] Response created: ${response.id} (status: ${response.status})`)
+        break
+      } catch (createError) {
+        const isTimeout = createError instanceof Error && createError.message.includes('timed out')
+        const isRateLimit = createError instanceof Error && createError.message.includes('rate')
+        const isRetryable = isTimeout || isRateLimit
+        
+        if (isRetryable && attempt < maxCreateRetries) {
+          const waitMs = attempt * 5000 // 5s, 10s backoff
+          Logger.warn(`[AuditSite] Retryable error on attempt ${attempt}, waiting ${waitMs/1000}s...`, {
+            error: createError instanceof Error ? createError.message : 'Unknown'
+          })
+          await new Promise(resolve => setTimeout(resolve, waitMs))
+          continue
+        }
+        
+        Logger.error(`[AuditSite] Error creating response`, createError instanceof Error ? createError : undefined, {
+          params: JSON.stringify(params, null, 2),
+          attempt
+        })
+        throw createError
       }
     }
     
+    // Poll for completion with tier-specific timeout
+    let status = response.status as string
+    let finalResponse = response
+    let pollCount = 0
+    let consecutiveErrors = 0
+    const maxPollSeconds = tierConfig.maxPollSeconds
+    const pollIntervalMs = 2000 // Poll every 2 seconds
+    const maxPollCount = Math.ceil(maxPollSeconds / (pollIntervalMs / 1000))
+    const maxConsecutiveErrors = 5
+    
+    while ((status === "queued" || status === "in_progress") && pollCount < maxPollCount) {
+      await new Promise(resolve => setTimeout(resolve, pollIntervalMs))
+      pollCount++
+      
+      try {
+        finalResponse = await openai.responses.retrieve(response.id)
+        status = finalResponse.status as string
+        consecutiveErrors = 0 // Reset on success
+      } catch (pollError) {
+        consecutiveErrors++
+        const elapsedSeconds = pollCount * (pollIntervalMs / 1000)
+        Logger.warn(`[AuditSite] Poll error at ${elapsedSeconds}s (${consecutiveErrors}/${maxConsecutiveErrors})`, { 
+          error: pollError instanceof Error ? pollError.message : 'Unknown' 
+        })
+        if (consecutiveErrors >= maxConsecutiveErrors) {
+          throw new Error(`Audit polling failed after ${consecutiveErrors} consecutive errors`)
+        }
+        continue
+      }
+      
+      // Log progress every 15 polls (~30 seconds)
+      if (pollCount % 15 === 0) {
+        const elapsedSeconds = pollCount * (pollIntervalMs / 1000)
+        const openedPages = extractOpenedPagesCount(finalResponse)
+        Logger.info(`[AuditSite] Polling: ${status} (${elapsedSeconds}s / ${maxPollSeconds}s max, ${openedPages} pages opened)`)
+      }
+    }
+    
+    const pollSeconds = pollCount * (pollIntervalMs / 1000)
+    
     const modelDurationMs = Date.now() - modelStartTime
+    
+    // Check if we timed out
+    if (status === "queued" || status === "in_progress") {
+      Logger.error(`[AuditSite] Audit timed out after ${pollSeconds}s (max: ${maxPollSeconds}s)`)
+      throw new Error(`Audit timed out after ${Math.round(pollSeconds / 60)} minutes. The site may be too large or slow to audit.`)
+    }
     
     if (status !== "completed" && status !== "incomplete") {
       throw new Error(`Audit failed with status: ${status}`)

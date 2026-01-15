@@ -1,11 +1,11 @@
 // fortress v1 - Deep Research powered audit
 import { NextResponse } from 'next/server'
+import { after } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { validateUrl } from '@/lib/url-validation'
 import { auditSite, miniAudit, AuditTier, AuditResult } from '@/lib/audit'
 import PostHogClient from '@/lib/posthog'
 import Logger from '@/lib/logger'
-// Removed: issue-signature imports (no longer needed)
 import { checkDailyLimit, checkDomainLimit, isNewDomain, incrementAuditUsage, getAuditUsage } from '@/lib/audit-rate-limit'
 import { createMockAuditData } from '@/lib/mock-audit-data'
 
@@ -202,17 +202,16 @@ export async function POST(request: Request) {
     console.log(`[Audit] Created audit record: ${runId}, authenticated: ${isAuthenticated}, tier: ${auditTier}`)
     
     // ========================================================================
-    // RUN AUDIT SYNCHRONOUSLY - Wait for completion before responding
+    // FREE tier: Run synchronously, return results inline (homepage expects this)
+    // PAID/ENTERPRISE: Run in background, return pending, frontend polls
     // ========================================================================
     
-    try {
+    // Helper to run audit and save results
+    const runAuditAndSave = async (): Promise<{ result: AuditResult; filteredIssues: any[] } | null> => {
       let result: AuditResult
 
       if (useMockData) {
-        // Mock data mode: generate mock audit results
         console.log(`[API] Mock data mode enabled - generating mock audit for ${normalized}`)
-        
-        // Simulate audit delay (2-3 seconds)
         const delay = 2000 + Math.random() * 1000
         await new Promise(resolve => setTimeout(resolve, delay))
         
@@ -225,9 +224,7 @@ export async function POST(request: Request) {
           tier: auditTier,
         }
       } else {
-        // Run audit based on tier
         console.log(`[API] Running ${auditTier} audit for ${normalized}`)
-        
         result = auditTier === 'FREE' 
           ? await miniAudit(normalized)
           : await auditSite(normalized, auditTier)
@@ -235,18 +232,13 @@ export async function POST(request: Request) {
       
       if (result.status !== 'completed') {
         console.error(`[Audit] Audit failed: ${result.status}`)
-        // Update audit record with error status
         await supabaseAdmin
           .from('brand_audit_runs')
           .update({ 
             issues_json: { issues: [], auditedUrls: [], status: 'failed', error: 'Audit did not complete' }
           })
           .eq('id', runId)
-        
-        return NextResponse.json(
-          { error: 'Audit did not complete. Please try again.' },
-          { status: 500 }
-        )
+        return null
       }
       
       // Filter issues for FREE tier (homepage only)
@@ -260,7 +252,6 @@ export async function POST(request: Request) {
           normalized.replace(/^https?:\/\//, 'https://www.') + '/',
         ]
         
-        // New schema uses page_url directly, not locations array
         filteredIssues = filteredIssues.filter((issue: any) => {
           const issueUrl = issue.page_url || ''
           if (!issueUrl) return false
@@ -271,7 +262,6 @@ export async function POST(request: Request) {
           )
         })
         
-        // If no issues found on homepage, log it (no mock fallback)
         if (filteredIssues.length === 0) {
           console.log(`[API] No issues found on homepage for ${normalized} - returning empty results`)
         }
@@ -295,10 +285,6 @@ export async function POST(request: Request) {
       
       if (updateErr) {
         console.error('[Audit] Failed to update audit run:', updateErr)
-        return NextResponse.json(
-          { error: 'Failed to save audit results. Please try again.' },
-          { status: 500 }
-        )
       }
       
       console.log(`[Audit] ✅ Audit complete: ${runId}, ${filteredIssues.length} issues`)
@@ -339,48 +325,75 @@ export async function POST(request: Request) {
         }
       }
       
-      // Get usage info for response
-      let usage = null
-      if (isAuthenticated && userId) {
-        try {
-          usage = await getAuditUsage(userId, storageDomain, plan)
-        } catch (error) {
-          console.error('[Audit] Failed to get audit usage:', error)
-        }
-      }
-      
-      // Return completed results directly
-      return NextResponse.json({
-        runId,
-        preview: !isAuthenticated,
-        status: 'completed',
-        issues: filteredIssues,
-        totalIssues: filteredIssues.length,
-        sessionToken: finalSessionToken,
-        usage,
-        meta: { 
-          pagesAudited: result.pagesAudited,
-          auditedUrls: result.auditedUrls || [],
-          tier: auditTier,
-        },
-      })
-    } catch (error) {
-      console.error('[Audit] Audit error:', error)
-      // Update audit record with error status
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      await supabaseAdmin
-        .from('brand_audit_runs')
-        .update({ 
-          issues_json: { issues: [], auditedUrls: [], status: 'failed', error: errorMessage }
-        })
-        .eq('id', runId)
-      
-      // Return error response
-      return NextResponse.json(
-        { error: errorMessage },
-        { status: 500 }
-      )
+      return { result, filteredIssues }
     }
+    
+    // FREE tier: Run synchronously and return results inline
+    if (auditTier === 'FREE') {
+      try {
+        const auditResult = await runAuditAndSave()
+        
+        if (!auditResult) {
+          return NextResponse.json(
+            { error: 'Audit did not complete. Please try again.' },
+            { status: 500 }
+          )
+        }
+        
+        const { result, filteredIssues } = auditResult
+        
+        return NextResponse.json({
+          runId,
+          preview: !isAuthenticated,
+          status: 'completed',
+          issues: filteredIssues,
+          totalIssues: filteredIssues.length,
+          sessionToken: finalSessionToken,
+          meta: { 
+            pagesAudited: result.pagesAudited,
+            auditedUrls: result.auditedUrls || [],
+            tier: auditTier,
+          },
+        })
+      } catch (error) {
+        console.error('[Audit] FREE tier audit error:', error)
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        await supabaseAdmin
+          .from('brand_audit_runs')
+          .update({ 
+            issues_json: { issues: [], auditedUrls: [], status: 'failed', error: errorMessage }
+          })
+          .eq('id', runId)
+        return NextResponse.json({ error: errorMessage }, { status: 500 })
+      }
+    }
+    
+    // PAID/ENTERPRISE: Run in background, return pending immediately
+    const runAuditBackground = async () => {
+      try {
+        await runAuditAndSave()
+      } catch (error) {
+        console.error('[Audit] Background audit error:', error)
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        await supabaseAdmin
+          .from('brand_audit_runs')
+          .update({ 
+            issues_json: { issues: [], auditedUrls: [], status: 'failed', error: errorMessage }
+          })
+          .eq('id', runId)
+      }
+    }
+    
+    // Use Next.js after() to run audit in background after response is sent
+    after(runAuditBackground)
+    
+    // Return immediately so frontend can show toast and start polling
+    return NextResponse.json({
+      runId,
+      status: 'pending',
+      message: 'Audit started. Poll /api/audit/[id] for results.',
+      sessionToken: finalSessionToken,
+    })
   } catch (e) {
     const duration = Date.now() - startTime
     const error = e instanceof Error ? e : new Error('Unknown error')
@@ -431,4 +444,6 @@ export async function POST(request: Request) {
   }
 }
 
-
+// Vercel function config - extend timeout for long-running audits
+// Requires Vercel Pro plan for >60s, Enterprise for >300s
+export const maxDuration = 900 // 15 minutes max (matches ENTERPRISE tier)

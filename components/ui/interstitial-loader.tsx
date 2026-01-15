@@ -97,7 +97,7 @@ const InterstitialLoader = React.forwardRef<HTMLDivElement, InterstitialLoaderPr
             }
             return prev
           })
-        }, i * 10000) // 10 seconds between each message (second at 10s, third at 20s, etc.)
+        }, i * 25000) // 25 seconds between each message (for 4+ minute audits)
         timeouts.push(timeout)
       }
 
@@ -132,11 +132,10 @@ const InterstitialLoader = React.forwardRef<HTMLDivElement, InterstitialLoaderPr
             <div className="mt-6 mb-6 min-h-[100px] flex flex-col items-center justify-center space-y-3 max-w-lg mx-auto">
               {shownSummaries.map((summary, idx) => (
                 <div
-                  key={idx}
-                  className="text-base text-muted-foreground italic animate-in fade-in slide-in-from-bottom-2 duration-500"
-                  style={{ animationDelay: `${idx * 100}ms` }}
+                  key={summary}
+                  className="text-base text-muted-foreground animate-in fade-in slide-in-from-bottom-2 duration-500"
                 >
-                  "{summary}"
+                  {idx + 1}. {summary}
                 </div>
               ))}
             </div>

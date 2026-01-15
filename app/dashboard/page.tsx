@@ -17,7 +17,6 @@ import { HealthScoreCards } from "@/components/health-score-cards"
 import { AuditTable } from "@/components/audit-table"
 import { useAuditIssues } from "@/hooks/use-audit-issues"
 import { useHealthScoreMetrics } from "@/hooks/use-health-score-metrics"
-import { createMockAuditData } from "@/lib/mock-audit-data"
 import { transformIssuesToTableRows } from "@/lib/audit-table-adapter"
 import {
   AlertDialog,
@@ -78,39 +77,9 @@ export default function DashboardPage() {
     authToken
   )
 
-  // TEST: Force empty state via query param (remove after testing)
-  const [testEmptyState, setTestEmptyState] = useState(false)
-  const [testLargeAudit, setTestLargeAudit] = useState(false)
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    if (params.get('testEmpty') === 'true') {
-      setTestEmptyState(true)
-    }
-    if (params.get('testLarge') === 'true') {
-      setTestLargeAudit(true)
-    }
-  }, [])
-
-  // TEST: Generate large mock audit data for pagination testing (remove after testing)
-  const largeMockRows = useMemo(() => {
-    if (!testLargeAudit) return null
-    const mockData = createMockAuditData('example.com', 150) // Generate 150 issues
-    // Transform mock issues to table row format
-    return mockData.issues.map((issue, idx) => ({
-      id: `mock-${idx}`,
-      title: issue.title,
-      category: issue.category,
-      severity: issue.severity,
-      impact: issue.impact || '',
-      fix: issue.fix || '',
-      locations: issue.locations || [],
-      status: 'active' as const,
-    }))
-  }, [testLargeAudit])
-
-  // Use large mock data if test mode is enabled
-  const displayTableRows = testLargeAudit && largeMockRows ? largeMockRows : (testEmptyState ? [] : tableRows)
-  const displayTotalIssues = testLargeAudit && largeMockRows ? largeMockRows.length : (testEmptyState ? 0 : tableTotalIssues)
+  // Display rows from database
+  const displayTableRows = tableRows
+  const displayTotalIssues = tableTotalIssues
 
   // Calculate metrics using shared hook
   const metrics = useHealthScoreMetrics(displayTableRows)
@@ -848,175 +817,147 @@ export default function DashboardPage() {
 
       // If response.ok, validation passed and audit started
       if (response.ok) {
-        // Show "started" toast immediately
+        const data = await response.json()
+        
+        // Show toast now that we know audit started successfully
         const durationText = plan === 'pro' || plan === 'enterprise' 
-          ? ' This may take up to 15 minutes.' 
+          ? ' This may take up to 10 minutes.' 
           : ' This may take a few minutes.'
         toast({
           title: "Audit started",
           description: `Auditing ${selectedDomain}...${durationText}`,
         })
         
-        // Handle response body in background (button stays in loading state)
-        ;(async () => {
-          try {
-            const data = await response.json()
-            
-            if (data.status === 'completed') {
-              // Audit already completed (very fast or mock)
-              setPendingAuditId(null)
-              setStartingAudit(false)
-              toast({
-                title: "Audit completed",
-                description: "Your audit results are ready.",
+        if (data.status === 'pending') {
+          // Set pending audit ID to show banner
+          setPendingAuditId(data.runId)
+          
+          // Poll for completion - longer timeout for paid audits
+          const pollIntervalMs = 5000 // 5 seconds
+          const maxPollMinutes = plan === 'pro' || plan === 'enterprise' ? 12 : 7 // 7min for free tier
+          const maxAttempts = Math.ceil((maxPollMinutes * 60 * 1000) / pollIntervalMs)
+          let attempts = 0
+          
+          const poll = async () => {
+            try {
+              const pollResponse = await fetch(`/api/audit/${data.runId}`, {
+                headers: { 'Authorization': `Bearer ${authToken}` }
               })
-              // Reload all data
-              const supabase = createClient()
-              const { data: { session } } = await supabase.auth.getSession()
-              if (session) {
-                await Promise.all([
-                  loadAudits(session.access_token, selectedDomain),
-                  loadHealthScore(session.access_token)
-                ])
-                await loadUsageInfo(session.access_token, selectedDomain)
-              }
-            } else if (data.status === 'pending') {
-              // Set pending audit ID to show banner
-              setPendingAuditId(data.runId)
-              // Audit running in background - poll until complete
-              const pollForCompletion = async () => {
-                const maxAttempts = 15 // ~60 seconds max (4s intervals)
-                let attempts = 0
-                
-                const poll = async () => {
-                  try {
-                    const pollResponse = await fetch(`/api/audit/${data.runId}`, {
-                      headers: { 'Authorization': `Bearer ${authToken}` }
-                    })
-                    
-                    if (!pollResponse.ok) {
-                      attempts++
-                      if (attempts < maxAttempts) {
-                        setTimeout(poll, 4000)
-                      } else {
-                        // Timeout - reload anyway, results may be there
-                        window.location.reload()
-                      }
-                      return
-                    }
-                    
-                    const pollData = await pollResponse.json()
-                    
-                    if (pollData.status === 'completed') {
-                      setPendingAuditId(null)
-                      setStartingAudit(false)
-                      toast({
-                        title: "Audit completed",
-                        description: "Your audit results are ready.",
-                      })
-                      // Reload all data instead of full page reload
-                      const supabase = createClient()
-                      const { data: { session } } = await supabase.auth.getSession()
-                      if (session) {
-                        await Promise.all([
-                          loadAudits(session.access_token, selectedDomain),
-                          loadHealthScore(session.access_token)
-                        ])
-                        await loadUsageInfo(session.access_token, selectedDomain)
-                      }
-                      return
-                    }
-                    
-                    if (pollData.status === 'failed') {
-                      setPendingAuditId(null)
-                      setStartingAudit(false)
-                      toast({
-                        title: "Audit failed",
-                        description: pollData.error || "The audit encountered an error. Please try again.",
-                        variant: "error",
-                      })
-                      return
-                    }
-                    
-                    // Still pending - continue polling
-                    attempts++
-                    if (attempts < maxAttempts) {
-                      setTimeout(poll, 4000) // Poll every 4 seconds
-                    } else {
-                      // Timeout - reload anyway
-                      console.log('[Dashboard] Poll timeout, reloading anyway')
-                      setPendingAuditId(null)
-                      setStartingAudit(false)
-                      const supabase = createClient()
-                      const { data: { session } } = await supabase.auth.getSession()
-                      if (session) {
-                        await Promise.all([
-                          loadAudits(session.access_token, selectedDomain),
-                          loadHealthScore(session.access_token)
-                        ])
-                        await loadUsageInfo(session.access_token, selectedDomain)
-                      }
-                    }
-                  } catch (pollError) {
-                    console.error('[Dashboard] Poll error:', pollError)
-                    attempts++
-                    if (attempts < maxAttempts) {
-                      setTimeout(poll, 4000)
-                    } else {
-                      setPendingAuditId(null)
-                      setStartingAudit(false)
-                      const supabase = createClient()
-                      const { data: { session } } = await supabase.auth.getSession()
-                      if (session) {
-                        await Promise.all([
-                          loadAudits(session.access_token, selectedDomain),
-                          loadHealthScore(session.access_token)
-                        ])
-                        await loadUsageInfo(session.access_token, selectedDomain)
-                      }
-                    }
+              
+              if (!pollResponse.ok) {
+                attempts++
+                if (attempts < maxAttempts) {
+                  setTimeout(poll, pollIntervalMs)
+                } else {
+                  // Timeout - show error and reload data
+                  setPendingAuditId(null)
+                  setStartingAudit(false)
+                  toast({
+                    title: "Audit timed out",
+                    description: "The audit is taking longer than expected. Check back shortly.",
+                    variant: "error",
+                  })
+                  const supabase = createClient()
+                  const { data: { session } } = await supabase.auth.getSession()
+                  if (session) {
+                    await loadAudits(session.access_token, selectedDomain)
                   }
                 }
-                
-                // Start polling after initial delay
-                setTimeout(poll, 4000)
+                return
               }
               
-              pollForCompletion()
-            } else if (data.status === 'failed') {
-              setPendingAuditId(null)
-              setStartingAudit(false)
-              // Check for bot protection error message
-              const botProtectionMsg = data.error?.toLowerCase().includes('bot protection')
-                ? data.error
-                : null
-              toast({
-                title: "Audit failed",
-                description: botProtectionMsg || data.error || "The audit encountered an error. Please try again.",
-                variant: "error",
-              })
-            } else {
-              // Unknown status - treat as error
-              setPendingAuditId(null)
-              setStartingAudit(false)
-              toast({
-                title: "Audit failed",
-                description: `Unexpected status: ${data.status || 'unknown'}`,
-                variant: "error",
-              })
+              const pollData = await pollResponse.json()
+              
+              if (pollData.status === 'completed') {
+                setPendingAuditId(null)
+                setStartingAudit(false)
+                toast({
+                  title: "Audit completed",
+                  description: "Your audit results are ready.",
+                })
+                const supabase = createClient()
+                const { data: { session } } = await supabase.auth.getSession()
+                if (session) {
+                  await Promise.all([
+                    loadAudits(session.access_token, selectedDomain),
+                    loadHealthScore(session.access_token)
+                  ])
+                  await loadUsageInfo(session.access_token, selectedDomain)
+                }
+                return
+              }
+              
+              if (pollData.status === 'failed') {
+                setPendingAuditId(null)
+                setStartingAudit(false)
+                toast({
+                  title: "Audit failed",
+                  description: pollData.error || "The audit encountered an error. Please try again.",
+                  variant: "error",
+                })
+                return
+              }
+              
+              // Still pending - continue polling
+              attempts++
+              if (attempts < maxAttempts) {
+                setTimeout(poll, pollIntervalMs)
+              } else {
+                // Timeout - reload data and show message
+                console.log('[Dashboard] Poll timeout after', maxPollMinutes, 'minutes')
+                setPendingAuditId(null)
+                setStartingAudit(false)
+                toast({
+                  title: "Audit timed out",
+                  description: "The audit is taking longer than expected. Check back shortly.",
+                  variant: "error",
+                })
+                const supabase = createClient()
+                const { data: { session } } = await supabase.auth.getSession()
+                if (session) {
+                  await loadAudits(session.access_token, selectedDomain)
+                }
+              }
+            } catch (pollError) {
+              console.error('[Dashboard] Poll error:', pollError)
+              attempts++
+              if (attempts < maxAttempts) {
+                setTimeout(poll, pollIntervalMs)
+              } else {
+                setPendingAuditId(null)
+                setStartingAudit(false)
+                toast({
+                  title: "Connection error",
+                  description: "Lost connection while waiting for audit. Check back shortly.",
+                  variant: "error",
+                })
+              }
             }
-          } catch (error) {
-            console.error('Error parsing audit response:', error)
-            setStartingAudit(false)
-            toast({
-              title: "Audit failed",
-              description: "Failed to parse audit response. Please check the dashboard.",
-              variant: "error",
-            })
           }
-        })()
-        
-        // Return early - button stays in loading state until response is parsed
+          
+          // Start polling after initial delay
+          setTimeout(poll, pollIntervalMs)
+        } else if (data.status === 'failed') {
+          setPendingAuditId(null)
+          setStartingAudit(false)
+          const botProtectionMsg = data.error?.toLowerCase().includes('bot protection')
+            ? data.error
+            : null
+          toast({
+            title: "Audit failed",
+            description: botProtectionMsg || data.error || "The audit encountered an error. Please try again.",
+            variant: "error",
+          })
+        } else {
+          // Unknown status - treat as error
+          setPendingAuditId(null)
+          setStartingAudit(false)
+          toast({
+            title: "Audit failed",
+            description: `Unexpected status: ${data.status || 'unknown'}`,
+            variant: "error",
+          })
+        }
         return
       } else {
         // Validation errors - show error toast
@@ -1419,7 +1360,7 @@ export default function DashboardPage() {
 
                 {/* Health Score Section - Available to all authenticated users */}
                 <HealthScoreCards
-                  loading={healthScoreLoading || !!pendingAuditId}
+                  loading={tableRowsLoading || healthScoreLoading || !!pendingAuditId}
                   currentScore={metrics.score !== undefined ? {
                     score: metrics.score,
                     metrics: {
@@ -1431,7 +1372,6 @@ export default function DashboardPage() {
                   } : healthScoreData?.currentScore}
                   pagesAudited={mostRecentAudit?.pages_audited ?? null}
                   previousScore={previousScore}
-                  loading={tableRowsLoading || healthScoreLoading || !!pendingAuditId}
                 />
 
                 {/* Health Score Chart - Show if we have data (historical or current) */}
