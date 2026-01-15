@@ -74,7 +74,7 @@ export function SiteHeader() {
               variant={plan === 'pro' || plan === 'enterprise' ? 'default' : 'secondary'}
               className="ml-2"
             >
-              {plan === 'enterprise' ? 'Enterprise' : plan === 'pro' ? 'Pro' : 'Free'}
+              {plan === 'enterprise' ? 'Tier 3' : plan === 'pro' ? 'Tier 2' : 'Tier 1'}
             </Badge>
           )}
         </div>
