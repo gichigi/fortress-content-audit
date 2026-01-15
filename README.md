@@ -79,7 +79,7 @@ A powerful web application that automatically audits websites for content incons
 
 This application requires **Vercel Pro plan** for production deployment due to long-running audit operations:
 
-- **Serverless Function Timeout**: The audit API route requires `maxDuration = 900` (15 minutes) to support PAID and ENTERPRISE tier audits that can take up to 10-15 minutes
+- **Serverless Function Timeout**: The audit API route requires `maxDuration = 800` (~13 minutes) to support PAID and ENTERPRISE tier audits (Vercel Pro max limit)
 - **Vercel Hobby plan** only supports up to 300 seconds (5 minutes), which is insufficient for thorough audits
 - **Vercel Pro plan** supports up to 900 seconds (15 minutes), matching the maximum audit duration
 

@@ -16,7 +16,7 @@ import Logger from "./logger"
 export const AUDIT_TIERS = {
   FREE: { maxToolCalls: 10, background: true, model: "gpt-5.1-2025-11-13" as const, maxPollSeconds: 360 }, // 6min max
   PAID: { maxToolCalls: 50, background: true, model: "gpt-5.1-2025-11-13" as const, maxPollSeconds: 600 }, // 10min max
-  ENTERPRISE: { maxToolCalls: 100, background: true, model: "gpt-5.1-2025-11-13" as const, maxPollSeconds: 900 }, // 15min max
+  ENTERPRISE: { maxToolCalls: 100, background: true, model: "gpt-5.1-2025-11-13" as const, maxPollSeconds: 780 }, // ~13min max (Vercel Pro limit)
 } as const
 
 export type AuditTier = keyof typeof AUDIT_TIERS

@@ -406,4 +406,4 @@ export async function POST(request: Request) {
 
 // Vercel function config - extend timeout for long-running audits
 // Requires Vercel Pro plan for >60s, Enterprise for >300s
-export const maxDuration = 900 // 15 minutes max (matches ENTERPRISE tier)
+export const maxDuration = 800 // ~13 minutes (Vercel Pro max)
