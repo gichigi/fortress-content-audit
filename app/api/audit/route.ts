@@ -8,6 +8,8 @@ import PostHogClient from '@/lib/posthog'
 import Logger from '@/lib/logger'
 import { checkDailyLimit, checkDomainLimit, isNewDomain, incrementAuditUsage, getAuditUsage } from '@/lib/audit-rate-limit'
 import { createMockAuditData } from '@/lib/mock-audit-data'
+import { detectMilestoneCrossings, getMilestoneToastContent } from '@/lib/milestones'
+import { calculateHealthScore } from '@/lib/health-score'
 
 function getBearer(req: Request) {
   const a = req.headers.get('authorization') || req.headers.get('Authorization')
@@ -107,7 +109,7 @@ export async function POST(request: Request) {
           return NextResponse.json(
             {
               error: 'Domain limit reached',
-              message: `You've reached your limit of ${domainCheck.limit} domain${domainCheck.limit === 1 ? '' : 's'}. Delete a domain to add a new one, or upgrade to Tier 2 for 5 domains.`,
+              message: `You've reached your limit of ${domainCheck.limit} domain${domainCheck.limit === 1 ? '' : 's'}. Delete a domain to add a new one, or upgrade to Pro for 5 domains.`,
               limit: domainCheck.limit,
               used: domainCheck.count,
               upgradeRequired: true,
@@ -124,7 +126,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             error: 'Daily limit reached',
-            message: `You've reached your daily limit of ${dailyCheck.limit} audit${dailyCheck.limit === 1 ? '' : 's'} for this domain. Try again tomorrow or upgrade to Tier 2.`,
+            message: `You've reached your daily limit of ${dailyCheck.limit} audit${dailyCheck.limit === 1 ? '' : 's'} for this domain. Try again tomorrow or upgrade to Pro.`,
             limit: dailyCheck.limit,
             used: dailyCheck.used,
             resetAt: dailyCheck.resetAt,
@@ -315,7 +317,102 @@ export async function POST(request: Request) {
           console.error('[Audit] Error saving issues:', error)
         }
       }
-      
+
+      // Milestone celebration detection (only for authenticated users)
+      if (isAuthenticated && userId) {
+        try {
+          // Calculate current health score from filtered issues
+          const currentScore = calculateHealthScore(filteredIssues)
+
+          // Get previous audit's health score
+          const { data: previousAudit } = await supabaseAdmin
+            .from('brand_audit_runs')
+            .select('id, created_at')
+            .eq('user_id', userId)
+            .eq('domain', storageDomain)
+            .neq('id', runId) // Exclude current audit
+            .not('issues_json', 'is', null)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+
+          let previousScore: number | null = null
+          if (previousAudit?.id) {
+            // Get issues from previous audit to calculate its score
+            const { data: previousIssues } = await supabaseAdmin
+              .from('issues')
+              .select('severity, status')
+              .eq('audit_id', previousAudit.id)
+
+            if (previousIssues && previousIssues.length > 0) {
+              // Only count active issues for previous score
+              const activePreviousIssues = previousIssues.filter(i => i.status === 'active')
+              previousScore = calculateHealthScore(activePreviousIssues)
+            } else {
+              // No issues means perfect score
+              previousScore = 100
+            }
+          }
+
+          // Get or create scheduled_audits record to track celebrated milestones
+          const { data: scheduledAudit, error: scheduledAuditErr } = await supabaseAdmin
+            .from('scheduled_audits')
+            .select('celebrated_milestones')
+            .eq('user_id', userId)
+            .eq('domain', storageDomain)
+            .maybeSingle()
+
+          if (scheduledAuditErr && scheduledAuditErr.code !== 'PGRST116') {
+            console.error('[Audit] Error fetching scheduled_audits:', scheduledAuditErr)
+          }
+
+          const celebratedMilestones = scheduledAudit?.celebrated_milestones || []
+
+          // Detect milestone crossings
+          const crossedMilestones = detectMilestoneCrossings(
+            previousScore,
+            currentScore,
+            celebratedMilestones
+          )
+
+          if (crossedMilestones.length > 0) {
+            console.log(`[Audit] Milestones crossed: ${crossedMilestones.join(', ')}`)
+
+            // Upsert scheduled_audits record with new celebrated milestones
+            const updatedCelebratedMilestones = [...celebratedMilestones, ...crossedMilestones]
+
+            const { error: upsertErr } = await supabaseAdmin
+              .from('scheduled_audits')
+              .upsert({
+                user_id: userId,
+                domain: storageDomain,
+                celebrated_milestones: updatedCelebratedMilestones,
+                enabled: scheduledAudit?.enabled ?? false,
+              }, {
+                onConflict: 'user_id,domain'
+              })
+
+            if (upsertErr) {
+              console.error('[Audit] Error updating celebrated_milestones:', upsertErr)
+            }
+
+            // Store milestone data in issues_json for frontend to display toast
+            const updatedIssuesJson = {
+              ...issuesJson,
+              milestones: crossedMilestones.map(m => getMilestoneToastContent(m))
+            }
+
+            await supabaseAdmin
+              .from('brand_audit_runs')
+              .update({ issues_json: updatedIssuesJson })
+              .eq('id', runId)
+          }
+        } catch (error) {
+          console.error('[Audit] Error detecting milestones:', error)
+          // Don't fail the audit if milestone detection fails
+        }
+      }
+
       // Increment audit usage (only for authenticated users)
       if (isAuthenticated && userId) {
         try {
@@ -335,12 +432,22 @@ export async function POST(request: Request) {
       } catch (error) {
         console.error('[Audit] Background audit error:', error)
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-        await supabaseAdmin
-          .from('brand_audit_runs')
-          .update({ 
-            issues_json: { issues: [], auditedUrls: [], status: 'failed', error: errorMessage }
-          })
-          .eq('id', runId)
+        try {
+          const { error: updateError } = await supabaseAdmin
+            .from('brand_audit_runs')
+            .update({
+              issues_json: { issues: [], auditedUrls: [], status: 'failed', error: errorMessage }
+            })
+            .eq('id', runId)
+
+          if (updateError) {
+            console.error('[Audit] Failed to update audit status to failed:', updateError)
+          } else {
+            console.log('[Audit] Successfully updated audit status to failed:', runId)
+          }
+        } catch (dbError) {
+          console.error('[Audit] Database error updating failed status:', dbError)
+        }
       }
     }
     

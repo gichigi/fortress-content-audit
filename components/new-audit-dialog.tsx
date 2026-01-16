@@ -208,8 +208,8 @@ export function NewAuditDialog({ open, onOpenChange, onSuccess }: NewAuditDialog
         const data = await response.json()
         
         // Close dialog and show "started" toast immediately
-        const durationText = plan === 'pro' || plan === 'enterprise' 
-          ? ' This may take up to 15 minutes.' 
+        const durationText = plan === 'pro' || plan === 'enterprise'
+          ? ' This may take up to 15 minutes.'
           : ' This may take a few minutes.'
         toast({
           title: "Audit started",
@@ -218,7 +218,12 @@ export function NewAuditDialog({ open, onOpenChange, onSuccess }: NewAuditDialog
         onOpenChange(false)
         setDomain("")
         setLoading(false)
-        
+
+        // Notify parent immediately so it can show the banner
+        if (onSuccess) {
+          onSuccess(normalizedDomain)
+        }
+
         // Audit is running in background - poll for completion
         if (data.runId && data.status === 'pending') {
           pollForCompletion(data.runId, normalizedDomain)
@@ -251,7 +256,7 @@ export function NewAuditDialog({ open, onOpenChange, onSuccess }: NewAuditDialog
         if (response.status === 429) {
           errorMessage = errorData.message || 'Daily limit reached'
         } else if (response.status === 403) {
-          errorMessage = 'This feature requires a paid plan. Upgrade to Tier 2 or Tier 3.'
+          errorMessage = 'This feature requires a paid plan. Upgrade to Pro or Enterprise.'
         } else if (response.status === 400) {
           errorMessage = errorData.error || 'Invalid domain. Please check the URL and try again.'
         } else if (response.status === 401) {
@@ -300,8 +305,8 @@ export function NewAuditDialog({ open, onOpenChange, onSuccess }: NewAuditDialog
               <Alert variant="outline">
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>
-                  Domain limit reached ({domainLimit} domain{domainLimit === 1 ? '' : 's'}). 
-                  {plan === 'free' && ' Upgrade to Tier 2 to audit up to 5 domains.'}
+                  Domain limit reached ({domainLimit} domain{domainLimit === 1 ? '' : 's'}).
+                  {plan === 'free' && ' Upgrade to Pro to audit up to 5 domains.'}
                   {plan === 'pro' && ' Upgrade to Enterprise for unlimited domains.'}
                 </AlertDescription>
               </Alert>

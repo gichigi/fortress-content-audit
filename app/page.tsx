@@ -440,7 +440,7 @@ export default function Home() {
           } else if (response.status === 429) {
             errorMessage = errorData.message || errorData.error || 'Too many requests. Try again later.'
           } else if (response.status === 403) {
-            errorMessage = 'Upgrade to Tier 2 or Tier 3'
+            errorMessage = 'Upgrade to Pro or Enterprise'
           } else if (response.status === 401) {
             errorMessage = 'Please sign in'
           } else if (response.status === 500) {

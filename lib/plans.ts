@@ -5,9 +5,9 @@ export const PLAN_TIERS = {
 } as const
 
 export const PLAN_NAMES: Record<(typeof PLAN_TIERS)[keyof typeof PLAN_TIERS], string> = {
-  free: 'Tier 1',
-  pro: 'Tier 2',
-  enterprise: 'Tier 3',
+  free: 'Free',
+  pro: 'Pro',
+  enterprise: 'Enterprise',
 }
 
 export const PLAN_PRICES: Record<(typeof PLAN_TIERS)[keyof typeof PLAN_TIERS], number | null> = {

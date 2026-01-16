@@ -8,6 +8,7 @@ import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { createClient } from "@/lib/supabase-browser"
+import { PLAN_NAMES } from "@/lib/plans"
 
 export function SiteHeader() {
   const router = useRouter()
@@ -70,11 +71,11 @@ export function SiteHeader() {
             Dashboard
           </Link>
           {isAuthenticated && plan && (
-            <Badge 
+            <Badge
               variant={plan === 'pro' || plan === 'enterprise' ? 'default' : 'secondary'}
               className="ml-2"
             >
-              {plan === 'enterprise' ? 'Tier 3' : plan === 'pro' ? 'Tier 2' : 'Tier 1'}
+              {PLAN_NAMES[plan as keyof typeof PLAN_NAMES] || 'Free'}
             </Badge>
           )}
         </div>

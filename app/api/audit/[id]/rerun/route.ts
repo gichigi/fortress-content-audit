@@ -34,7 +34,7 @@ export async function POST(
       .maybeSingle()
     const plan = profile?.plan || 'free'
     if (plan !== 'pro') {
-      return NextResponse.json({ error: 'Tier 2 or higher required' }, { status: 403 })
+      return NextResponse.json({ error: 'Pro plan or higher required' }, { status: 403 })
     }
 
     // Load run to get domain

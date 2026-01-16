@@ -91,7 +91,7 @@ export default function PricingPage() {
                 <CardTitle className="font-serif text-2xl font-semibold">
                   {PLAN_NAMES.free}
                 </CardTitle>
-                <Badge variant="outline">Tier 1</Badge>
+                <Badge variant="outline">Free</Badge>
               </div>
               <div className="mt-4">
                 <span className="text-4xl font-light">${PLAN_PRICES.free}</span>
@@ -103,10 +103,7 @@ export default function PricingPage() {
             </CardHeader>
             <CardContent className="flex-1 flex flex-col">
               <ul className="space-y-3 mb-6">
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Homepage + 1 key page</span>
-                </li>
+                {/* Common features across all tiers */}
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">Language issues</span>
@@ -121,15 +118,20 @@ export default function PricingPage() {
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Audit once per day</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">PDF, JSON, Markdown exports</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">Track your content health</span>
+                </li>
+                {/* Tier 1 specific features */}
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">Homepage + 1 key page</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">Audit once per day</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
@@ -149,7 +151,7 @@ export default function PricingPage() {
                 <CardTitle className="font-serif text-2xl font-semibold">
                   {PLAN_NAMES.pro}
                 </CardTitle>
-                <Badge>Tier 2</Badge>
+                <Badge>Pro</Badge>
               </div>
               <div className="mt-4">
                 <span className="text-4xl font-light">${PLAN_PRICES.pro}</span>
@@ -161,18 +163,7 @@ export default function PricingPage() {
             </CardHeader>
             <CardContent className="flex-1 flex flex-col">
               <ul className="space-y-3 mb-6">
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">10-20 key pages</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Enhanced audits</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Up to 5 domains</span>
-                </li>
+                {/* Common features across all tiers */}
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">Language issues</span>
@@ -187,15 +178,28 @@ export default function PricingPage() {
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Audit once per day</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">PDF, JSON, Markdown exports</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">Track your content health</span>
+                </li>
+                {/* Tier 2 specific features */}
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">10-20 key pages</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">Enhanced audits</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">Up to 5 domains</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">Audit once per day</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
@@ -213,9 +217,9 @@ export default function PricingPage() {
                     Loading...
                   </>
                 ) : isAuthenticated ? (
-                  "Subscribe"
+                  "Upgrade"
                 ) : (
-                  "Sign up to subscribe"
+                  "Sign up to upgrade"
                 )}
               </Button>
             </CardContent>
@@ -228,7 +232,7 @@ export default function PricingPage() {
                 <CardTitle className="font-serif text-2xl font-semibold">
                   {PLAN_NAMES.enterprise}
                 </CardTitle>
-                <Badge variant="outline">Tier 3</Badge>
+                <Badge variant="outline">Enterprise</Badge>
               </div>
               <div className="mt-4">
                 <span className="text-2xl font-light text-muted-foreground">Custom pricing</span>
@@ -239,22 +243,7 @@ export default function PricingPage() {
             </CardHeader>
             <CardContent className="flex-1 flex flex-col">
               <ul className="space-y-3 mb-6">
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Enhanced audits</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Unlimited pages</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Unlimited domains</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Unlimited audits</span>
-                </li>
+                {/* Common features across all tiers */}
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">Language issues</span>
@@ -269,11 +258,40 @@ export default function PricingPage() {
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">PDF, JSON, Markdown exports</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">Track your content health</span>
+                </li>
+                {/* Tier 3 specific features */}
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">Unlimited pages</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">Unlimited domains</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">Unlimited audits</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">Enhanced audits</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">SEO issues and gaps</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">Custom audit issues</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span className="text-sm">Auto weekly audits</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
@@ -286,18 +304,6 @@ export default function PricingPage() {
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">Slack/Teams integration</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">PDF, JSON, Markdown exports</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Track your content health</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Auto weekly audits</span>
                 </li>
               </ul>
               <Button 

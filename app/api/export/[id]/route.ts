@@ -47,7 +47,7 @@ export async function GET(
     // Gate exports by plan
     if (format !== 'md' && plan !== 'pro') {
       return NextResponse.json(
-        { error: `Export format ${format} requires ${plan === 'free' ? 'Tier 2' : 'Tier 2'} plan` },
+        { error: `Export format ${format} requires Pro plan` },
         { status: 403 }
       )
     }

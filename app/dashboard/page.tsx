@@ -19,6 +19,7 @@ import { AuditProgress } from "@/components/audit-progress"
 import { useAuditIssues } from "@/hooks/use-audit-issues"
 import { useHealthScoreMetrics } from "@/hooks/use-health-score-metrics"
 import { transformIssuesToTableRows } from "@/lib/audit-table-adapter"
+import { NewAuditDialog } from "@/components/new-audit-dialog"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -71,6 +72,7 @@ export default function DashboardPage() {
   const [rerunningAuditId, setRerunningAuditId] = useState<string | null>(null)
   const [pendingAuditId, setPendingAuditId] = useState<string | null>(null)
   const [severityFilter, setSeverityFilter] = useState<'all' | 'critical'>('all')
+  const [newAuditDialogOpen, setNewAuditDialogOpen] = useState(false)
   
   // Use shared hook to fetch issues from database
   const mostRecentAudit = audits.length > 0 ? audits[0] : null
@@ -366,13 +368,29 @@ export default function DashboardPage() {
           }
 
           const pollData = await pollResponse.json()
+          console.log('[Dashboard] Poll status:', pollData.status)
 
           if (pollData.status === 'completed') {
             setPendingAuditId(null)
-            toast({
-              title: "Audit completed",
-              description: "Your audit results are ready.",
-            })
+
+            // Check for milestone celebrations
+            const milestones = pollData.milestones
+            if (milestones && Array.isArray(milestones) && milestones.length > 0) {
+              // Show milestone celebration toast(s)
+              milestones.forEach((milestone: any) => {
+                toast({
+                  title: milestone.title,
+                  description: milestone.description,
+                })
+              })
+            } else {
+              // Show regular completion toast
+              toast({
+                title: "Audit completed",
+                description: "Your audit results are ready.",
+              })
+            }
+
             // Reload all data
             const supabase = createClient()
             const { data: { session } } = await supabase.auth.getSession()
@@ -387,10 +405,11 @@ export default function DashboardPage() {
           }
 
           if (pollData.status === 'failed') {
+            console.log('[Dashboard] Audit failed, showing error toast:', pollData.error)
             setPendingAuditId(null)
             toast({
               title: "Audit failed",
-              description: pollData.error || "The audit encountered an error.",
+              description: pollData.error || "The audit encountered an error. Please try again.",
               variant: "error",
             })
             return
@@ -836,7 +855,10 @@ export default function DashboardPage() {
         if (data.status === 'pending') {
           // Set pending audit ID to show banner
           setPendingAuditId(data.runId)
-          
+
+          // Scroll to top to show the pending audit banner
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+
           // Poll for completion - longer timeout for paid audits
           const pollIntervalMs = 5000 // 5 seconds
           const maxPollMinutes = plan === 'pro' || plan === 'enterprise' ? 15 : 12 // 12min for free tier, 15min for paid
@@ -876,10 +898,25 @@ export default function DashboardPage() {
               if (pollData.status === 'completed') {
                 setPendingAuditId(null)
                 setStartingAudit(false)
-                toast({
-                  title: "Audit completed",
-                  description: "Your audit results are ready.",
-                })
+
+                // Check for milestone celebrations
+                const milestones = pollData.milestones
+                if (milestones && Array.isArray(milestones) && milestones.length > 0) {
+                  // Show milestone celebration toast(s)
+                  milestones.forEach((milestone: any) => {
+                    toast({
+                      title: milestone.title,
+                      description: milestone.description,
+                    })
+                  })
+                } else {
+                  // Show regular completion toast
+                  toast({
+                    title: "Audit completed",
+                    description: "Your audit results are ready.",
+                  })
+                }
+
                 const supabase = createClient()
                 const { data: { session } } = await supabase.auth.getSession()
                 if (session) {
@@ -1352,7 +1389,7 @@ export default function DashboardPage() {
                           Running audit...
                         </>
                       ) : (
-                        plan === 'pro' || plan === 'enterprise' ? 'Run Tier 2 Audit' : 'Run Tier 1 Audit'
+                        plan === 'pro' || plan === 'enterprise' ? 'Run Full Audit' : 'Run Audit'
                       )}
                       {/* TEMPORARILY DISABLED: Daily limit reached text */}
                       {/* ) : usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit ? (
@@ -1433,8 +1470,12 @@ export default function DashboardPage() {
                           <p className="text-sm text-muted-foreground mb-6">
                             Your audit results will appear here once complete.
                           </p>
-                          <Button asChild size="lg" className="font-semibold">
-                            <Link href="/">Run Your First Audit</Link>
+                          <Button
+                            size="lg"
+                            className="font-semibold"
+                            onClick={() => setNewAuditDialogOpen(true)}
+                          >
+                            Run Your First Audit
                           </Button>
                         </div>
                       </CardContent>
@@ -1492,6 +1533,31 @@ export default function DashboardPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* New Audit Dialog */}
+      <NewAuditDialog
+        open={newAuditDialogOpen}
+        onOpenChange={setNewAuditDialogOpen}
+        onSuccess={async (newDomain: string) => {
+          // Normalize domain
+          const normalizedDomain = newDomain.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '')
+
+          // Select the new domain and reload data
+          setSelectedDomain(normalizedDomain)
+          localStorage.setItem('selectedDomain', normalizedDomain)
+          window.dispatchEvent(new Event('domainChanged'))
+
+          // Reload audits for new domain (will detect pending audit and set pendingAuditId)
+          if (authToken) {
+            await loadAudits(authToken, normalizedDomain)
+            await loadHealthScore(authToken, normalizedDomain)
+            await loadUsageInfo(authToken, normalizedDomain)
+          }
+
+          // Scroll to top to show the pending audit banner
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+        }}
+      />
     </>
   )
 }

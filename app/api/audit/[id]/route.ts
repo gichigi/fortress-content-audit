@@ -66,11 +66,11 @@ export async function GET(
     }
 
     // Query issues from issues table (single source of truth)
+    // Fetch ALL issues (active, ignored, resolved) - let client filter by status
     const { data: issues, error: issuesErr } = await (supabaseAdmin as any)
       .from('issues')
       .select('*')
       .eq('audit_id', id)
-      .eq('status', 'active') // Only show active issues by default
       .order('severity', { ascending: false }) // High severity first
       .order('created_at', { ascending: true })
 
@@ -99,8 +99,9 @@ export async function GET(
         issues: [],
         totalIssues: 0,
         error: auditError,
-        meta: { 
-          pagesAudited: run.pages_audited || run.pages_scanned || 0, 
+        milestones: run.issues_json?.milestones || [],
+        meta: {
+          pagesAudited: run.pages_audited || run.pages_scanned || 0,
           createdAt: run.created_at,
           auditedUrls: run.issues_json?.auditedUrls || [],
         },
@@ -126,8 +127,9 @@ export async function GET(
       issues: gatedIssues,
       totalIssues: issues.length,
       error: auditError,
-      meta: { 
-        pagesAudited: run.pages_audited || run.pages_scanned || 0, 
+      milestones: run.issues_json?.milestones || [],
+      meta: {
+        pagesAudited: run.pages_audited || run.pages_scanned || 0,
         createdAt: run.created_at,
         auditedUrls: run.issues_json?.auditedUrls || [],
       },

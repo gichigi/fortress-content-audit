@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis, ReferenceLine } from "recharts"
 
 import { useMobile } from "@/hooks/use-mobile"
 import {
@@ -171,7 +171,7 @@ export function HealthScoreChart({ data, domain }: HealthScoreChartProps) {
         >
           <AreaChart 
             data={chartData}
-            margin={{ top: 30, right: 10, left: 10, bottom: 5 }}
+            margin={{ top: 30, right: 35, left: 10, bottom: 5 }}
           >
             <defs>
               <linearGradient id="fillScore" x1="0" y1="0" x2="0" y2="1">
@@ -188,6 +188,25 @@ export function HealthScoreChart({ data, domain }: HealthScoreChartProps) {
               </linearGradient>
             </defs>
             <CartesianGrid vertical={false} />
+            {/* Milestone reference lines */}
+            <ReferenceLine
+              y={75}
+              stroke="hsl(var(--border))"
+              strokeDasharray="3 3"
+              strokeOpacity={0.4}
+            />
+            <ReferenceLine
+              y={85}
+              stroke="hsl(var(--border))"
+              strokeDasharray="3 3"
+              strokeOpacity={0.4}
+            />
+            <ReferenceLine
+              y={95}
+              stroke="hsl(var(--border))"
+              strokeDasharray="3 3"
+              strokeOpacity={0.4}
+            />
             <XAxis
               dataKey="date"
               tickLine={false}
@@ -237,9 +256,24 @@ export function HealthScoreChart({ data, domain }: HealthScoreChartProps) {
               fill="url(#fillScore)"
               stroke={chartColor}
               strokeWidth={2}
+              baseValue={0}
             />
           </AreaChart>
         </ChartContainer>
+        {/* Next Milestone Indicator */}
+        {latestScore < 95 && (
+          <div className="mt-4 text-sm text-muted-foreground">
+            {(() => {
+              const nextMilestone = latestScore < 75 ? 75 : latestScore < 85 ? 85 : 95
+              const pointsNeeded = nextMilestone - latestScore
+              return (
+                <span>
+                  Next milestone: {nextMilestone}% (+{Math.ceil(pointsNeeded)} {Math.ceil(pointsNeeded) === 1 ? 'point' : 'points'})
+                </span>
+              )
+            })()}
+          </div>
+        )}
       </CardContent>
     </Card>
   )

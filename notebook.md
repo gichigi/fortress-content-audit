@@ -134,15 +134,14 @@ User testing session for Fortress, a website auditing tool that analyzes website
 - [x]  Add warm, encouraging messaging after showing results with clear call-to-action (Fixed: Replaced with breadcrumb-style workflow progress indicator for new users)
 - [x]  Change medium severity color from orange to yellow for better distinction (Fixed: Changed to yellow-500, unified 3-color scheme: rose-500/yellow-500/blue-500)
 - [x]  Make issue resolution checkboxes more discoverable (Fixed: Replaced dropdown menu with inline Resolve/Ignore buttons in table actions column)
-- [ ]  Add gamification elements to encourage return visits and progress tracking
-- [ ]  Add explanation of tier system when "Tier 1" label appears
-- [ ]  Reorder pricing page features to show consistent features first
+- [x]  Add gamification elements to encourage return visits and progress tracking (Implemented: Milestone celebrations at 75%, 85%, 95% health scores)
+- [x]  Rename tier system from "Tier 1/2/3" to "Free/Pro/Enterprise"
+- [x]  Reorder pricing page features to show consistent features first
 - [ ]  Fix tier 2 audit timeout issue for larger website scans
-- [ ]  Fix export functionality (PDF/markdown generation failed)
-- [ ]  Consider adding strategic marketing analysis beyond grammar/spelling
-- [ ]  Start visualization at 0% instead of current score to show opportunity rather than decline
-- [ ]  Tahi to send Brand Way product link to user
-- [ ]  User offered to test again after changes are implemented
+- [ ]  Fix export functionality (PDF/markdown generation failed when all issues were resolved)
+- [x]  Resolved issues couldn't be found in table and unresolved after. Repeat issue to fix. (Fixed: API now returns all issues regardless of status, client-side filtering handles tabs)
+- [x]  Start visualization at 0% instead of current score to show opportunity rather than decline (Fixed: Added baseValue={0} to Area chart to explicitly fill from bottom)
+
 
 
 12. Tier 2 audit failed
