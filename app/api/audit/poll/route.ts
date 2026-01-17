@@ -66,7 +66,7 @@ export async function GET(request: Request) {
     const issues = issuesJson.issues || []
     const auditedUrls = issuesJson.auditedUrls || []
     
-    console.log(`[Poll GET] runId=${runId}, status=${status}, issues=${issues.length}`)
+    console.log(`[Poll GET] runId=${runId}, status=${status}`)
     // #region agent log
     // DEBUG: Log poll status check
     fetch('http://127.0.0.1:7242/ingest/46d3112f-6e93-4e4c-a7bb-bc54c7690dac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/audit/poll/route.ts:69',message:'Poll GET status check',data:{runId,status,issueCount:issues.length,auditedUrlCount:auditedUrls.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
@@ -161,7 +161,6 @@ export async function POST(request: Request) {
           // Validate tier is a valid AuditTier
           if (storedTier === 'FREE' || storedTier === 'PAID' || storedTier === 'ENTERPRISE') {
             tier = storedTier as AuditTier
-            console.log(`[Poll] Retrieved tier ${tier} from database for runId: ${runId}`)
           }
         }
         // Get queued_count if it exists
@@ -171,7 +170,6 @@ export async function POST(request: Request) {
       }
     }
 
-    console.log(`[Poll] Checking status for responseId: ${responseId}${tier ? ` (tier: ${tier})` : ''}${isAuthenticated ? ' (authenticated)' : ' (unauthenticated)'}, queued_count: ${queuedCount}`)
     const result = await pollAuditStatus(responseId, tier)
 
     // If still in progress or queued, check for queued timeout
@@ -271,7 +269,6 @@ export async function POST(request: Request) {
         }
       }
       
-      console.log(`[Poll] Audit still in progress: ${responseId} (queued_count: ${newQueuedCount}/${threshold})`)
       return NextResponse.json({
         status: 'in_progress',
         responseId,
@@ -390,7 +387,6 @@ export async function POST(request: Request) {
               console.error('[Poll] Failed to save issues:', issuesErr)
               // Don't fail the request - issues are critical but we have issues_json as backup
             } else {
-              console.log(`[Poll] Saved ${issuesToInsert.length} issues to issues table`)
             }
           } catch (error) {
             console.error('[Poll] Error saving issues:', error)
@@ -416,7 +412,6 @@ export async function POST(request: Request) {
             if (scheduledErr) {
               console.error('[Poll] Failed to update scheduled_audits.last_run:', scheduledErr)
             } else {
-              console.log(`[Poll] Updated scheduled_audits.last_run for scheduled_audit_id: ${auditRun.scheduled_audit_id}`)
             }
           } catch (error) {
             console.error('[Poll] Error updating scheduled_audits:', error)

@@ -201,7 +201,6 @@ export async function POST(request: Request) {
       )
     }
     
-    console.log(`[Audit] Created audit record: ${runId}, authenticated: ${isAuthenticated}, tier: ${auditTier}`)
     
     // ========================================================================
     // All tiers: Run in background via after(), return pending immediately
@@ -311,7 +310,6 @@ export async function POST(request: Request) {
           if (issuesErr) {
             console.error('[Audit] Failed to save issues:', issuesErr)
           } else {
-            console.log(`[Audit] Saved ${issuesToInsert.length} issues to issues table`)
           }
         } catch (error) {
           console.error('[Audit] Error saving issues:', error)
@@ -512,5 +510,9 @@ export async function POST(request: Request) {
 }
 
 // Vercel function config - extend timeout for long-running audits
-// Requires Vercel Pro plan for >60s, Enterprise for >300s
-export const maxDuration = 800 // ~13 minutes (Vercel Pro max)
+// Vercel timeout limits (2025):
+// - Hobby: up to 60s
+// - Pro: up to 300s (5min) without Fluid Compute, up to 800s (~13.3min) with Fluid Compute
+// - Enterprise: up to 900s (15min) or 800s with Fluid Compute
+// Current setting: 800s requires Pro with Fluid Compute or Enterprise plan
+export const maxDuration = 800 // ~13.3 minutes (requires Pro with Fluid Compute or Enterprise)

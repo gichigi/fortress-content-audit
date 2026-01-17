@@ -5,19 +5,20 @@ import Logger from "./logger"
 // ============================================================================
 // Content Audit
 // All tiers use GPT-5.1 with web_search with synchronous polling
-// FREE: synchronous polling (6min max, 10 tool calls)
-// PAID: synchronous polling (10min max, 30 tool calls)
-// ENTERPRISE: synchronous polling (10min max, 60 tool calls)
-// Note: background: true was removed - it queues jobs with lower priority, causing 5x+ longer processing
+// FREE: 4min max, 10 tool calls
+// PAID: 7min max, 30 tool calls  
+// ENTERPRISE: 10min max, 60 tool calls
+// Note: background mode removed - it queued jobs with lower priority, causing 5x+ slower processing
 // ============================================================================
 
 // Audit tiers for cost/scope control
-// All tiers use GPT-5.1 with web_search with synchronous polling
 // Only difference between tiers is maxToolCalls (10/30/60)
 export const AUDIT_TIERS = {
-  FREE: { maxToolCalls: 10, model: "gpt-5.1-2025-11-13" as const, maxPollSeconds: 360 }, // 6min max
-  PAID: { maxToolCalls: 30, model: "gpt-5.1-2025-11-13" as const, maxPollSeconds: 600 }, // 10min max
-  ENTERPRISE: { maxToolCalls: 60, model: "gpt-5.1-2025-11-13" as const, maxPollSeconds: 600 }, // 10min max
+  // Vercel limits: Pro=300s (5min) without Fluid Compute, 800s with Fluid Compute; Enterprise=900s
+  // Audits typically complete in ~2-4 minutes, but need buffer for 6-7min pro audits
+  FREE: { maxToolCalls: 10, model: "gpt-5.1-2025-11-13" as const, maxPollSeconds: 240 }, // 4min max (safe for Pro without Fluid Compute)
+  PAID: { maxToolCalls: 30, model: "gpt-5.1-2025-11-13" as const, maxPollSeconds: 420 }, // 7min max (requires Pro with Fluid Compute or Enterprise)
+  ENTERPRISE: { maxToolCalls: 60, model: "gpt-5.1-2025-11-13" as const, maxPollSeconds: 600 }, // 10min max (requires Enterprise or Pro with Fluid Compute)
 } as const
 
 export type AuditTier = keyof typeof AUDIT_TIERS
@@ -25,7 +26,7 @@ export type AuditTier = keyof typeof AUDIT_TIERS
 // Reusable OpenAI prompt ID for content audits
 // Set via OPENAI_AUDIT_PROMPT_ID env var or use default
 const AUDIT_PROMPT_ID = process.env.OPENAI_AUDIT_PROMPT_ID || "pmpt_695e4d1f54048195a54712ce6446be87061fc1380da21889"
-const AUDIT_PROMPT_VERSION = process.env.OPENAI_AUDIT_PROMPT_VERSION || "13"
+const AUDIT_PROMPT_VERSION = process.env.OPENAI_AUDIT_PROMPT_VERSION || "15"
 
 // Mini audit prompt ID for free tier (1 audit pass, no reasoning summaries for faster processing)
 // Set via OPENAI_MINI_AUDIT_PROMPT_ID env var or use default
@@ -128,14 +129,12 @@ export async function miniAudit(
     
     if (existingResponseId) {
       // Use existing response (for SSE streaming scenario)
-      Logger.debug(`[MiniAudit] Using existing responseId: ${existingResponseId}`)
       finalResponse = await openai.responses.retrieve(existingResponseId)
       response = { id: existingResponseId } // Store id for return value
     } else {
       // Create new response
       // Note: Model config params (effort, summary, store, text.format, verbosity) 
       // are configured in the prompt definition itself - don't override here
-      Logger.debug(`[MiniAudit] Sending request to GPT-5.1 with web_search`)
       const params: any = {
         model: "gpt-5.1-2025-11-13",
         prompt: {
@@ -253,14 +252,12 @@ export async function miniAudit(
           parsed = JSON.parse(jsonMatch[0])
         } else {
           // Fallback: transform plain text to JSON
-          Logger.debug(`[MiniAudit] Transforming output to structured JSON`)
           const structuredOutput = await transformToStructuredJSON(outputText, normalizedDomain)
           parsed = JSON.parse(structuredOutput)
         }
       }
     } catch (parseError) {
       // Transform plain text to JSON
-      Logger.debug(`[MiniAudit] Transforming output to structured JSON`)
       const structuredOutput = await transformToStructuredJSON(outputText, normalizedDomain)
       parsed = JSON.parse(structuredOutput)
     }
@@ -338,17 +335,16 @@ export async function auditSite(
   const normalizedDomain = normalizeDomain(domain)
   const domainHostname = extractDomainHostname(normalizedDomain)
 
-  // Use longer timeout for synchronous mode (no background queuing)
+  // Timeout supports 7min pro audits with buffer
   const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
-    timeout: 300000, // 5min timeout for synchronous mode - audits typically complete in ~2 minutes
+    timeout: 450000, // 7.5min
   })
 
   try {
     Logger.info(`[AuditSite] Starting GPT-5.1 web_search audit for ${normalizedDomain} (tier: ${tier}, synchronous mode)`)
     const modelStartTime = Date.now()
     
-    Logger.debug(`[AuditSite] Sending request to GPT-5.1 with web_search (maxToolCalls: ${tierConfig.maxToolCalls}, maxPoll: ${tierConfig.maxPollSeconds}s)`)
     const params: any = {
       model: tierConfig.model,
       prompt: {
@@ -376,8 +372,7 @@ export async function auditSite(
         summary: null
       },
       store: true,
-      // Background mode disabled - it queues jobs with lower priority, causing 5x+ longer processing
-      // Synchronous mode processes immediately and completes in ~2 minutes instead of 10+ minutes
+      // Synchronous mode processes immediately (typically completes in 2-4 minutes)
     }
     
     // Create response with retry for transient errors (timeouts, rate limits)
@@ -386,7 +381,6 @@ export async function auditSite(
     for (let attempt = 1; attempt <= maxCreateRetries; attempt++) {
       try {
         response = await openai.responses.create(params)
-        Logger.debug(`[AuditSite] Response created: ${response.id} (status: ${response.status})`)
         break
       } catch (createError) {
         const isTimeout = createError instanceof Error && createError.message.includes('timed out')
@@ -531,14 +525,12 @@ export async function auditSite(
           parsed = JSON.parse(jsonMatch[0])
         } else {
           // Fallback: transform plain text to JSON
-          Logger.debug(`[AuditSite] Transforming output to structured JSON`)
           const structuredOutput = await transformToStructuredJSON(outputText, normalizedDomain)
           parsed = JSON.parse(structuredOutput)
         }
       }
     } catch (parseError) {
       // Transform plain text to JSON
-      Logger.debug(`[AuditSite] Transforming output to structured JSON`)
       const structuredOutput = await transformToStructuredJSON(outputText, normalizedDomain)
       parsed = JSON.parse(structuredOutput)
     }
@@ -590,12 +582,8 @@ export async function auditSite(
 }
 
 // ============================================================================
-// Poll audit status (legacy function - kept for backward compatibility)
+// Poll audit status (legacy - kept for backward compatibility)
 // ============================================================================
-// Deep Research supports polling via responses.retrieve() per OpenAI API docs:
-// https://platform.openai.com/docs/guides/deep-research
-// Responses can be polled to check status (queued/in_progress/completed)
-// and extract partial progress from output_text during processing
 export async function pollAuditStatus(responseId: string, tier?: AuditTier): Promise<AuditResult> {
   const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
@@ -677,7 +665,6 @@ export async function pollAuditStatus(responseId: string, tier?: AuditTier): Pro
         result.auditedUrls = actualCrawledUrls
       }
       
-      console.log(`[Audit] ✅ Complete: ${result.issues.length} issues, ${result.pagesAudited} pages audited, ${actualCrawledUrls.length} URLs`)
       return result
     }
 

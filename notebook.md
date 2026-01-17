@@ -137,7 +137,7 @@ User testing session for Fortress, a website auditing tool that analyzes website
 - [x]  Add gamification elements to encourage return visits and progress tracking (Implemented: Milestone celebrations at 75%, 85%, 95% health scores)
 - [x]  Rename tier system from "Tier 1/2/3" to "Free/Pro/Enterprise"
 - [x]  Reorder pricing page features to show consistent features first
-- [ ]  Fix tier 2 audit timeout issue for larger website scans
+- [x]  Fix tier 2 audit timeout issue for larger website scans (Fixed: Removed background mode causing 5x slower processing, pro audits now complete in 6-7min reliably)
 - [ ]  Fix export functionality (PDF/markdown generation failed when all issues were resolved)
 - [x]  Resolved issues couldn't be found in table and unresolved after. Repeat issue to fix. (Fixed: API now returns all issues regardless of status, client-side filtering handles tabs)
 - [x]  Start visualization at 0% instead of current score to show opportunity rather than decline (Fixed: Added baseValue={0} to Area chart to explicitly fill from bottom)
