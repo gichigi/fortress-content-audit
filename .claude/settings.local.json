@@ -5,7 +5,9 @@
       "Read(//var/folders/b6/7yxzymw104l9dm3mt96l7d180000gn/T/TemporaryItems/NSIRD_screencaptureui_qRJAFG/**)",
       "Read(//var/folders/b6/7yxzymw104l9dm3mt96l7d180000gn/T/TemporaryItems/NSIRD_screencaptureui_lyqvky/**)",
       "Read(//var/folders/b6/7yxzymw104l9dm3mt96l7d180000gn/T/TemporaryItems/NSIRD_screencaptureui_Eo6sKL/**)",
-      "Read(//var/folders/b6/7yxzymw104l9dm3mt96l7d180000gn/T/TemporaryItems/NSIRD_screencaptureui_bJah7e/**)"
+      "Read(//var/folders/b6/7yxzymw104l9dm3mt96l7d180000gn/T/TemporaryItems/NSIRD_screencaptureui_bJah7e/**)",
+      "WebSearch",
+      "Bash(supabase stop:*)"
     ],
     "deny": [],
     "ask": []

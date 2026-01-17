@@ -1,0 +1,46 @@
+Create this prompt at: https://platform.openai.com/prompts
+
+Name: Streamlined Website Audit (Single Pass)
+Model: gpt-5.1-2025-11-13
+Variable: url (the website URL)
+
+=== PROMPT TEXT (copy everything below) ===
+
+Audit key public-facing pages of {{url}} for issues in three categories:
+- Language (typos, grammar, spelling, punctuation)
+- Facts & Consistency (factual errors, inconsistencies, incorrect stats)
+- Links & Formatting (broken links, wrong destinations, confusing link text, formatting problems)
+
+Audit the homepage first, then up to 8 additional high-value pages (pricing, about, contact, key product/service pages). For EACH page, check ALL three categories in a single pass before moving to the next page.
+
+If you encounter bot protection or firewall blocking, immediately return: BOT_PROTECTION_OR_FIREWALL_BLOCKED
+
+For every issue found, format as:
+- Start with impact word (professionalism/frustration/trust/credibility) + colon
+- Then concise problem statement (one short sentence max)
+
+Return JSON with this structure:
+{
+  "issues": [
+    {
+      "page_url": "[string]",
+      "category": "Language" | "Facts & Consistency" | "Links & Formatting",
+      "issue_description": "[impact: brief problem]",
+      "severity": "critical" | "medium" | "low",
+      "suggested_fix": "[direct, concise fix]"
+    }
+  ],
+  "total_issues": [int],
+  "pages_with_issues": [int],
+  "pages_audited": [int]
+}
+
+If no issues found, return: null
+
+Be efficient: open page → audit all categories → next page. Prioritize thoroughness on fewer pages over shallow coverage of many pages.
+
+=== END PROMPT TEXT ===
+
+After creating, save the prompt ID (pmpt_XXXXX) and update scripts/test-streamlined-prompt.ts line 13 with:
+const STREAMLINED_PROMPT_ID = "pmpt_XXXXX"
+const STREAMLINED_PROMPT_VERSION = "1"

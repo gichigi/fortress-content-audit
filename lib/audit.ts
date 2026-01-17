@@ -4,19 +4,20 @@ import Logger from "./logger"
 
 // ============================================================================
 // Content Audit
-// All tiers use GPT-5.1 with web_search with background mode and polling
-// FREE: background mode with polling (6min max, 10 tool calls)
-// PAID: background mode with polling (10min max, 50 tool calls)
-// ENTERPRISE: background mode with polling (15min max, 100 tool calls)
+// All tiers use GPT-5.1 with web_search with synchronous polling
+// FREE: synchronous polling (6min max, 10 tool calls)
+// PAID: synchronous polling (10min max, 30 tool calls)
+// ENTERPRISE: synchronous polling (10min max, 60 tool calls)
+// Note: background: true was removed - it queues jobs with lower priority, causing 5x+ longer processing
 // ============================================================================
 
 // Audit tiers for cost/scope control
-// All tiers use GPT-5.1 with web_search with background mode and polling
+// All tiers use GPT-5.1 with web_search with synchronous polling
 // Only difference between tiers is maxToolCalls (10/30/60)
 export const AUDIT_TIERS = {
-  FREE: { maxToolCalls: 10, background: true, model: "gpt-5.1-2025-11-13" as const, maxPollSeconds: 360 }, // 6min max
-  PAID: { maxToolCalls: 30, background: true, model: "gpt-5.1-2025-11-13" as const, maxPollSeconds: 480 }, // 8min max
-  ENTERPRISE: { maxToolCalls: 60, background: true, model: "gpt-5.1-2025-11-13" as const, maxPollSeconds: 600 }, // 10min max
+  FREE: { maxToolCalls: 10, model: "gpt-5.1-2025-11-13" as const, maxPollSeconds: 360 }, // 6min max
+  PAID: { maxToolCalls: 30, model: "gpt-5.1-2025-11-13" as const, maxPollSeconds: 600 }, // 10min max
+  ENTERPRISE: { maxToolCalls: 60, model: "gpt-5.1-2025-11-13" as const, maxPollSeconds: 600 }, // 10min max
 } as const
 
 export type AuditTier = keyof typeof AUDIT_TIERS
@@ -337,15 +338,14 @@ export async function auditSite(
   const normalizedDomain = normalizeDomain(domain)
   const domainHostname = extractDomainHostname(normalizedDomain)
 
-  // Use shorter timeout for initial request - polling handles long-running jobs
+  // Use longer timeout for synchronous mode (no background queuing)
   const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
-    timeout: tierConfig.background ? 60000 : 300000, // 1min for background mode, 5min for sync
+    timeout: 300000, // 5min timeout for synchronous mode - audits typically complete in ~2 minutes
   })
 
   try {
-    const useBackground = tierConfig.background
-    Logger.info(`[AuditSite] Starting GPT-5.1 web_search audit for ${normalizedDomain} (tier: ${tier}, background: ${useBackground})`)
+    Logger.info(`[AuditSite] Starting GPT-5.1 web_search audit for ${normalizedDomain} (tier: ${tier}, synchronous mode)`)
     const modelStartTime = Date.now()
     
     Logger.debug(`[AuditSite] Sending request to GPT-5.1 with web_search (maxToolCalls: ${tierConfig.maxToolCalls}, maxPoll: ${tierConfig.maxPollSeconds}s)`)
@@ -376,8 +376,8 @@ export async function auditSite(
         summary: null
       },
       store: true,
-      // Enable background mode for PAID/ENTERPRISE - returns immediately, poll for completion
-      ...(useBackground && { background: true })
+      // Background mode disabled - it queues jobs with lower priority, causing 5x+ longer processing
+      // Synchronous mode processes immediately and completes in ~2 minutes instead of 10+ minutes
     }
     
     // Create response with retry for transient errors (timeouts, rate limits)
@@ -421,18 +421,33 @@ export async function auditSite(
     const maxConsecutiveErrors = 5
     
     while ((status === "queued" || status === "in_progress") && pollCount < maxPollCount) {
+      const pollStartTime = Date.now()
       await new Promise(resolve => setTimeout(resolve, pollIntervalMs))
       pollCount++
       
+      let retrieveDuration = 0
       try {
-        finalResponse = await openai.responses.retrieve(response.id)
+        // Use a separate client with longer timeout for retrieve calls to avoid timeout issues
+        const retrieveClient = new OpenAI({
+          apiKey: process.env.OPENAI_API_KEY,
+          timeout: 30000, // 30s should be plenty for a simple status check
+        })
+        finalResponse = await retrieveClient.responses.retrieve(response.id)
+        retrieveDuration = Date.now() - pollStartTime
         status = finalResponse.status as string
         consecutiveErrors = 0 // Reset on success
+        
+        // Log if retrieve call is slow (indicates network/API issues)
+        if (retrieveDuration > 5000) {
+          Logger.warn(`[AuditSite] Slow retrieve call: ${retrieveDuration}ms (responseId: ${response.id})`)
+        }
       } catch (pollError) {
         consecutiveErrors++
+        retrieveDuration = Date.now() - pollStartTime
         const elapsedSeconds = pollCount * (pollIntervalMs / 1000)
-        Logger.warn(`[AuditSite] Poll error at ${elapsedSeconds}s (${consecutiveErrors}/${maxConsecutiveErrors})`, { 
-          error: pollError instanceof Error ? pollError.message : 'Unknown' 
+        Logger.warn(`[AuditSite] Poll error at ${elapsedSeconds}s (${consecutiveErrors}/${maxConsecutiveErrors}, retrieve took ${retrieveDuration}ms)`, { 
+          error: pollError instanceof Error ? pollError.message : 'Unknown',
+          responseId: response.id
         })
         if (consecutiveErrors >= maxConsecutiveErrors) {
           throw new Error(`Audit polling failed after ${consecutiveErrors} consecutive errors`)
@@ -444,7 +459,7 @@ export async function auditSite(
       if (pollCount % 15 === 0) {
         const elapsedSeconds = pollCount * (pollIntervalMs / 1000)
         const openedPages = extractOpenedPagesCount(finalResponse)
-        Logger.info(`[AuditSite] Polling: ${status} (${elapsedSeconds}s / ${maxPollSeconds}s max, ${openedPages} pages opened)`)
+        Logger.info(`[AuditSite] Polling: ${status} (${elapsedSeconds}s / ${maxPollSeconds}s max, ${openedPages} pages opened, retrieve: ${retrieveDuration}ms)`)
       }
     }
     
@@ -575,11 +590,11 @@ export async function auditSite(
 }
 
 // ============================================================================
-// Poll background audit status (for paid/enterprise tiers)
+// Poll audit status (legacy function - kept for backward compatibility)
 // ============================================================================
 // Deep Research supports polling via responses.retrieve() per OpenAI API docs:
 // https://platform.openai.com/docs/guides/deep-research
-// When background=true, responses can be polled to check status (queued/in_progress/completed)
+// Responses can be polled to check status (queued/in_progress/completed)
 // and extract partial progress from output_text during processing
 export async function pollAuditStatus(responseId: string, tier?: AuditTier): Promise<AuditResult> {
   const openai = new OpenAI({
