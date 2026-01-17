@@ -77,14 +77,20 @@ export function DomainSwitcher() {
           .not('domain', 'is', null)
 
         if (audits) {
-          const uniqueDomains = Array.from(new Set(
-            audits.map(a => a.domain).filter((d): d is string => d !== null)
-          ))
+          // Normalize and deduplicate domains
+          const normalizedDomains = audits
+            .map(a => a.domain)
+            .filter((d): d is string => d !== null)
+            .map(d => d.toLowerCase().trim())
+          const uniqueDomains = Array.from(new Set(normalizedDomains))
           setDomains(uniqueDomains)
           
-          // Get selected domain from localStorage
+          // Get selected domain from localStorage (normalize for comparison)
           const savedDomain = localStorage.getItem('selectedDomain')
-          const initialDomain = savedDomain || uniqueDomains[0] || null
+          const normalizedSavedDomain = savedDomain ? savedDomain.toLowerCase().trim() : null
+          const initialDomain = (normalizedSavedDomain && uniqueDomains.includes(normalizedSavedDomain)) 
+            ? normalizedSavedDomain 
+            : uniqueDomains[0] || null
           setSelectedDomain(initialDomain)
         }
       } catch (error) {
@@ -168,14 +174,18 @@ export function DomainSwitcher() {
         .not('domain', 'is', null)
 
       if (audits) {
-        const uniqueDomains = Array.from(new Set(
-          audits.map(a => a.domain).filter((d): d is string => d !== null)
-        ))
+        // Normalize and deduplicate domains
+        const normalizedDomains = audits
+          .map(a => a.domain)
+          .filter((d): d is string => d !== null)
+          .map(d => d.toLowerCase().trim())
+        const uniqueDomains = Array.from(new Set(normalizedDomains))
         setDomains(uniqueDomains)
         
-        // Update selected domain if it was deleted
+        // Update selected domain if it was deleted (normalize for comparison)
         const savedDomain = localStorage.getItem('selectedDomain')
-        if (savedDomain && !uniqueDomains.includes(savedDomain)) {
+        const normalizedSavedDomain = savedDomain ? savedDomain.toLowerCase().trim() : null
+        if (normalizedSavedDomain && !uniqueDomains.includes(normalizedSavedDomain)) {
           // Selected domain was deleted, switch to first available or clear
           const newDomain = uniqueDomains[0] || null
           setSelectedDomain(newDomain)
@@ -214,12 +224,23 @@ export function DomainSwitcher() {
 
   const handleNewAuditSuccess = (newDomain: string) => {
     // Domain is only passed here if audit completed successfully
-    // Normalize domain (remove protocol, www, trailing slash)
-    const normalizedDomain = newDomain.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '')
+    // Normalize domain (remove protocol, www, trailing slash, lowercase, trim)
+    const normalizedDomain = newDomain
+      .replace(/^https?:\/\//, '')
+      .replace(/^www\./, '')
+      .replace(/\/$/, '')
+      .toLowerCase()
+      .trim()
     
-    // Add to sidebar (audit already completed successfully)
-    if (normalizedDomain && !domains.includes(normalizedDomain)) {
-      setDomains(prev => [...prev, normalizedDomain])
+    // Add to sidebar (audit already completed successfully) - deduplicate
+    if (normalizedDomain) {
+      setDomains(prev => {
+        const normalized = prev.map(d => d.toLowerCase().trim())
+        if (!normalized.includes(normalizedDomain)) {
+          return [...prev, normalizedDomain]
+        }
+        return prev
+      })
       setSelectedDomain(normalizedDomain)
       localStorage.setItem('selectedDomain', normalizedDomain)
       window.dispatchEvent(new Event('domainChanged'))
@@ -256,15 +277,19 @@ export function DomainSwitcher() {
           .not('domain', 'is', null)
 
         if (audits) {
-          const uniqueDomains = Array.from(new Set(
-            audits.map(a => a.domain).filter((d): d is string => d !== null)
-          ))
+          // Normalize and deduplicate domains
+          const normalizedDomains = audits
+            .map(a => a.domain)
+            .filter((d): d is string => d !== null)
+            .map(d => d.toLowerCase().trim())
+          const uniqueDomains = Array.from(new Set(normalizedDomains))
           setDomains(uniqueDomains)
           
-          // Ensure new domain is still selected after reload
-          if (uniqueDomains.includes(normalizedDomain)) {
-            setSelectedDomain(normalizedDomain)
-            localStorage.setItem('selectedDomain', normalizedDomain)
+          // Ensure new domain is still selected after reload (normalize for comparison)
+          const normalizedForComparison = normalizedDomain.toLowerCase().trim()
+          if (uniqueDomains.includes(normalizedForComparison)) {
+            setSelectedDomain(normalizedForComparison)
+            localStorage.setItem('selectedDomain', normalizedForComparison)
             window.dispatchEvent(new Event('domainChanged'))
           }
         }
@@ -287,8 +312,8 @@ export function DomainSwitcher() {
     <SidebarGroup className="group-data-[collapsible=icon]:hidden">
       <SidebarGroupLabel>Domains</SidebarGroupLabel>
       <SidebarMenu>
-        {domains.map((domain) => (
-          <SidebarMenuItem key={domain}>
+        {domains.map((domain, index) => (
+          <SidebarMenuItem key={`${domain}-${index}`}>
             <SidebarMenuButton
               onClick={() => handleDomainChange(domain)}
               data-active={selectedDomain === domain}

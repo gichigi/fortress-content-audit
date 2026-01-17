@@ -351,7 +351,8 @@ export async function auditSite(
         id: AUDIT_PROMPT_ID,
         version: AUDIT_PROMPT_VERSION,
         variables: {
-          url: normalizedDomain
+          url: normalizedDomain,
+          tier: tier // Pass tier to prompt for tier-specific page count instructions
         }
       },
       tools: [{
