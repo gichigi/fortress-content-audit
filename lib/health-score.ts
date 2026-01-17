@@ -156,7 +156,22 @@ export async function calculateAggregatedHealthScore(
   const criticalPagesSet = new Set<string>()
   
   // Query all issues for all audits (only active)
-  const auditIds = audits.map(a => a.id)
+  // Filter out audits without IDs to prevent UUID errors
+  const auditIds = audits.map(a => a.id).filter((id): id is string => !!id)
+  
+  // If no valid audit IDs, return empty score
+  if (auditIds.length === 0) {
+    return {
+      score: 100,
+      metrics: {
+        totalActive: 0,
+        totalCritical: 0,
+        bySeverity: { low: 0, medium: 0, critical: 0 },
+        criticalPages: 0,
+        pagesWithIssues: 0,
+      },
+    }
+  }
   
   const { data: allIssues, error } = await (supabaseAdmin as any)
     .from('issues')

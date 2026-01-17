@@ -149,7 +149,7 @@ export async function GET(request: Request) {
       a.date.localeCompare(b.date)
     )
 
-    // Inject persistent baseline (day before earliest audit)
+    // Inject baseline at 0% (day before earliest audit) to show opportunity rather than decline
     if (earliestAudit?.created_at && data.length > 0) {
       const earliestDate = new Date(earliestAudit.created_at)
       const baselineDate = new Date(earliestDate)
@@ -162,7 +162,7 @@ export async function GET(request: Request) {
       if (baselineDate >= startDate && baselineDate <= now && !scoresByDate.has(baselineDateKey)) {
         data.unshift({
           date: baselineDateKey,
-          score: 100,
+          score: 0,
           metrics: {
             totalActive: 0,
             totalCritical: 0,

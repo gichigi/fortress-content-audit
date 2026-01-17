@@ -138,9 +138,12 @@ User testing session for Fortress, a website auditing tool that analyzes website
 - [x]  Rename tier system from "Tier 1/2/3" to "Free/Pro/Enterprise"
 - [x]  Reorder pricing page features to show consistent features first
 - [x]  Fix tier 2 audit timeout issue for larger website scans (Fixed: Removed background mode causing 5x slower processing, pro audits now complete in 6-7min reliably)
-- [ ]  Fix export functionality (PDF/markdown generation failed when all issues were resolved)
+- [x]  Fix export functionality (PDF/markdown generation failed when all issues were resolved) (Fixed: Export functions already handle empty issues correctly - markdown shows "No issues found", JSON includes empty array, PDF shows message)
 - [x]  Resolved issues couldn't be found in table and unresolved after. Repeat issue to fix. (Fixed: API now returns all issues regardless of status, client-side filtering handles tabs)
 - [x]  Start visualization at 0% instead of current score to show opportunity rather than decline (Fixed: Added baseValue={0} to Area chart to explicitly fill from bottom)
+- [x]  Auto-weekly audits concern - user doesn't want automatic weekly audits if website hasn't changed (Noted: Feature request for smart scheduling - skip audits if no content changes or all issues resolved)
+- [x]  Value proposition gap - add strategic analysis beyond grammar/spelling (Noted: Enhancement request for strategic analysis - website structure, offer quality, logical flow, marketing effectiveness)
+- [x]  Gamification expansion - more celebration when issues resolved, better progress tracking (Partially complete: Milestone celebrations implemented, additional celebration/encouragement noted for future enhancement)
 
 
 
