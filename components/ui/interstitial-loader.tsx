@@ -189,13 +189,15 @@ const InterstitialLoader = React.forwardRef<HTMLDivElement, InterstitialLoaderPr
             </div>
           )}
 
-          {/* Free tier info box */}
+          {/* Free tier info box - absolute bottom positioning */}
           {auditTier === 'free' && (
-            <div className="mt-6 bg-muted/40 border border-border rounded-lg px-4 py-3 max-w-sm mx-auto">
-              <p className="text-sm text-foreground">
-                <span className="font-medium">Free audit:</span>
-                <span className="text-muted-foreground"> up to 2 pages</span>
-              </p>
+            <div className="absolute bottom-0 left-0 right-0 pb-8 flex justify-center px-6">
+              <div className="bg-muted/40 border border-border rounded-lg px-4 py-3 max-w-sm">
+                <p className="text-sm text-foreground">
+                  <span className="font-medium">Free audit:</span>
+                  <span className="text-muted-foreground"> up to 2 pages</span>
+                </p>
+              </div>
             </div>
           )}
 
