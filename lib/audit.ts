@@ -26,12 +26,12 @@ export type AuditTier = keyof typeof AUDIT_TIERS
 // Reusable OpenAI prompt ID for content audits
 // Set via OPENAI_AUDIT_PROMPT_ID env var or use default
 const AUDIT_PROMPT_ID = process.env.OPENAI_AUDIT_PROMPT_ID || "pmpt_695e4d1f54048195a54712ce6446be87061fc1380da21889"
-const AUDIT_PROMPT_VERSION = process.env.OPENAI_AUDIT_PROMPT_VERSION || "16"
+const AUDIT_PROMPT_VERSION = process.env.OPENAI_AUDIT_PROMPT_VERSION || "18"
 
 // Mini audit prompt ID for free tier (1 audit pass, no reasoning summaries for faster processing)
 // Set via OPENAI_MINI_AUDIT_PROMPT_ID env var or use default
 const MINI_AUDIT_PROMPT_ID = process.env.OPENAI_MINI_AUDIT_PROMPT_ID || "pmpt_695fd80f94188197ab2151841cf20d6a00213764662a5853"
-const MINI_AUDIT_PROMPT_VERSION = process.env.OPENAI_MINI_AUDIT_PROMPT_VERSION || "5"
+const MINI_AUDIT_PROMPT_VERSION = process.env.OPENAI_MINI_AUDIT_PROMPT_VERSION || "6"
 
 // Zod schemas for structured audit output (new prompt format)
 const NewPromptIssueSchema = z.object({
