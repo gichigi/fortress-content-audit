@@ -140,16 +140,6 @@ const InterstitialLoader = React.forwardRef<HTMLDivElement, InterstitialLoaderPr
           )}
           {description && <p className="text-muted-foreground mb-4">{description}</p>}
 
-          {/* Free tier info box */}
-          {auditTier === 'free' && (
-            <div className="bg-muted/40 border border-border rounded-lg px-4 py-3 mb-6 max-w-sm mx-auto">
-              <p className="text-sm text-foreground">
-                <span className="font-medium">Free audit:</span>
-                <span className="text-muted-foreground"> up to 2 pages</span>
-              </p>
-            </div>
-          )}
-
           {/* Accumulating summaries list */}
           {shownSummaries.length > 0 && (
             <div className="mt-6 mb-6 min-h-[100px] flex flex-col items-start justify-center space-y-3 max-w-lg mx-auto">
@@ -199,6 +189,15 @@ const InterstitialLoader = React.forwardRef<HTMLDivElement, InterstitialLoaderPr
             </div>
           )}
 
+          {/* Free tier info box */}
+          {auditTier === 'free' && (
+            <div className="mt-6 bg-muted/40 border border-border rounded-lg px-4 py-3 max-w-sm mx-auto">
+              <p className="text-sm text-foreground">
+                <span className="font-medium">Free audit:</span>
+                <span className="text-muted-foreground"> up to 2 pages</span>
+              </p>
+            </div>
+          )}
 
           {children}
         </div>
