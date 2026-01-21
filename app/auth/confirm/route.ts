@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     next = '/dashboard'
   }
 
-  const isProdOrigin = origin.includes('fortress-audit.vercel.app')
+  const isProdOrigin = origin.includes('usefortress.vercel.app')
   console.log('[Auth Confirm] Received:', { token_hash: !!token_hash, type, next, isProdOrigin })
 
   if (token_hash && type) {
