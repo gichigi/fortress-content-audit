@@ -501,6 +501,23 @@ export default function Home() {
 
   return (
     <div className="min-h-screen">
+      {/* Early Access Banner */}
+      <div className="bg-muted/40 border-b border-border py-3">
+        <div className="container mx-auto px-6 text-center flex items-center justify-center gap-3">
+          <p className="text-sm text-muted-foreground">
+            Thanks for trying out this early version of Fortress.
+          </p>
+          <a
+            href="https://tahi.notion.site/e0a60b19dbda459aa694a80337c5fc1e?pvs=105"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm font-medium text-foreground hover:text-foreground/80 underline transition-colors"
+          >
+            Give Feedback
+          </a>
+        </div>
+      </div>
+
       {/* Hero Section */}
       <section className="container mx-auto px-6 py-24 md:py-32">
         <div className="max-w-4xl mx-auto text-center">
