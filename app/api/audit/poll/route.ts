@@ -263,9 +263,10 @@ export async function POST(request: Request) {
             updateQuery = updateQuery.eq('session_token', session_token)
           }
           
-          await updateQuery.catch((err) => {
-            console.warn(`[Poll] Failed to update queued_count: ${err.message}`)
-          })
+          const { error: updateError } = await updateQuery
+          if (updateError) {
+            console.warn(`[Poll] Failed to update queued_count: ${updateError.message}`)
+          }
         }
       }
       
@@ -283,10 +284,10 @@ export async function POST(request: Request) {
 
     // Audit completed - update the database record if we have a runId
     if (runId) {
-      // Get audit domain and email status for filtering ignored issues and sending email
+      // Get audit domain for filtering ignored issues
       let query = supabaseAdmin
         .from('brand_audit_runs')
-        .select('domain, completion_email_sent, user_id, session_token')
+        .select('domain, user_id, session_token, scheduled_audit_id')
         .eq('id', runId)
       
       if (isAuthenticated && userId) {
@@ -429,8 +430,8 @@ export async function POST(request: Request) {
           }
         }
 
-        // Send completion email if not already sent (only for authenticated users)
-        if (!auditRun?.completion_email_sent && userId) {
+        // Send completion email (only for authenticated users)
+        if (userId && auditRun?.domain) {
           try {
             // Get user email and name
             const { data: userData } = await supabaseAdmin.auth.admin.getUserById(userId)
@@ -441,20 +442,13 @@ export async function POST(request: Request) {
               const emailResult = await emailService.sendAuditCompletionEmail({
                 customerEmail: userEmail,
                 customerName: userName,
-                domain: auditRun.domain || 'your website',
+                domain: auditRun.domain,
                 totalIssues: filteredIssues.length,
                 pagesAudited: result.pagesAudited || 0,
                 auditId: runId,
               })
 
               if (emailResult.success) {
-                // Mark email as sent
-                await supabaseAdmin
-                  .from('brand_audit_runs')
-                  .update({ completion_email_sent: true })
-                  .eq('id', runId)
-                  .eq('user_id', userId)
-                
                 console.log(`[Poll] Sent completion email for audit: ${runId}`)
               } else {
                 console.error('[Poll] Failed to send completion email:', emailResult.error)

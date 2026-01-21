@@ -9,7 +9,23 @@ import Logger from '@/lib/logger'
 import { checkDailyLimit, checkDomainLimit, isNewDomain, incrementAuditUsage, getAuditUsage } from '@/lib/audit-rate-limit'
 import { createMockAuditData } from '@/lib/mock-audit-data'
 import { detectMilestoneCrossings, getMilestoneToastContent } from '@/lib/milestones'
-import { calculateHealthScore } from '@/lib/health-score'
+
+/**
+ * Simple in-memory health score calculation from issues array
+ * Formula: 100 - (low×1 + medium×3 + critical×7)
+ */
+function calculateScoreFromIssues(issues: Array<{ severity: string }>): number {
+  let penalty = 0
+  for (const issue of issues) {
+    switch (issue.severity) {
+      case 'low': penalty += 1; break
+      case 'medium': penalty += 3; break
+      case 'high':
+      case 'critical': penalty += 7; break
+    }
+  }
+  return Math.max(0, Math.min(100, 100 - penalty))
+}
 
 function getBearer(req: Request) {
   const a = req.headers.get('authorization') || req.headers.get('Authorization')
@@ -338,7 +354,7 @@ export async function POST(request: Request) {
       if (isAuthenticated && userId) {
         try {
           // Calculate current health score from filtered issues
-          const currentScore = calculateHealthScore(filteredIssues)
+          const currentScore = calculateScoreFromIssues(filteredIssues)
 
           // Get previous audit's health score
           const { data: previousAudit } = await supabaseAdmin
@@ -363,7 +379,7 @@ export async function POST(request: Request) {
             if (previousIssues && previousIssues.length > 0) {
               // Only count active issues for previous score
               const activePreviousIssues = previousIssues.filter(i => i.status === 'active')
-              previousScore = calculateHealthScore(activePreviousIssues)
+              previousScore = calculateScoreFromIssues(activePreviousIssues)
             } else {
               // No issues means perfect score
               previousScore = 100
@@ -373,7 +389,7 @@ export async function POST(request: Request) {
           // Get or create scheduled_audits record to track celebrated milestones
           const { data: scheduledAudit, error: scheduledAuditErr } = await supabaseAdmin
             .from('scheduled_audits')
-            .select('celebrated_milestones')
+            .select('celebrated_milestones, enabled')
             .eq('user_id', userId)
             .eq('domain', storageDomain)
             .maybeSingle()

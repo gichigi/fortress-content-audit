@@ -56,7 +56,8 @@ export function DomainSwitcher() {
     const loadDomains = async () => {
       try {
         const supabase = createClient()
-        const { data: { user, session } } = await supabase.auth.getUser()
+        const { data: { user } } = await supabase.auth.getUser()
+        const { data: { session } } = await supabase.auth.getSession()
         if (!user) return
 
         // Load plan
@@ -164,7 +165,8 @@ export function DomainSwitcher() {
     const handleDomainsReload = async () => {
       console.log('[DomainSwitcher] Reloading domains after deletion')
       const supabase = createClient()
-      const { data: { user, session } } = await supabase.auth.getUser()
+      const { data: { user } } = await supabase.auth.getUser()
+        const { data: { session } } = await supabase.auth.getSession()
       if (!user) return
 
       // Reload usage info
@@ -267,7 +269,8 @@ export function DomainSwitcher() {
     const loadDomains = async () => {
       try {
         const supabase = createClient()
-        const { data: { user, session } } = await supabase.auth.getUser()
+        const { data: { user } } = await supabase.auth.getUser()
+        const { data: { session } } = await supabase.auth.getSession()
         if (!user) return
 
         // Reload usage info

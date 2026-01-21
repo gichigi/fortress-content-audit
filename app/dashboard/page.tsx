@@ -987,6 +987,8 @@ export default function DashboardPage() {
                 const issueBreakdown = calculateIssueBreakdown(issues)
                 const milestones = pollData.milestones || []
 
+                // Close audit started modal before showing success
+                setAuditStartedModal(prev => ({ ...prev, open: false }))
                 setAuditSuccessModal({
                   open: true,
                   domain: selectedDomain || '',
@@ -1696,7 +1698,7 @@ export default function DashboardPage() {
       {/* Audit Started Modal */}
       <AuditStartedModal
         open={auditStartedModal.open}
-        onOpenChange={(open) => setAuditStartedModal({ ...auditStartedModal, open })}
+        onOpenChange={(open) => setAuditStartedModal(prev => ({ ...prev, open }))}
         domain={auditStartedModal.domain}
         tier={auditStartedModal.tier}
         estimatedDuration={auditStartedModal.estimatedDuration}
@@ -1705,7 +1707,7 @@ export default function DashboardPage() {
       {/* Audit Success Modal */}
       <AuditSuccessModal
         open={auditSuccessModal.open}
-        onOpenChange={(open) => setAuditSuccessModal({ ...auditSuccessModal, open })}
+        onOpenChange={(open) => setAuditSuccessModal(prev => ({ ...prev, open }))}
         domain={auditSuccessModal.domain}
         totalIssues={auditSuccessModal.totalIssues}
         issueBreakdown={auditSuccessModal.issueBreakdown}
@@ -1726,7 +1728,7 @@ export default function DashboardPage() {
       {/* Audit Failure Modal */}
       <AuditFailureModal
         open={auditFailureModal.open}
-        onOpenChange={(open) => setAuditFailureModal({ ...auditFailureModal, open })}
+        onOpenChange={(open) => setAuditFailureModal(prev => ({ ...prev, open }))}
         domain={auditFailureModal.domain}
         error={auditFailureModal.error}
         userTier={plan as 'free' | 'pro' | 'enterprise'}

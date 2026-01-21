@@ -96,16 +96,25 @@ export async function DELETE(
       // Continue with other deletes
     }
 
-    // 2. Delete audit_issue_states
-    const { error: statesError } = await supabaseAdmin
-      .from('audit_issue_states')
-      .delete()
+    // 2. Delete issues for audits in this domain
+    // First get audit IDs for this domain
+    const { data: domainAudits } = await supabaseAdmin
+      .from('brand_audit_runs')
+      .select('id')
       .eq('user_id', userId)
       .eq('domain', normalizedDomain)
 
-    if (statesError) {
-      console.error('[DomainDelete] Error deleting audit_issue_states:', statesError)
-      // Continue with other deletes
+    if (domainAudits && domainAudits.length > 0) {
+      const auditIds = domainAudits.map(a => a.id)
+      const { error: issuesError } = await supabaseAdmin
+        .from('issues')
+        .delete()
+        .in('audit_id', auditIds)
+
+      if (issuesError) {
+        console.error('[DomainDelete] Error deleting issues:', issuesError)
+        // Continue with other deletes
+      }
     }
 
     // 3. Delete brand_audit_runs (this is the main data)

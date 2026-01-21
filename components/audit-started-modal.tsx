@@ -30,7 +30,7 @@ export function AuditStartedModal({
   const getTierMessage = () => {
     switch (tier) {
       case 'free':
-        return 'Free tier: Auditing homepage + 1 key page'
+        return 'Free tier: up to 2 pages'
       case 'pro':
         return 'Pro tier: Auditing up to 10-20 pages'
       case 'enterprise':
@@ -64,10 +64,11 @@ export function AuditStartedModal({
                 We&apos;re analyzing your content for issues including:
               </p>
               <ul className="list-disc list-inside text-sm space-y-1 text-muted-foreground">
-                <li>Grammar and spelling errors</li>
-                <li>SEO optimization opportunities</li>
-                <li>Readability and structure</li>
-                <li>Accessibility concerns</li>
+                <li>Spelling and grammar issues</li>
+                <li>Page consistency and formatting</li>
+                <li>Broken links and navigation</li>
+                <li>Calls to action and messaging</li>
+                <li>Content clarity and readability</li>
               </ul>
             </AlertDescription>
           </Alert>

@@ -17,6 +17,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table"
+import { cn } from "@/lib/utils"
 import {
   AlertCircleIcon,
   CheckCircle2Icon,
@@ -423,7 +424,7 @@ function IssueActions({
 }
 
 // Simple row component with smooth collapse animations
-function ExpandableRow({ row, exitingRowIds }: { row: Row<AuditTableRow>, exitingRowIds: Set<string> }) {
+function ExpandableRow({ row, exitingRowIds, isPreview }: { row: Row<AuditTableRow>, exitingRowIds: Set<string>, isPreview?: boolean }) {
   const isExiting = exitingRowIds.has(row.id)
   const rowRef = React.useRef<HTMLTableRowElement>(null)
   const [rowHeight, setRowHeight] = React.useState<number | null>(null)
@@ -461,7 +462,8 @@ function ExpandableRow({ row, exitingRowIds }: { row: Row<AuditTableRow>, exitin
       {row.getVisibleCells().map((cell) => {
         const isFixColumn = cell.column.id === 'suggested_fix'
         const isIssueColumn = cell.column.id === 'issue_description'
-        const columnWidth = isFixColumn || isIssueColumn ? '350px' : undefined
+        // Wider columns for preview (homepage) for better readability
+        const columnWidth = isFixColumn || isIssueColumn ? (isPreview ? '450px' : '350px') : undefined
         return (
           <TableCell
             key={cell.id}
@@ -469,7 +471,11 @@ function ExpandableRow({ row, exitingRowIds }: { row: Row<AuditTableRow>, exitin
               ...(columnWidth ? { minWidth: columnWidth, width: columnWidth } : {}),
               ...(isExiting ? { paddingTop: 0, paddingBottom: 0 } : {}),
             }}
-            className="transition-all duration-200"
+            // More vertical padding for homepage preview
+            className={cn(
+              "transition-all duration-200",
+              isPreview && "py-6"
+            )}
           >
             {flexRender(cell.column.columnDef.cell, cell.getContext())}
           </TableCell>
@@ -927,12 +933,14 @@ export function DataTable({
                                             headerId
                         const isFixColumn = headerId === 'suggested_fix'
                         const isIssueColumn = headerId === 'issue_description'
-                        const columnWidth = (isFixColumn || isIssueColumn) ? '350px' : undefined
+                        // Wider columns for preview (homepage) for better readability
+                        const columnWidth = (isFixColumn || isIssueColumn) ? (hideSelectAndActions ? '450px' : '350px') : undefined
                         return (
                           <TableHead
                             key={header.id}
                             colSpan={header.colSpan}
                             style={columnWidth ? { minWidth: columnWidth, width: columnWidth } : undefined}
+                            className={cn(hideSelectAndActions && "py-5")}
                           >
                             {header.isPlaceholder ? null : (
                               <>
@@ -958,7 +966,7 @@ export function DataTable({
                 <TableBody>
                   {table.getRowModel().rows?.length ? (
                     table.getRowModel().rows.map((row) => (
-                      <ExpandableRow key={row.id} row={row} exitingRowIds={exitingRowIds} />
+                      <ExpandableRow key={row.id} row={row} exitingRowIds={exitingRowIds} isPreview={hideSelectAndActions} />
                     ))
                   ) : (
                     <TableRow>

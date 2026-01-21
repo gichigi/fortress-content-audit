@@ -39,21 +39,18 @@ export function generateAuditMarkdown(audit: AuditRun, issues: Issue[]): string 
         return false
       }
     })
-  const pagesAudited = audit.pages_audited || audit.pages_scanned || 0
-  // Calculate pages with issues from issue locations
+  const pagesAudited = audit.pages_audited || audit.pages_audited || 0
+  // Calculate pages with issues from issue page_url
   const pagesWithIssues = new Set<string>()
   issues.forEach(issue => {
-    if (issue.locations && Array.isArray(issue.locations)) {
-      issue.locations.forEach(loc => {
-        if (loc.url) {
-          try {
-            const url = new URL(loc.url)
-            pagesWithIssues.add(url.pathname || '/')
-          } catch {
-            // Invalid URL, skip
-          }
-        }
-      })
+    if (issue.page_url) {
+      try {
+        const url = new URL(issue.page_url)
+        pagesWithIssues.add(url.pathname || '/')
+      } catch {
+        // Invalid URL or relative path, use as-is
+        pagesWithIssues.add(issue.page_url)
+      }
     }
   })
   const pagesWithIssuesCount = pagesWithIssues.size
@@ -139,7 +136,7 @@ export function generateAuditJSON(audit: AuditRun, issues: Issue[]): string {
     domain: audit.domain,
     title: audit.title || audit.brand_name || 'Audit',
     brandName: audit.brand_name,
-    pagesAudited: audit.pages_audited || audit.pages_scanned || 0,
+    pagesAudited: audit.pages_audited || audit.pages_audited || 0,
     totalIssues: issues.length,
     createdAt: audit.created_at,
     tier,
@@ -158,7 +155,7 @@ export async function generateAuditPDF(audit: AuditRun, issues: Issue[]): Promis
   const issuesJson = audit.issues_json as any
   const auditedUrls = Array.isArray(issuesJson?.auditedUrls) ? issuesJson.auditedUrls : []
   const domain = audit.domain || 'Unknown domain'
-  const pagesAudited = audit.pages_audited || audit.pages_scanned || 0
+  const pagesAudited = audit.pages_audited || audit.pages_audited || 0
   // Calculate pages with issues from issue page_url
   const pagesWithIssues = new Set<string>()
   issues.forEach(issue => {

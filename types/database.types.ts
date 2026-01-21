@@ -7,79 +7,8 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "13.0.5"
-  }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
-      audit_issue_states: {
-        Row: {
-          audit_run_id: string | null
-          created_at: string | null
-          domain: string
-          id: string
-          signature: string
-          state: Database["public"]["Enums"]["issue_state_enum"]
-          updated_at: string | null
-          user_id: string
-        }
-        Insert: {
-          audit_run_id?: string | null
-          created_at?: string | null
-          domain: string
-          id?: string
-          signature: string
-          state?: Database["public"]["Enums"]["issue_state_enum"]
-          updated_at?: string | null
-          user_id: string
-        }
-        Update: {
-          audit_run_id?: string | null
-          created_at?: string | null
-          domain?: string
-          id?: string
-          signature?: string
-          state?: Database["public"]["Enums"]["issue_state_enum"]
-          updated_at?: string | null
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "audit_issue_states_audit_run_id_fkey"
-            columns: ["audit_run_id"]
-            isOneToOne: false
-            referencedRelation: "brand_audit_runs"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       audit_usage: {
         Row: {
           audit_count: number | null
@@ -157,43 +86,46 @@ export type Database = {
       }
       brand_audit_runs: {
         Row: {
+          brand_name: string | null
           created_at: string | null
           domain: string | null
           guideline_id: string | null
           id: string
           is_preview: boolean | null
           issues_json: Json | null
-          pages_scanned: number | null
-          user_id: string | null
-          title: string | null
-          brand_name: string | null
+          pages_audited: number | null
+          scheduled_audit_id: string | null
           session_token: string | null
+          title: string | null
+          user_id: string | null
         }
         Insert: {
+          brand_name?: string | null
           created_at?: string | null
           domain?: string | null
           guideline_id?: string | null
           id?: string
           is_preview?: boolean | null
           issues_json?: Json | null
-          pages_scanned?: number | null
-          user_id?: string | null
-          title?: string | null
-          brand_name?: string | null
+          pages_audited?: number | null
+          scheduled_audit_id?: string | null
           session_token?: string | null
+          title?: string | null
+          user_id?: string | null
         }
         Update: {
+          brand_name?: string | null
           created_at?: string | null
           domain?: string | null
           guideline_id?: string | null
           id?: string
           is_preview?: boolean | null
           issues_json?: Json | null
-          pages_scanned?: number | null
-          user_id?: string | null
-          title?: string | null
-          brand_name?: string | null
+          pages_audited?: number | null
+          scheduled_audit_id?: string | null
           session_token?: string | null
+          title?: string | null
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -201,6 +133,13 @@ export type Database = {
             columns: ["guideline_id"]
             isOneToOne: false
             referencedRelation: "guidelines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "brand_audit_runs_scheduled_audit_id_fkey"
+            columns: ["scheduled_audit_id"]
+            isOneToOne: false
+            referencedRelation: "scheduled_audits"
             referencedColumns: ["id"]
           },
         ]
@@ -241,6 +180,39 @@ export type Database = {
           updated_at?: string | null
           user_id?: string | null
           voice_profile?: Json | null
+        }
+        Relationships: []
+      }
+      email_captures: {
+        Row: {
+          abandoned_email_sent: boolean | null
+          captured_at: string | null
+          created_at: string | null
+          email: string
+          id: string
+          payment_completed: boolean | null
+          session_token: string
+          updated_at: string | null
+        }
+        Insert: {
+          abandoned_email_sent?: boolean | null
+          captured_at?: string | null
+          created_at?: string | null
+          email: string
+          id?: string
+          payment_completed?: boolean | null
+          session_token: string
+          updated_at?: string | null
+        }
+        Update: {
+          abandoned_email_sent?: boolean | null
+          captured_at?: string | null
+          created_at?: string | null
+          email?: string
+          id?: string
+          payment_completed?: boolean | null
+          session_token?: string
+          updated_at?: string | null
         }
         Relationships: []
       }
@@ -306,6 +278,53 @@ export type Database = {
         }
         Relationships: []
       }
+      issues: {
+        Row: {
+          audit_id: string
+          category: string | null
+          created_at: string | null
+          id: string
+          issue_description: string
+          page_url: string
+          severity: Database["public"]["Enums"]["issue_severity"]
+          status: Database["public"]["Enums"]["issue_status"]
+          suggested_fix: string
+          updated_at: string | null
+        }
+        Insert: {
+          audit_id: string
+          category?: string | null
+          created_at?: string | null
+          id?: string
+          issue_description: string
+          page_url: string
+          severity: Database["public"]["Enums"]["issue_severity"]
+          status?: Database["public"]["Enums"]["issue_status"]
+          suggested_fix: string
+          updated_at?: string | null
+        }
+        Update: {
+          audit_id?: string
+          category?: string | null
+          created_at?: string | null
+          id?: string
+          issue_description?: string
+          page_url?: string
+          severity?: Database["public"]["Enums"]["issue_severity"]
+          status?: Database["public"]["Enums"]["issue_status"]
+          suggested_fix?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "issues_audit_id_fkey"
+            columns: ["audit_id"]
+            isOneToOne: false
+            referencedRelation: "brand_audit_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
@@ -339,6 +358,42 @@ export type Database = {
         }
         Relationships: []
       }
+      scheduled_audits: {
+        Row: {
+          celebrated_milestones: number[] | null
+          created_at: string
+          domain: string
+          enabled: boolean
+          id: string
+          last_run: string | null
+          next_run: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          celebrated_milestones?: number[] | null
+          created_at?: string
+          domain: string
+          enabled?: boolean
+          id?: string
+          last_run?: string | null
+          next_run?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          celebrated_milestones?: number[] | null
+          created_at?: string
+          domain?: string
+          enabled?: boolean
+          id?: string
+          last_run?: string | null
+          next_run?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -347,7 +402,8 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      issue_state_enum: "active" | "ignored" | "resolved"
+      issue_severity: "low" | "medium" | "high" | "critical"
+      issue_status: "active" | "ignored" | "resolved"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -355,25 +411,23 @@ export type Database = {
   }
 }
 
-type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
-
-type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+type DefaultSchema = Database[Extract<keyof Database, "public">]
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
-    | { schema: keyof DatabaseWithoutInternals },
+    | { schema: keyof Database },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof Database
   }
-    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    ? keyof (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
     : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof Database
 }
-  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+  ? (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
       Row: infer R
     }
     ? R
@@ -391,16 +445,16 @@ export type Tables<
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
+    | { schema: keyof Database },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof Database
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof Database
 }
-  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+  ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Insert: infer I
     }
     ? I
@@ -416,16 +470,16 @@ export type TablesInsert<
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
+    | { schema: keyof Database },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof Database
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof Database
 }
-  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+  ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Update: infer U
     }
     ? U
@@ -441,16 +495,16 @@ export type TablesUpdate<
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
-    | { schema: keyof DatabaseWithoutInternals },
+    | { schema: keyof Database },
   EnumName extends DefaultSchemaEnumNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof Database
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    ? keyof Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
     : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof Database
 }
-  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  ? Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
   : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
     ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
     : never
@@ -458,27 +512,16 @@ export type Enums<
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
-    | { schema: keyof DatabaseWithoutInternals },
+    | { schema: keyof Database },
   CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof Database
   }
-    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    ? keyof Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
     : never = never,
 > = PublicCompositeTypeNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof Database
 }
-  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  ? Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
   : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
     ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
-
-export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
-  public: {
-    Enums: {
-      issue_state_enum: ["active", "ignored", "resolved"],
-    },
-  },
-} as const
