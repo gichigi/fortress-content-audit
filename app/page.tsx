@@ -82,6 +82,7 @@ export default function Home() {
   const [sessionToken, setSessionToken] = useState<string | null>(null)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [authToken, setAuthToken] = useState<string | null>(null)
+  const [auditTier, setAuditTier] = useState<'free' | 'pro' | 'enterprise'>('free')
   const [progressInfo, setProgressInfo] = useState<{ pagesAudited: number; pagesBeingCrawled: string[]; reasoningSummaries: string[] }>({
     pagesAudited: 0,
     pagesBeingCrawled: [],
@@ -318,12 +319,17 @@ export default function Home() {
 
         // Parse JSON response
         const data = await response.json()
-        
+
         // Store session token if provided (for unauthenticated users - used for polling and dashboard claim)
         if (data.sessionToken) {
           setSessionToken(data.sessionToken)
           localStorage.setItem('audit_session_token', data.sessionToken)
           console.log('[Homepage] Received session token for audit:', data.sessionToken)
+        }
+
+        // Store audit tier if provided
+        if (data.tier) {
+          setAuditTier(data.tier)
         }
         
         // Handle pending status - poll for completion (loading already set at start)
@@ -595,12 +601,14 @@ export default function Home() {
       </section>
 
       {/* Loading State */}
-      <InterstitialLoader 
+      <InterstitialLoader
         open={loading}
         title="Running Audit"
         description="This may take a few minutes"
         pagesAudited={progressInfo.pagesAudited}
         pagesBeingCrawled={progressInfo.pagesBeingCrawled}
+        auditTier={auditTier}
+        isAuthenticated={isAuthenticated}
       />
 
       {/* API Error Message (for errors that occur after submission) */}
@@ -670,7 +678,7 @@ export default function Home() {
             ) : !testEmptyState && tableRows.length > 0 ? (
               <div className="px-4 lg:px-6">
                 <AuditTable
-                  data={tableRows}
+                  data={tableRows.slice(0, Math.min(Math.max(totalIssues - 2, 1), 5))}
                   showPreview={true}
                   auditId={auditResults.runId}
                   totalIssues={totalIssues}
@@ -695,8 +703,9 @@ export default function Home() {
         />
       )}
 
-      {/* Features Section */}
-      <section id="features" className="border-t border-border py-24 md:py-32">
+      {/* Features Section - only show when no audit results */}
+      {!auditResults && (
+        <section id="features" className="border-t border-border py-24 md:py-32">
         <div className="container mx-auto px-6">
           <div className="grid md:grid-cols-3 gap-16">
             <div className="text-center animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-200">
@@ -731,6 +740,7 @@ export default function Home() {
           </div>
         </div>
       </section>
+      )}
 
       {/* Footer */}
       <footer className="border-t border-border py-12">
@@ -742,7 +752,7 @@ export default function Home() {
                 Pricing
               </Link>
             </div>
-            <p className="text-sm text-muted-foreground">© 2025 Fortress. All rights reserved.</p>
+            <p className="text-sm text-muted-foreground">© 2026 Fortress. All rights reserved.</p>
           </div>
         </div>
       </footer>

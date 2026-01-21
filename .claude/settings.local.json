@@ -1,15 +1,53 @@
 {
   "permissions": {
     "allow": [
-      "Read(//var/folders/b6/7yxzymw104l9dm3mt96l7d180000gn/T/TemporaryItems/NSIRD_screencaptureui_yphmWy/**)",
-      "Read(//var/folders/b6/7yxzymw104l9dm3mt96l7d180000gn/T/TemporaryItems/NSIRD_screencaptureui_qRJAFG/**)",
-      "Read(//var/folders/b6/7yxzymw104l9dm3mt96l7d180000gn/T/TemporaryItems/NSIRD_screencaptureui_lyqvky/**)",
-      "Read(//var/folders/b6/7yxzymw104l9dm3mt96l7d180000gn/T/TemporaryItems/NSIRD_screencaptureui_Eo6sKL/**)",
-      "Read(//var/folders/b6/7yxzymw104l9dm3mt96l7d180000gn/T/TemporaryItems/NSIRD_screencaptureui_bJah7e/**)",
+      "Read(**)",
+      "Edit(**)",
+      "Write(**)",
       "WebSearch",
-      "Bash(supabase stop:*)"
+      "Bash(npm:*)",
+      "Bash(npx:*)",
+      "Bash(node:*)",
+      "Bash(pnpm:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git branch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git pull:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(rg:*)",
+      "Bash(cat:*)",
+      "Bash(ls:*)",
+      "Bash(cd:*)",
+      "Bash(pwd:*)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(kill:*)",
+      "Bash(killall:*)",
+      "Bash(lsof:*)",
+      "Bash(pkill:*)",
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "Bash(echo:*)",
+      "Bash(sleep:*)",
+      "Bash(tail:*)",
+      "Bash(head:*)"
     ],
     "deny": [],
-    "ask": []
+    "ask": [
+      "Bash(git push --force*)",
+      "Bash(git rebase --interactive*)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean -fd*)",
+      "Bash(rm -rf*)",
+      "Bash(sudo:*)",
+      "Bash(chmod:*)",
+      "Bash(chown:*)"
+    ]
   }
 }

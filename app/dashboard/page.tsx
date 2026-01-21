@@ -37,6 +37,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Switch } from "@/components/ui/switch"
+import { AuditStartedModal } from "@/components/audit-started-modal"
+import { AuditSuccessModal } from "@/components/audit-success-modal"
+import { AuditFailureModal } from "@/components/audit-failure-modal"
+import { DomainLimitReachedModal } from "@/components/domain-limit-reached-modal"
+import { classifyError } from "@/lib/error-classifier"
+import type { ClassifiedError } from "@/lib/error-classifier"
+import { useCheckDomainLimit } from "@/hooks/use-check-domain-limit"
 
 interface AuditRun {
   id: string
@@ -73,7 +80,62 @@ export default function DashboardPage() {
   const [pendingAuditId, setPendingAuditId] = useState<string | null>(null)
   const [severityFilter, setSeverityFilter] = useState<'all' | 'critical'>('all')
   const [newAuditDialogOpen, setNewAuditDialogOpen] = useState(false)
-  
+
+  // Modal states for audit notifications
+  const [auditStartedModal, setAuditStartedModal] = useState<{
+    open: boolean
+    domain: string
+    tier: 'free' | 'pro' | 'enterprise'
+    estimatedDuration: string
+  }>({
+    open: false,
+    domain: '',
+    tier: 'free',
+    estimatedDuration: '2-4 minutes'
+  })
+
+  const [auditSuccessModal, setAuditSuccessModal] = useState<{
+    open: boolean
+    domain: string
+    totalIssues: number
+    issueBreakdown: { critical: number; medium: number; low: number }
+    milestones: any[]
+  }>({
+    open: false,
+    domain: '',
+    totalIssues: 0,
+    issueBreakdown: { critical: 0, medium: 0, low: 0 },
+    milestones: []
+  })
+
+  const [auditFailureModal, setAuditFailureModal] = useState<{
+    open: boolean
+    domain: string
+    error: ClassifiedError
+  }>({
+    open: false,
+    domain: '',
+    error: { type: 'api_error', message: '', details: '' }
+  })
+
+  const [domainLimitModalOpen, setDomainLimitModalOpen] = useState(false)
+  const { isAtLimit, plan: limitPlan, currentDomains, domainLimit, checkLimit } = useCheckDomainLimit()
+
+  // Helper function to calculate issue breakdown by severity
+  const calculateIssueBreakdown = (issues: any[]) => {
+    const breakdown = { critical: 0, medium: 0, low: 0 }
+    if (!issues || !Array.isArray(issues)) return breakdown
+
+    issues.forEach((issue: any) => {
+      const severity = issue.severity?.toLowerCase()
+      if (severity === 'critical') breakdown.critical++
+      else if (severity === 'medium') breakdown.medium++
+      else if (severity === 'low') breakdown.low++
+    })
+
+    return breakdown
+  }
+
   // Use shared hook to fetch issues from database
   const mostRecentAudit = audits.length > 0 ? audits[0] : null
   const { tableRows, loading: tableRowsLoading, totalIssues: tableTotalIssues, refetch } = useAuditIssues(
@@ -373,23 +435,19 @@ export default function DashboardPage() {
           if (pollData.status === 'completed') {
             setPendingAuditId(null)
 
-            // Check for milestone celebrations
-            const milestones = pollData.milestones
-            if (milestones && Array.isArray(milestones) && milestones.length > 0) {
-              // Show milestone celebration toast(s)
-              milestones.forEach((milestone: any) => {
-                toast({
-                  title: milestone.title,
-                  description: milestone.description,
-                })
-              })
-            } else {
-              // Show regular completion toast
-              toast({
-                title: "Audit completed",
-                description: "Your audit results are ready.",
-              })
-            }
+            // Show success modal with issue breakdown
+            const issues = pollData.issues || []
+            const totalIssues = Array.isArray(issues) ? issues.length : 0
+            const issueBreakdown = calculateIssueBreakdown(issues)
+            const milestones = pollData.milestones || []
+
+            setAuditSuccessModal({
+              open: true,
+              domain: selectedDomain || '',
+              totalIssues,
+              issueBreakdown,
+              milestones
+            })
 
             // Reload all data
             const supabase = createClient()
@@ -405,12 +463,21 @@ export default function DashboardPage() {
           }
 
           if (pollData.status === 'failed') {
-            console.log('[Dashboard] Audit failed, showing error toast:', pollData.error)
+            console.log('[Dashboard] Audit failed, showing error modal:', pollData.error)
             setPendingAuditId(null)
-            toast({
-              title: "Audit failed",
-              description: pollData.error || "The audit encountered an error. Please try again.",
-              variant: "error",
+
+            // Show failure modal with classified error
+            const errorMessage = pollData.error || "The audit encountered an error. Please try again."
+            const classifiedError = classifyError(errorMessage, {
+              pagesAudited: pollData.pagesAudited
+            })
+
+            // Close audit started modal before showing failure
+            setAuditStartedModal(prev => ({ ...prev, open: false }))
+            setAuditFailureModal({
+              open: true,
+              domain: selectedDomain || '',
+              error: classifiedError
             })
             return
           }
@@ -843,13 +910,15 @@ export default function DashboardPage() {
       if (response.ok) {
         const data = await response.json()
         
-        // Show toast now that we know audit started successfully
-        const durationText = plan === 'pro' || plan === 'enterprise' 
-          ? ' This may take up to 10 minutes.' 
-          : ' This may take a few minutes.'
-        toast({
-          title: "Audit started",
-          description: `Auditing ${selectedDomain}...${durationText}`,
+        // Show modal now that we know audit started successfully
+        const estimatedDuration = plan === 'pro' || plan === 'enterprise'
+          ? '4-7 minutes'
+          : '2-4 minutes'
+        setAuditStartedModal({
+          open: true,
+          domain: selectedDomain,
+          tier: plan as 'free' | 'pro' | 'enterprise',
+          estimatedDuration
         })
         
         if (data.status === 'pending') {
@@ -876,13 +945,17 @@ export default function DashboardPage() {
                 if (attempts < maxAttempts) {
                   setTimeout(poll, pollIntervalMs)
                 } else {
-                  // Timeout - show error and reload data
+                  // Timeout - show error modal and reload data
                   setPendingAuditId(null)
                   setStartingAudit(false)
-                  toast({
-                    title: "Audit timed out",
-                    description: "The audit is taking longer than expected. Check back shortly.",
-                    variant: "error",
+
+                  const timeoutError = classifyError("The audit timed out after exceeding the time limit.")
+                  // Close audit started modal before showing failure
+                  setAuditStartedModal(prev => ({ ...prev, open: false }))
+                  setAuditFailureModal({
+                    open: true,
+                    domain: selectedDomain || '',
+                    error: timeoutError
                   })
                   const supabase = createClient()
                   const { data: { session } } = await supabase.auth.getSession()
@@ -899,23 +972,19 @@ export default function DashboardPage() {
                 setPendingAuditId(null)
                 setStartingAudit(false)
 
-                // Check for milestone celebrations
-                const milestones = pollData.milestones
-                if (milestones && Array.isArray(milestones) && milestones.length > 0) {
-                  // Show milestone celebration toast(s)
-                  milestones.forEach((milestone: any) => {
-                    toast({
-                      title: milestone.title,
-                      description: milestone.description,
-                    })
-                  })
-                } else {
-                  // Show regular completion toast
-                  toast({
-                    title: "Audit completed",
-                    description: "Your audit results are ready.",
-                  })
-                }
+                // Show success modal with issue breakdown
+                const issues = pollData.issues || []
+                const totalIssues = Array.isArray(issues) ? issues.length : 0
+                const issueBreakdown = calculateIssueBreakdown(issues)
+                const milestones = pollData.milestones || []
+
+                setAuditSuccessModal({
+                  open: true,
+                  domain: selectedDomain || '',
+                  totalIssues,
+                  issueBreakdown,
+                  milestones
+                })
 
                 const supabase = createClient()
                 const { data: { session } } = await supabase.auth.getSession()
@@ -932,10 +1001,19 @@ export default function DashboardPage() {
               if (pollData.status === 'failed') {
                 setPendingAuditId(null)
                 setStartingAudit(false)
-                toast({
-                  title: "Audit failed",
-                  description: pollData.error || "The audit encountered an error. Please try again.",
-                  variant: "error",
+
+                // Show failure modal with classified error
+                const errorMessage = pollData.error || "The audit encountered an error. Please try again."
+                const classifiedError = classifyError(errorMessage, {
+                  pagesAudited: pollData.pagesAudited
+                })
+
+                // Close audit started modal before showing failure
+                setAuditStartedModal(prev => ({ ...prev, open: false }))
+                setAuditFailureModal({
+                  open: true,
+                  domain: selectedDomain || '',
+                  error: classifiedError
                 })
                 return
               }
@@ -945,14 +1023,18 @@ export default function DashboardPage() {
               if (attempts < maxAttempts) {
                 setTimeout(poll, pollIntervalMs)
               } else {
-                // Timeout - reload data and show message
+                // Timeout - reload data and show modal
                 console.log('[Dashboard] Poll timeout after', maxPollMinutes, 'minutes')
                 setPendingAuditId(null)
                 setStartingAudit(false)
-                toast({
-                  title: "Audit timed out",
-                  description: "The audit is taking longer than expected. Check back shortly.",
-                  variant: "error",
+
+                const timeoutError = classifyError("The audit timed out after exceeding the time limit.")
+                // Close audit started modal before showing failure
+                setAuditStartedModal(prev => ({ ...prev, open: false }))
+                setAuditFailureModal({
+                  open: true,
+                  domain: selectedDomain || '',
+                  error: timeoutError
                 })
                 const supabase = createClient()
                 const { data: { session } } = await supabase.auth.getSession()
@@ -968,10 +1050,14 @@ export default function DashboardPage() {
               } else {
                 setPendingAuditId(null)
                 setStartingAudit(false)
-                toast({
-                  title: "Connection error",
-                  description: "Lost connection while waiting for audit. Check back shortly.",
-                  variant: "error",
+
+                const connectionError = classifyError("Lost connection while waiting for audit.")
+                // Close audit started modal before showing failure
+                setAuditStartedModal(prev => ({ ...prev, open: false }))
+                setAuditFailureModal({
+                  open: true,
+                  domain: selectedDomain || '',
+                  error: connectionError
                 })
               }
             }
@@ -982,45 +1068,50 @@ export default function DashboardPage() {
         } else if (data.status === 'failed') {
           setPendingAuditId(null)
           setStartingAudit(false)
-          const botProtectionMsg = data.error?.toLowerCase().includes('bot protection')
-            ? data.error
-            : null
-          toast({
-            title: "Audit failed",
-            description: botProtectionMsg || data.error || "The audit encountered an error. Please try again.",
-            variant: "error",
+
+          const errorMessage = data.error || "The audit encountered an error. Please try again."
+          const classifiedError = classifyError(errorMessage)
+          // Close audit started modal before showing failure
+          setAuditStartedModal(prev => ({ ...prev, open: false }))
+          setAuditFailureModal({
+            open: true,
+            domain: selectedDomain || '',
+            error: classifiedError
           })
         } else {
           // Unknown status - treat as error
           setPendingAuditId(null)
           setStartingAudit(false)
-          toast({
-            title: "Audit failed",
-            description: `Unexpected status: ${data.status || 'unknown'}`,
-            variant: "error",
+
+          const unknownError = classifyError(`Unexpected status: ${data.status || 'unknown'}`)
+          // Close audit started modal before showing failure
+          setAuditStartedModal(prev => ({ ...prev, open: false }))
+          setAuditFailureModal({
+            open: true,
+            domain: selectedDomain || '',
+            error: unknownError
           })
         }
         return
       } else {
-        // Validation errors - show error toast
+        // Validation errors - show error modal
         setStartingAudit(false)
         let errorMessage = 'Failed to start audit'
         let errorData: any = {}
         try {
           errorData = await response.json()
-          // Check for bot protection error message before generic error handling
-          const botProtectionMsg = errorData.error?.toLowerCase().includes('bot protection')
-            ? errorData.error
-            : null
-          errorMessage = botProtectionMsg || errorData.message || errorData.error || errorMessage
+          errorMessage = errorData.message || errorData.error || errorMessage
         } catch {
           errorMessage = response.statusText || errorMessage
         }
-        
-        toast({
-          title: "Unable to start audit",
-          description: errorMessage,
-          variant: "error",
+
+        const classifiedError = classifyError(errorMessage)
+        // Close audit started modal before showing failure
+        setAuditStartedModal(prev => ({ ...prev, open: false }))
+        setAuditFailureModal({
+          open: true,
+          domain: selectedDomain || '',
+          error: classifiedError
         })
       }
     } catch (error) {
@@ -1028,7 +1119,7 @@ export default function DashboardPage() {
       
       // Clear starting state on error
       setStartingAudit(false)
-      
+
       // Extract user-friendly error message
       let errorMessage = "Failed to start audit. Please try again."
       if (error instanceof Error) {
@@ -1049,11 +1140,14 @@ export default function DashboardPage() {
           errorMessage = "You don't have permission to perform this action."
         }
       }
-      
-      toast({
-        title: "Unable to start audit",
-        description: errorMessage || "Please try again in a moment.",
-        variant: "error",
+
+      const classifiedError = classifyError(errorMessage || "Please try again in a moment.")
+      // Close audit started modal before showing failure
+      setAuditStartedModal(prev => ({ ...prev, open: false }))
+      setAuditFailureModal({
+        open: true,
+        domain: selectedDomain || '',
+        error: classifiedError
       })
     }
     // Note: No finally block - we intentionally keep startingAudit=true for successful audits
@@ -1389,7 +1483,7 @@ export default function DashboardPage() {
                           Running audit...
                         </>
                       ) : (
-                        plan === 'pro' || plan === 'enterprise' ? 'Run Full Audit' : 'Run Audit'
+                        'Run New Audit'
                       )}
                       {/* TEMPORARILY DISABLED: Daily limit reached text */}
                       {/* ) : usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit ? (
@@ -1482,7 +1576,7 @@ export default function DashboardPage() {
                     </Card>
                   </div>
                 ) : (
-                  <div className="px-4 lg:px-6" data-issues-section>
+                  <div className="px-4 lg:px-6" data-issues-section data-audit-results>
                     <AuditTable
                       data={displayTableRows}
                       auditId={mostRecentAudit?.id}
@@ -1557,6 +1651,62 @@ export default function DashboardPage() {
           // Scroll to top to show the pending audit banner
           window.scrollTo({ top: 0, behavior: 'smooth' })
         }}
+      />
+
+      {/* Audit Started Modal */}
+      <AuditStartedModal
+        open={auditStartedModal.open}
+        onOpenChange={(open) => setAuditStartedModal({ ...auditStartedModal, open })}
+        domain={auditStartedModal.domain}
+        tier={auditStartedModal.tier}
+        estimatedDuration={auditStartedModal.estimatedDuration}
+      />
+
+      {/* Audit Success Modal */}
+      <AuditSuccessModal
+        open={auditSuccessModal.open}
+        onOpenChange={(open) => setAuditSuccessModal({ ...auditSuccessModal, open })}
+        domain={auditSuccessModal.domain}
+        totalIssues={auditSuccessModal.totalIssues}
+        issueBreakdown={auditSuccessModal.issueBreakdown}
+        milestones={auditSuccessModal.milestones}
+        onViewResults={() => {
+          // Scroll to results table
+          const resultsSection = document.querySelector('[data-audit-results]')
+          if (resultsSection) {
+            resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          }
+        }}
+        onExport={() => {
+          // Trigger PDF export
+          handleExport('pdf')
+        }}
+      />
+
+      {/* Audit Failure Modal */}
+      <AuditFailureModal
+        open={auditFailureModal.open}
+        onOpenChange={(open) => setAuditFailureModal({ ...auditFailureModal, open })}
+        domain={auditFailureModal.domain}
+        error={auditFailureModal.error}
+        userTier={plan as 'free' | 'pro' | 'enterprise'}
+        onRetry={() => {
+          // Retry the audit
+          handleStartAudit()
+        }}
+        onContactSupport={() => {
+          // Open support email
+          window.location.href = `mailto:support@fortress-audit.com?subject=Audit%20Failed%20for%20${encodeURIComponent(auditFailureModal.domain)}`
+        }}
+      />
+
+      {/* Domain Limit Reached Modal */}
+      <DomainLimitReachedModal
+        open={domainLimitModalOpen}
+        onOpenChange={setDomainLimitModalOpen}
+        plan={limitPlan}
+        currentDomains={currentDomains}
+        domainLimit={domainLimit}
       />
     </>
   )

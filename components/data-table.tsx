@@ -50,6 +50,7 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuLabel,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -100,10 +101,14 @@ import {
 function createColumns(
   onUpdateStatus?: (issueId: string, status: IssueStatus) => Promise<void>,
   userPlan?: string,
-  currentStateTab?: 'active' | 'ignored' | 'resolved' | 'all'
+  currentStateTab?: 'active' | 'ignored' | 'resolved' | 'all',
+  hideSelectAndActions?: boolean
 ): ColumnDef<AuditTableRow>[] {
-  return [
-    {
+  const columns: ColumnDef<AuditTableRow>[] = [];
+
+  // Conditionally add select column
+  if (!hideSelectAndActions) {
+    columns.push({
       id: "select",
       header: ({ table }) => (
         <div className="flex items-center justify-center">
@@ -128,43 +133,22 @@ function createColumns(
       ),
       enableSorting: false,
       enableHiding: false,
-    },
-    {
-      id: "actions",
-      header: () => (
-        <div className="flex items-center justify-center">
-          <span className="text-xs text-muted-foreground">Actions</span>
-        </div>
-      ),
-      cell: ({ row }) => {
-        const issueId = row.original.id
-        const currentStatus = row.original.status || 'active'
-        
-        if (!onUpdateStatus || !issueId) {
-          return null
-        }
+    });
+  }
 
-        return (
-          <IssueActions
-            issueId={issueId}
-            currentStatus={currentStatus}
-            onUpdateStatus={onUpdateStatus}
-          />
-        )
-      },
-      enableSorting: false,
-      enableHiding: false,
-    },
-    {
+  // Add main content columns
+  columns.push({
       accessorKey: "issue_description",
       header: "Issue",
+      size: 350,
+      minSize: 280,
       cell: ({ row }) => {
         // Parse issue_description to extract impact prefix and description
         const description = row.original.issue_description
         const colonIndex = description.indexOf(':')
         const impactPrefix = colonIndex > 0 ? description.substring(0, colonIndex).trim() : ''
         const issueText = colonIndex > 0 ? description.substring(colonIndex + 1).trim() : description
-        
+
         return (
           <div className="flex-1">
             {impactPrefix && (
@@ -183,8 +167,8 @@ function createColumns(
     {
       accessorKey: "suggested_fix",
       header: "Fix",
-      size: 600,
-      minSize: 400,
+      size: 350,
+      minSize: 280,
       cell: ({ row }) => (
         <div className="text-sm text-muted-foreground break-words">
           {row.original.suggested_fix || '—'}
@@ -262,23 +246,86 @@ function createColumns(
           </div>
         )
       },
+    });
+
+  // Add row menu (three dots) on far right
+  columns.push({
+    id: "actions",
+    enableHiding: false,
+    cell: ({ row }) => {
+      const issueId = row.original.id
+      const currentStatus = row.original.status || 'active'
+
+      if (!onUpdateStatus || !issueId) {
+        return null
+      }
+
+      return (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" className="h-8 w-8 p-0">
+              <span className="sr-only">Open menu</span>
+              <MoreVerticalIcon className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {currentStatus === 'active' && (
+              <>
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onUpdateStatus(issueId, 'resolved')
+                  }}
+                >
+                  <CheckCircle2Icon className="mr-2 h-4 w-4 text-green-600" />
+                  Resolve
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onUpdateStatus(issueId, 'ignored')
+                  }}
+                >
+                  <XIcon className="mr-2 h-4 w-4 text-destructive" />
+                  Ignore
+                </DropdownMenuItem>
+              </>
+            )}
+            {(currentStatus === 'resolved' || currentStatus === 'ignored') && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onUpdateStatus(issueId, 'active')
+                }}
+              >
+                <RotateCcwIcon className="mr-2 h-4 w-4" />
+                Restore
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )
     },
-  ]
+  });
+
+  return columns;
 }
 
-// Issue actions component (inline buttons instead of dropdown)
+// Issue actions component (inline buttons)
 function IssueActions({
   issueId,
   currentStatus,
   onUpdateStatus,
+  inline = false,
 }: {
   issueId: string
   currentStatus: IssueStatus
   onUpdateStatus: (issueId: string, status: IssueStatus) => Promise<void>
+  inline?: boolean
 }) {
   const [isUpdating, setIsUpdating] = React.useState(false)
   const { toast } = useToast()
-  
+
   const isResolved = currentStatus === 'resolved'
   const isIgnored = currentStatus === 'ignored'
 
@@ -287,10 +334,10 @@ function IssueActions({
     setIsUpdating(true)
     try {
       await onUpdateStatus(issueId, status)
-      
+
       let title = "Status updated"
       let description = "Issue status has been updated."
-      
+
       if (status === 'resolved') {
         title = "Issue resolved"
         description = "Great job! The issue has been marked as resolved."
@@ -301,7 +348,7 @@ function IssueActions({
         title = "Issue restored"
         description = "The issue has been restored to active."
       }
-      
+
       toast({
         title,
         description,
@@ -319,21 +366,21 @@ function IssueActions({
 
   if (isResolved || isIgnored) {
     return (
-      <div className="flex items-center justify-end">
+      <div className={`flex items-center ${inline ? 'opacity-0 group-hover:opacity-100 transition-opacity duration-200' : 'justify-end'}`}>
         <Button
           variant="ghost"
-          size="sm"
+          size={inline ? "sm" : "sm"}
           onClick={(e) => handleStatusUpdate(e, 'active')}
           disabled={isUpdating}
-          className="h-8 px-2 text-muted-foreground hover:text-foreground"
+          className={`h-8 ${inline ? 'px-2 text-xs' : 'px-2'} text-muted-foreground hover:text-foreground transition-colors duration-200`}
           title="Restore to active"
         >
           {isUpdating ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
             <>
-              <RotateCcwIcon className="mr-2 h-3.5 w-3.5" />
-              Restore
+              <RotateCcwIcon className="mr-1.5 h-3.5 w-3.5" />
+              {inline ? 'Restore' : 'Restore'}
             </>
           )}
         </Button>
@@ -342,13 +389,13 @@ function IssueActions({
   }
 
   return (
-    <div className="flex items-center justify-end gap-1">
+    <div className={`flex items-center gap-1 ${inline ? 'opacity-0 group-hover:opacity-100 transition-opacity duration-200' : 'justify-end'}`}>
       <Button
         variant="ghost"
         size="icon"
         onClick={(e) => handleStatusUpdate(e, 'resolved')}
         disabled={isUpdating}
-        className="h-8 w-8 text-muted-foreground hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-950/20"
+        className="h-8 w-8 text-muted-foreground hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-950/20 transition-colors duration-200"
         title="Mark as resolved"
       >
         {isUpdating ? (
@@ -362,7 +409,7 @@ function IssueActions({
         size="icon"
         onClick={(e) => handleStatusUpdate(e, 'ignored')}
         disabled={isUpdating}
-        className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+        className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors duration-200"
         title="Ignore issue"
       >
         {isUpdating ? (
@@ -375,16 +422,54 @@ function IssueActions({
   )
 }
 
-// Simple row component (no expansion needed with single page_url)
-function ExpandableRow({ row }: { row: Row<AuditTableRow> }) {
+// Simple row component with smooth collapse animations
+function ExpandableRow({ row, exitingRowIds }: { row: Row<AuditTableRow>, exitingRowIds: Set<string> }) {
+  const isExiting = exitingRowIds.has(row.id)
+  const rowRef = React.useRef<HTMLTableRowElement>(null)
+  const [rowHeight, setRowHeight] = React.useState<number | null>(null)
+
+  // Measure row height when it starts exiting
+  React.useEffect(() => {
+    if (isExiting && rowRef.current && rowHeight === null) {
+      const height = rowRef.current.getBoundingClientRect().height
+      setRowHeight(height)
+    }
+  }, [isExiting, rowHeight])
+
   return (
-    <TableRow data-state={row.getIsSelected() && "selected"}>
+    <TableRow
+      ref={rowRef}
+      data-state={row.getIsSelected() && "selected"}
+      className={`${
+        isExiting
+          ? 'opacity-0'
+          : 'opacity-100'
+      }`}
+      style={{
+        maxHeight: isExiting && rowHeight ? `${rowHeight}px` : undefined,
+        overflow: isExiting ? 'hidden' : 'visible',
+        transition: isExiting
+          ? 'max-height 400ms cubic-bezier(0.4, 0, 0.2, 1), opacity 400ms cubic-bezier(0.4, 0, 0.2, 1), padding 400ms cubic-bezier(0.4, 0, 0.2, 1)'
+          : 'all 300ms cubic-bezier(0.4, 0.2, 0.2, 1)',
+        ...(isExiting && rowHeight ? {
+          maxHeight: 0,
+          paddingTop: 0,
+          paddingBottom: 0,
+        } : {}),
+      }}
+    >
       {row.getVisibleCells().map((cell) => {
         const isFixColumn = cell.column.id === 'suggested_fix'
+        const isIssueColumn = cell.column.id === 'issue_description'
+        const columnWidth = isFixColumn || isIssueColumn ? '350px' : undefined
         return (
-          <TableCell 
+          <TableCell
             key={cell.id}
-            style={isFixColumn ? { minWidth: '500px', width: '500px' } : undefined}
+            style={{
+              ...(columnWidth ? { minWidth: columnWidth, width: columnWidth } : {}),
+              ...(isExiting ? { paddingTop: 0, paddingBottom: 0 } : {}),
+            }}
+            className="transition-all duration-200"
           >
             {flexRender(cell.column.columnDef.cell, cell.getContext())}
           </TableCell>
@@ -403,6 +488,8 @@ export function DataTable({
   readOnly = false,
   onStatusUpdate,
   initialSeverityFilter,
+  hidePagination = false,
+  hideSelectAndActions = false,
 }: {
   data: AuditTableRow[]
   auditId?: string
@@ -412,6 +499,8 @@ export function DataTable({
   readOnly?: boolean
   onStatusUpdate?: () => void
   initialSeverityFilter?: 'all' | 'critical' | 'medium' | 'low'
+  hidePagination?: boolean
+  hideSelectAndActions?: boolean
 }) {
   const { toast } = useToast()
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({})
@@ -446,6 +535,7 @@ export function DataTable({
   const [isBulkProcessing, setIsBulkProcessing] = React.useState(false)
   const [globalFilter, setGlobalFilter] = React.useState("")
   const [data, setData] = React.useState(initialData)
+  const [exitingRowIds, setExitingRowIds] = React.useState<Set<string>>(new Set())
   // Store initial data in ref to avoid dependency issues
   const initialDataRef = React.useRef(initialData)
 
@@ -474,10 +564,27 @@ export function DataTable({
     // Store previous state for potential revert
     let previousData: AuditTableRow[] | null = null
 
+    // Mark row as exiting if status is changing away from current tab's status
+    const currentRow = data.find(item => item.id === issueId)
+    if (currentRow && currentRow.status !== newStatus &&
+        ((activeStateTab === 'active' && newStatus !== 'active') ||
+         (activeStateTab === 'resolved' && newStatus !== 'resolved') ||
+         (activeStateTab === 'ignored' && newStatus !== 'ignored'))) {
+      setExitingRowIds(prev => new Set([...prev, issueId]))
+      // Remove from exiting set after animation completes
+      setTimeout(() => {
+        setExitingRowIds(prev => {
+          const newSet = new Set(prev)
+          newSet.delete(issueId)
+          return newSet
+        })
+      }, 400)
+    }
+
     // Optimistic update
     setData(prevData => {
       previousData = prevData
-      return prevData.map(item => 
+      return prevData.map(item =>
         item.id === issueId ? { ...item, status: newStatus } : item
       )
     })
@@ -516,7 +623,7 @@ export function DataTable({
       }
       throw error
     }
-  }, [auditId, readOnly, onStatusUpdate])
+  }, [auditId, readOnly, onStatusUpdate, data, activeStateTab])
 
   // Bulk update issue status handler with optimistic updates
   const handleBulkUpdateStatus = React.useCallback(async (issueIds: string[], newStatus: IssueStatus) => {
@@ -533,10 +640,30 @@ export function DataTable({
     // Store previous state for potential revert
     let previousData: AuditTableRow[] | null = null
 
+    // Mark rows as exiting if they're changing away from current tab's status
+    const rowsToAnimate = data.filter(item =>
+      issueIds.includes(item.id) && item.status !== newStatus &&
+      ((activeStateTab === 'active' && newStatus !== 'active') ||
+       (activeStateTab === 'resolved' && newStatus !== 'resolved') ||
+       (activeStateTab === 'ignored' && newStatus !== 'ignored'))
+    ).map(item => item.id)
+
+    if (rowsToAnimate.length > 0) {
+      setExitingRowIds(prev => new Set([...prev, ...rowsToAnimate]))
+      // Remove from exiting set after animation completes
+      setTimeout(() => {
+        setExitingRowIds(prev => {
+          const newSet = new Set(prev)
+          rowsToAnimate.forEach(id => newSet.delete(id))
+          return newSet
+        })
+      }, 400)
+    }
+
     // Optimistic update
     setData(prevData => {
       previousData = prevData
-      return prevData.map(item => 
+      return prevData.map(item =>
         issueIds.includes(item.id) ? { ...item, status: newStatus } : item
       )
     })
@@ -573,18 +700,23 @@ export function DataTable({
       }
       throw error
     }
-  }, [auditId])
+  }, [auditId, data, activeStateTab])
 
   // Filter data by status first, then by severity
+  // Keep exiting rows in view while they animate
   const filteredByState = React.useMemo(() => {
     if (activeStateTab === 'all') {
       return data
     }
     return data.filter((row) => {
       const status = row.status || 'active'
+      // Keep rows that are exiting with animation
+      if (exitingRowIds.has(row.id)) {
+        return true
+      }
       return status === activeStateTab
     })
-  }, [data, activeStateTab])
+  }, [data, activeStateTab, exitingRowIds])
 
   // Filter data by severity
   const filteredData = React.useMemo(() => {
@@ -612,8 +744,8 @@ export function DataTable({
 
   // Create columns with status handlers (only if not read-only)
   const columns = React.useMemo(
-    () => createColumns(readOnly ? undefined : handleUpdateStatus, userPlan, activeStateTab),
-    [handleUpdateStatus, userPlan, activeStateTab, readOnly]
+    () => createColumns(readOnly ? undefined : handleUpdateStatus, userPlan, activeStateTab, hideSelectAndActions),
+    [handleUpdateStatus, userPlan, activeStateTab, readOnly, hideSelectAndActions]
   )
 
   const table = useReactTable({
@@ -794,11 +926,13 @@ export function DataTable({
                                             headerId === 'severity' ? 'Sev.' :
                                             headerId
                         const isFixColumn = headerId === 'suggested_fix'
+                        const isIssueColumn = headerId === 'issue_description'
+                        const columnWidth = (isFixColumn || isIssueColumn) ? '350px' : undefined
                         return (
-                          <TableHead 
-                            key={header.id} 
+                          <TableHead
+                            key={header.id}
                             colSpan={header.colSpan}
-                            style={isFixColumn ? { minWidth: '500px', width: '500px' } : undefined}
+                            style={columnWidth ? { minWidth: columnWidth, width: columnWidth } : undefined}
                           >
                             {header.isPlaceholder ? null : (
                               <>
@@ -824,7 +958,7 @@ export function DataTable({
                 <TableBody>
                   {table.getRowModel().rows?.length ? (
                     table.getRowModel().rows.map((row) => (
-                      <ExpandableRow key={row.id} row={row} />
+                      <ExpandableRow key={row.id} row={row} exitingRowIds={exitingRowIds} />
                     ))
                   ) : (
                     <TableRow>
@@ -860,92 +994,94 @@ export function DataTable({
             </div>
           </CardContent>
         </Card>
-      <div className="flex items-center justify-between">
-        <div className="hidden flex-1 text-sm text-muted-foreground lg:flex">
-          {table.getFilteredSelectedRowModel().rows.length > 0 ? (
-            <>
-              {table.getFilteredSelectedRowModel().rows.length} of{" "}
-              {table.getFilteredRowModel().rows.length} row(s) selected.
-            </>
-          ) : (
-            <>
-              Showing {table.getFilteredRowModel().rows.length} of {data.length} issue{table.getFilteredRowModel().rows.length !== 1 ? "s" : ""}
-              {!hideTabs && activeSeverityTab !== "all" && ` (filtered by ${activeSeverityTab} severity)`}
-            </>
-          )}
+      {!hidePagination && (
+        <div className="flex items-center justify-between">
+          <div className="hidden flex-1 text-sm text-muted-foreground lg:flex">
+            {table.getFilteredSelectedRowModel().rows.length > 0 ? (
+              <>
+                {table.getFilteredSelectedRowModel().rows.length} of{" "}
+                {table.getFilteredRowModel().rows.length} row(s) selected.
+              </>
+            ) : (
+              <>
+                Showing {table.getFilteredRowModel().rows.length} of {data.length} issue{table.getFilteredRowModel().rows.length !== 1 ? "s" : ""}
+                {!hideTabs && activeSeverityTab !== "all" && ` (filtered by ${activeSeverityTab} severity)`}
+              </>
+            )}
+          </div>
+          <div className="flex w-full items-center gap-8 lg:w-fit">
+            <div className="hidden items-center gap-2 lg:flex">
+              <Label htmlFor="rows-per-page" className="text-sm font-medium">
+                Rows per page
+              </Label>
+              <Select
+                value={`${table.getState().pagination.pageSize}`}
+                onValueChange={(value) => {
+                  table.setPageSize(Number(value))
+                }}
+              >
+                <SelectTrigger className="w-20" id="rows-per-page">
+                  <SelectValue
+                    placeholder={table.getState().pagination.pageSize}
+                  />
+                </SelectTrigger>
+                <SelectContent side="top">
+                  {[10, 20, 30, 40, 50].map((pageSize) => (
+                    <SelectItem key={pageSize} value={`${pageSize}`}>
+                      {pageSize}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex w-fit items-center justify-center text-sm font-medium">
+              Page {table.getState().pagination.pageIndex + 1} of{" "}
+              {table.getPageCount()}
+            </div>
+            <div className="ml-auto flex items-center gap-2 lg:ml-0">
+              <Button
+                variant="outline"
+                className="hidden h-8 w-8 p-0 lg:flex"
+                onClick={() => table.setPageIndex(0)}
+                disabled={!table.getCanPreviousPage()}
+              >
+                <span className="sr-only">Go to first page</span>
+                <ChevronsLeftIcon />
+              </Button>
+              <Button
+                variant="outline"
+                className="size-8"
+                size="icon"
+                onClick={() => table.previousPage()}
+                disabled={!table.getCanPreviousPage()}
+              >
+                <span className="sr-only">Go to previous page</span>
+                <ChevronLeftIcon />
+              </Button>
+              <Button
+                variant="outline"
+                className="size-8"
+                size="icon"
+                onClick={() => table.nextPage()}
+                disabled={!table.getCanNextPage()}
+              >
+                <span className="sr-only">Go to next page</span>
+                <ChevronRightIcon />
+              </Button>
+              <Button
+                variant="outline"
+                className="hidden size-8 lg:flex"
+                size="icon"
+                onClick={() => table.setPageIndex(table.getPageCount() - 1)}
+                disabled={!table.getCanNextPage()}
+              >
+                <span className="sr-only">Go to last page</span>
+                <ChevronsRightIcon />
+              </Button>
+            </div>
+          </div>
         </div>
-        <div className="flex w-full items-center gap-8 lg:w-fit">
-          <div className="hidden items-center gap-2 lg:flex">
-            <Label htmlFor="rows-per-page" className="text-sm font-medium">
-              Rows per page
-            </Label>
-            <Select
-              value={`${table.getState().pagination.pageSize}`}
-              onValueChange={(value) => {
-                table.setPageSize(Number(value))
-              }}
-            >
-              <SelectTrigger className="w-20" id="rows-per-page">
-                <SelectValue
-                  placeholder={table.getState().pagination.pageSize}
-                />
-              </SelectTrigger>
-              <SelectContent side="top">
-                {[10, 20, 30, 40, 50].map((pageSize) => (
-                  <SelectItem key={pageSize} value={`${pageSize}`}>
-                    {pageSize}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex w-fit items-center justify-center text-sm font-medium">
-            Page {table.getState().pagination.pageIndex + 1} of{" "}
-            {table.getPageCount()}
-          </div>
-          <div className="ml-auto flex items-center gap-2 lg:ml-0">
-            <Button
-              variant="outline"
-              className="hidden h-8 w-8 p-0 lg:flex"
-              onClick={() => table.setPageIndex(0)}
-              disabled={!table.getCanPreviousPage()}
-            >
-              <span className="sr-only">Go to first page</span>
-              <ChevronsLeftIcon />
-            </Button>
-            <Button
-              variant="outline"
-              className="size-8"
-              size="icon"
-              onClick={() => table.previousPage()}
-              disabled={!table.getCanPreviousPage()}
-            >
-              <span className="sr-only">Go to previous page</span>
-              <ChevronLeftIcon />
-            </Button>
-            <Button
-              variant="outline"
-              className="size-8"
-              size="icon"
-              onClick={() => table.nextPage()}
-              disabled={!table.getCanNextPage()}
-            >
-              <span className="sr-only">Go to next page</span>
-              <ChevronRightIcon />
-            </Button>
-            <Button
-              variant="outline"
-              className="hidden size-8 lg:flex"
-              size="icon"
-              onClick={() => table.setPageIndex(table.getPageCount() - 1)}
-              disabled={!table.getCanNextPage()}
-            >
-              <span className="sr-only">Go to last page</span>
-              <ChevronsRightIcon />
-            </Button>
-          </div>
-        </div>
-      </div>
+      )}
     </>
   )
 
@@ -1075,7 +1211,7 @@ export function DataTable({
                       ) : (
                         <CheckCircle2Icon className="mr-1.5 h-3.5 w-3.5" />
                       )}
-                      Mark Resolved
+                      Resolve
                     </Button>
                   </>
                 )}

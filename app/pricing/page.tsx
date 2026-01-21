@@ -163,45 +163,25 @@ export default function PricingPage() {
             </CardHeader>
             <CardContent className="flex-1 flex flex-col">
               <ul className="space-y-3 mb-6">
-                {/* Common features across all tiers */}
+                {/* Everything in Free */}
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Language issues</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Facts & consistency</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Links & formatting</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">PDF, JSON, Markdown exports</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Track your content health</span>
+                  <span className="text-sm font-medium">Everything in Free, plus:</span>
                 </li>
                 {/* Tier 2 specific features */}
-                <li className="flex items-start gap-3">
+                <li className="flex items-start gap-3 ml-8">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">10-20 key pages</span>
                 </li>
-                <li className="flex items-start gap-3">
+                <li className="flex items-start gap-3 ml-8">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">Enhanced audits</span>
                 </li>
-                <li className="flex items-start gap-3">
+                <li className="flex items-start gap-3 ml-8">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">Up to 5 domains</span>
                 </li>
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Audit once per day</span>
-                </li>
-                <li className="flex items-start gap-3">
+                <li className="flex items-start gap-3 ml-8">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">Auto weekly audits</span>
                 </li>
@@ -243,65 +223,41 @@ export default function PricingPage() {
             </CardHeader>
             <CardContent className="flex-1 flex flex-col">
               <ul className="space-y-3 mb-6">
-                {/* Common features across all tiers */}
+                {/* Everything in Pro */}
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Language issues</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Facts & consistency</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Links & formatting</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">PDF, JSON, Markdown exports</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Track your content health</span>
+                  <span className="text-sm font-medium">Everything in Pro, plus:</span>
                 </li>
                 {/* Tier 3 specific features */}
-                <li className="flex items-start gap-3">
+                <li className="flex items-start gap-3 ml-8">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">Unlimited pages</span>
                 </li>
-                <li className="flex items-start gap-3">
+                <li className="flex items-start gap-3 ml-8">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">Unlimited domains</span>
                 </li>
-                <li className="flex items-start gap-3">
+                <li className="flex items-start gap-3 ml-8">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">Unlimited audits</span>
                 </li>
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Enhanced audits</span>
-                </li>
-                <li className="flex items-start gap-3">
+                <li className="flex items-start gap-3 ml-8">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">SEO issues and gaps</span>
                 </li>
-                <li className="flex items-start gap-3">
+                <li className="flex items-start gap-3 ml-8">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">Custom audit issues</span>
                 </li>
-                <li className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Auto weekly audits</span>
-                </li>
-                <li className="flex items-start gap-3">
+                <li className="flex items-start gap-3 ml-8">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">Daily email digests</span>
                 </li>
-                <li className="flex items-start gap-3">
+                <li className="flex items-start gap-3 ml-8">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">Autofix pull requests</span>
                 </li>
-                <li className="flex items-start gap-3">
+                <li className="flex items-start gap-3 ml-8">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span className="text-sm">Slack/Teams integration</span>
                 </li>

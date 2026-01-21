@@ -26,12 +26,12 @@ export type AuditTier = keyof typeof AUDIT_TIERS
 // Reusable OpenAI prompt ID for content audits
 // Set via OPENAI_AUDIT_PROMPT_ID env var or use default
 const AUDIT_PROMPT_ID = process.env.OPENAI_AUDIT_PROMPT_ID || "pmpt_695e4d1f54048195a54712ce6446be87061fc1380da21889"
-const AUDIT_PROMPT_VERSION = process.env.OPENAI_AUDIT_PROMPT_VERSION || "15"
+const AUDIT_PROMPT_VERSION = process.env.OPENAI_AUDIT_PROMPT_VERSION || "16"
 
 // Mini audit prompt ID for free tier (1 audit pass, no reasoning summaries for faster processing)
 // Set via OPENAI_MINI_AUDIT_PROMPT_ID env var or use default
 const MINI_AUDIT_PROMPT_ID = process.env.OPENAI_MINI_AUDIT_PROMPT_ID || "pmpt_695fd80f94188197ab2151841cf20d6a00213764662a5853"
-const MINI_AUDIT_PROMPT_VERSION = process.env.OPENAI_MINI_AUDIT_PROMPT_VERSION || "3"
+const MINI_AUDIT_PROMPT_VERSION = process.env.OPENAI_MINI_AUDIT_PROMPT_VERSION || "5"
 
 // Zod schemas for structured audit output (new prompt format)
 const NewPromptIssueSchema = z.object({
@@ -81,6 +81,116 @@ export type AuditResult = {
 
 // Legacy JSON schema removed - using new prompt format with Zod validation
 
+// Issue context types for deduplication
+export interface IssueContext {
+  page_url: string
+  category: string
+  issue_description: string
+}
+
+export interface AuditIssueContext {
+  excluded: IssueContext[]
+  active: IssueContext[]
+}
+
+// ============================================================================
+// Issue Context Functions (for deduplication)
+// ============================================================================
+
+import { supabaseAdmin } from "./supabase-admin"
+
+/**
+ * Get resolved/ignored issues for a domain (to exclude from new audit)
+ * Returns most recent 50, includes page_url for location-aware matching
+ */
+export async function getExcludedIssues(
+  userId: string,
+  domain: string
+): Promise<IssueContext[]> {
+  try {
+    // Get all audit IDs for this user+domain
+    const { data: audits, error: auditsError } = await (supabaseAdmin as any)
+      .from('brand_audit_runs')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('domain', domain)
+
+    if (auditsError) {
+      Logger.warn('[Audit] Error fetching audits for excluded issues', auditsError)
+      return []
+    }
+
+    if (!audits?.length) return []
+
+    // Get resolved/ignored issues, most recent first, cap at 50
+    const { data: issues, error: issuesError } = await (supabaseAdmin as any)
+      .from('issues')
+      .select('page_url, category, issue_description')
+      .in('audit_id', audits.map((a: any) => a.id))
+      .in('status', ['resolved', 'ignored'])
+      .order('updated_at', { ascending: false })
+      .limit(50)
+
+    if (issuesError) {
+      Logger.warn('[Audit] Error fetching excluded issues', issuesError)
+      return []
+    }
+
+    return issues || []
+  } catch (error) {
+    Logger.warn('[Audit] Unexpected error in getExcludedIssues', error instanceof Error ? error : undefined)
+    return []
+  }
+}
+
+/**
+ * Get active issues from most recent completed audit (to verify still present)
+ * Returns most recent 50, includes page_url for location context
+ */
+export async function getActiveIssues(
+  userId: string,
+  domain: string
+): Promise<IssueContext[]> {
+  try {
+    // Get most recent completed audit for this domain
+    const { data: latestAudit, error: auditError } = await (supabaseAdmin as any)
+      .from('brand_audit_runs')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('domain', domain)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
+
+    // If no audit found or error (not PGRST116 which means no rows), return empty
+    if (auditError && auditError.code !== 'PGRST116') {
+      Logger.warn('[Audit] Error fetching latest audit', auditError)
+      return []
+    }
+
+    if (!latestAudit?.id) return []
+
+    // Get active issues from that audit, cap at 50
+    const { data: issues, error: issuesError } = await (supabaseAdmin as any)
+      .from('issues')
+      .select('page_url, category, issue_description')
+      .eq('audit_id', latestAudit.id)
+      .eq('status', 'active')
+      .order('severity', { ascending: false })
+      .limit(50)
+
+    if (issuesError) {
+      Logger.warn('[Audit] Error fetching active issues', issuesError)
+      return []
+    }
+
+    return issues || []
+  } catch (error) {
+    Logger.warn('[Audit] Unexpected error in getActiveIssues', error instanceof Error ? error : undefined)
+    return []
+  }
+}
+
 // ============================================================================
 // Helper functions
 // ============================================================================
@@ -106,8 +216,9 @@ function extractOpenedPagesCount(response: any): number {
 // Mini Audit - Free tier (GPT-5.1 with web_search)
 // ============================================================================
 export async function miniAudit(
-  domain: string, 
-  existingResponseId?: string
+  domain: string,
+  existingResponseId?: string,
+  issueContext?: AuditIssueContext
 ): Promise<AuditResult> {
   const tier = AUDIT_TIERS.FREE
 
@@ -141,7 +252,13 @@ export async function miniAudit(
           id: MINI_AUDIT_PROMPT_ID,
           version: MINI_AUDIT_PROMPT_VERSION,
           variables: {
-            url: normalizedDomain
+            url: normalizedDomain,
+            excluded_issues: issueContext?.excluded?.length
+              ? JSON.stringify(issueContext.excluded)
+              : "[]",
+            active_issues: issueContext?.active?.length
+              ? JSON.stringify(issueContext.active)
+              : "[]",
           }
         },
         tools: [{
@@ -321,12 +438,13 @@ export async function miniAudit(
 // ============================================================================
 export async function auditSite(
   domain: string,
-  tier: AuditTier = "PAID"
+  tier: AuditTier = "PAID",
+  issueContext?: AuditIssueContext
 ): Promise<AuditResult> {
   // Type guard: FREE tier should use miniAudit() instead
   if (tier === 'FREE') {
     Logger.warn(`[AuditSite] FREE tier should use miniAudit(), not auditSite(). Falling back to miniAudit().`)
-    return miniAudit(domain)
+    return miniAudit(domain, undefined, issueContext)
   }
   
   const tierConfig = AUDIT_TIERS[tier]
@@ -352,7 +470,13 @@ export async function auditSite(
         version: AUDIT_PROMPT_VERSION,
         variables: {
           url: normalizedDomain,
-          tier: tier // Pass tier to prompt for tier-specific page count instructions
+          excluded_issues: issueContext?.excluded?.length
+            ? JSON.stringify(issueContext.excluded)
+            : "[]",
+          active_issues: issueContext?.active?.length
+            ? JSON.stringify(issueContext.active)
+            : "[]",
+          // Note: tier variable removed - prompt v15 doesn't use it
         }
       },
       tools: [{

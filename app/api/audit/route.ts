@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { after } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { validateUrl } from '@/lib/url-validation'
-import { auditSite, miniAudit, AuditTier, AuditResult } from '@/lib/audit'
+import { auditSite, miniAudit, AuditTier, AuditResult, getExcludedIssues, getActiveIssues, AuditIssueContext } from '@/lib/audit'
 import PostHogClient from '@/lib/posthog'
 import Logger from '@/lib/logger'
 import { checkDailyLimit, checkDomainLimit, isNewDomain, incrementAuditUsage, getAuditUsage } from '@/lib/audit-rate-limit'
@@ -211,6 +211,24 @@ export async function POST(request: Request) {
     const runAuditAndSave = async (): Promise<{ result: AuditResult; filteredIssues: any[] } | null> => {
       let result: AuditResult
 
+      // Query issue context for authenticated users (for deduplication)
+      let issueContext: AuditIssueContext = { excluded: [], active: [] }
+      if (userId) {
+        try {
+          const [excluded, active] = await Promise.all([
+            getExcludedIssues(userId, storageDomain),
+            getActiveIssues(userId, storageDomain),
+          ])
+          issueContext = { excluded, active }
+          if (excluded.length > 0 || active.length > 0) {
+            console.log(`[API] Loaded issue context: ${excluded.length} excluded, ${active.length} active`)
+          }
+        } catch (error) {
+          console.warn('[API] Failed to load issue context:', error instanceof Error ? error.message : error)
+          // Continue without context if query fails
+        }
+      }
+
       if (useMockData) {
         console.log(`[API] Mock data mode enabled - generating mock audit for ${normalized}`)
         const delay = 2000 + Math.random() * 1000
@@ -226,9 +244,9 @@ export async function POST(request: Request) {
         }
       } else {
         console.log(`[API] Running ${auditTier} audit for ${normalized}`)
-        result = auditTier === 'FREE' 
-          ? await miniAudit(normalized)
-          : await auditSite(normalized, auditTier)
+        result = auditTier === 'FREE'
+          ? await miniAudit(normalized, undefined, issueContext)
+          : await auditSite(normalized, auditTier, issueContext)
       }
       
       if (result.status !== 'completed') {
@@ -458,6 +476,7 @@ export async function POST(request: Request) {
       status: 'pending',
       message: 'Audit started. Poll /api/audit/[id] for results.',
       sessionToken: finalSessionToken,
+      tier: auditTier.toLowerCase() as 'free' | 'pro' | 'enterprise',
     })
   } catch (e) {
     const duration = Date.now() - startTime

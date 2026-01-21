@@ -72,13 +72,12 @@ export function AuditTable({
     router.push('/dashboard')
   }
 
-  const previewRows = showPreview ? data.slice(0, 5) : data
-  const remainingCount = showPreview && data.length > 5 ? data.length - 5 : 0
-
+  // In preview mode, parent controls slicing via data prop
+  // We just display what we're given
   return (
     <div className="relative">
-      <DataTable 
-        data={previewRows} 
+      <DataTable
+        data={data}
         auditId={auditId}
         userPlan={userPlan}
         hideSearch={hideSearch}
@@ -86,27 +85,29 @@ export function AuditTable({
         readOnly={readOnly}
         onStatusUpdate={onStatusUpdate}
         initialSeverityFilter={initialSeverityFilter}
+        hidePagination={showPreview}
+        hideSelectAndActions={showPreview}
       />
-      {showPreview && remainingCount > 0 && (
-        <div 
+      {showPreview && (totalIssues ?? data.length) > data.length && (
+        <div
           className="relative -mt-48 h-48 pointer-events-none"
           style={{
             background: 'linear-gradient(to top, hsl(var(--background)) 0%, hsl(var(--background) / 0.98) 10%, hsl(var(--background) / 0.95) 20%, hsl(var(--background) / 0.9) 30%, hsl(var(--background) / 0.8) 40%, hsl(var(--background) / 0.65) 50%, hsl(var(--background) / 0.5) 60%, hsl(var(--background) / 0.35) 70%, hsl(var(--background) / 0.2) 80%, hsl(var(--background) / 0.1) 90%, transparent 100%)'
           }}
         />
       )}
-      {showPreview && remainingCount > 0 && (
+      {showPreview && data.length > 0 && (
         <div className="flex justify-center pt-8 pb-4">
           <Button variant="default" size="lg" onClick={handleViewAll} disabled={checking} className="font-semibold shadow-md">
-            View all {totalIssues ?? data.length} issue{(totalIssues ?? data.length) !== 1 ? 's' : ''}
-            <ArrowRight className="ml-2 h-4 w-4" />
-          </Button>
-        </div>
-      )}
-      {showPreview && remainingCount === 0 && data.length > 0 && (
-        <div className="flex justify-center pt-8 pb-4">
-          <Button variant="default" size="lg" onClick={handleViewAll} disabled={checking} className="font-semibold shadow-md">
-            View full audit
+            {(totalIssues ?? data.length) > data.length ? (
+              <>
+                View all {totalIssues ?? data.length} issue{(totalIssues ?? data.length) !== 1 ? 's' : ''}
+              </>
+            ) : (
+              <>
+                View full audit
+              </>
+            )}
             <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
         </div>

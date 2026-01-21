@@ -73,7 +73,7 @@ export function HealthScoreCards({
   // Calculate trend
   const trend = previousScore !== undefined ? score - previousScore : 0
   const TrendIcon = trend > 0 ? TrendingUpIcon : trend < 0 ? TrendingDownIcon : Minus
-  const trendColor = trend > 0 ? "text-green-600" : trend < 0 ? "text-destructive" : "text-muted-foreground"
+  const trendColor = getHealthScoreTextColor(score)
 
   return (
     <div className="@xl/main:grid-cols-2 @5xl/main:grid-cols-4 grid grid-cols-1 gap-4 px-4 *:data-[slot=card]:shadow-xs *:data-[slot=card]:bg-gradient-to-t *:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card dark:*:data-[slot=card]:bg-card lg:px-6">

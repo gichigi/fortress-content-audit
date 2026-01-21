@@ -2,6 +2,39 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Smooth animations for table rows */
+@keyframes slideOutUp {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes slideInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@layer components {
+  .table-row-exit {
+    animation: slideOutUp 300ms ease-out forwards;
+  }
+
+  .table-row-enter {
+    animation: slideInDown 300ms ease-out forwards;
+  }
+}
+
 /* Print-specific styles for PDF export */
 @media print {
   .voice-trait, .rule-section {

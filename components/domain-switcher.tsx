@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { createClient } from "@/lib/supabase-browser"
-import { Globe, Check, Plus, Trash2, MoreHorizontalIcon } from "lucide-react"
+import { Globe, Check, Plus, Trash2, MoreHorizontalIcon, Loader2 } from "lucide-react"
 import {
   SidebarGroup,
   SidebarGroupLabel,
@@ -19,20 +19,37 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { NewAuditDialog } from "@/components/new-audit-dialog"
+import { DomainLimitReachedModal } from "@/components/domain-limit-reached-modal"
+import { useCheckDomainLimit } from "@/hooks/use-check-domain-limit"
 
 export function DomainSwitcher() {
   const [domains, setDomains] = React.useState<string[]>([])
   const [selectedDomain, setSelectedDomain] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [newAuditDialogOpen, setNewAuditDialogOpen] = React.useState(false)
+  const [domainLimitModalOpen, setDomainLimitModalOpen] = React.useState(false)
+  const [checkingLimit, setCheckingLimit] = React.useState(false)
   const [plan, setPlan] = React.useState<string>("free")
   const [usageInfo, setUsageInfo] = React.useState<any>(null)
   const { isMobile } = useSidebar()
+  const { isAtLimit, plan: limitPlan, currentDomains, domainLimit, checkLimit } = useCheckDomainLimit()
 
   const handleDeleteDomain = (domain: string, e: React.MouseEvent) => {
     e.stopPropagation() // Prevent domain selection when clicking delete
     // Dispatch event to dashboard to show delete confirmation
     window.dispatchEvent(new CustomEvent('requestDeleteDomain', { detail: { domain } }))
+  }
+
+  const handleNewDomainClick = async () => {
+    setCheckingLimit(true)
+    const result = await checkLimit()
+    setCheckingLimit(false)
+
+    if (result.isAtLimit) {
+      setDomainLimitModalOpen(true)
+    } else {
+      setNewAuditDialogOpen(true)
+    }
   }
 
   React.useEffect(() => {
@@ -300,10 +317,6 @@ export function DomainSwitcher() {
     loadDomains()
   }
 
-  // Check if free user has reached domain limit
-  const isAtDomainLimit = plan === 'free' && usageInfo && usageInfo.domainLimit > 0 && usageInfo.domains >= usageInfo.domainLimit
-  const isNewDomainDisabled = plan === 'free' && isAtDomainLimit
-
   if (loading) {
     return null
   }
@@ -354,11 +367,15 @@ export function DomainSwitcher() {
         ))}
         <SidebarMenuItem>
           <SidebarMenuButton
-            onClick={() => setNewAuditDialogOpen(true)}
-            tooltip={isNewDomainDisabled ? "Domain limit reached. Upgrade to Pro for 5 domains." : "New Domain"}
-            disabled={isNewDomainDisabled}
+            onClick={handleNewDomainClick}
+            tooltip="New Domain"
+            disabled={checkingLimit}
           >
-            <Plus className="h-4 w-4" />
+            {checkingLimit ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Plus className="h-4 w-4" />
+            )}
             <span>New Domain</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
@@ -367,6 +384,13 @@ export function DomainSwitcher() {
         open={newAuditDialogOpen}
         onOpenChange={setNewAuditDialogOpen}
         onSuccess={handleNewAuditSuccess}
+      />
+      <DomainLimitReachedModal
+        open={domainLimitModalOpen}
+        onOpenChange={setDomainLimitModalOpen}
+        plan={limitPlan}
+        currentDomains={currentDomains}
+        domainLimit={domainLimit}
       />
     </SidebarGroup>
   )

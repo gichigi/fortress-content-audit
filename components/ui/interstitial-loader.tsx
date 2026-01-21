@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Loader2 } from "lucide-react"
+import { Loader2, CheckCircle2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export interface InterstitialLoaderProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -37,6 +37,14 @@ export interface InterstitialLoaderProps extends React.HTMLAttributes<HTMLDivEle
    * Reasoning summaries from the model's thinking process
    */
   reasoningSummaries?: string[]
+  /**
+   * Audit tier information for showing limitations
+   */
+  auditTier?: 'free' | 'pro' | 'enterprise'
+  /**
+   * Whether user is authenticated (affects tier messaging)
+   */
+  isAuthenticated?: boolean
 }
 
 const InterstitialLoader = React.forwardRef<HTMLDivElement, InterstitialLoaderProps>(
@@ -51,12 +59,14 @@ const InterstitialLoader = React.forwardRef<HTMLDivElement, InterstitialLoaderPr
       pagesBeingCrawled = [],
       pagesAudited = 0,
       reasoningSummaries = [],
+      auditTier,
+      isAuthenticated = false,
       children,
       ...props
     },
     ref
   ) => {
-    const [shownSummaries, setShownSummaries] = React.useState<string[]>([])
+    const [shownSummaries, setShownSummaries] = React.useState<{ message: string; completed: boolean }[]>([])
 
     // Canned reasoning summaries in the same style as model output
     const cannedSummaries = [
@@ -83,7 +93,7 @@ const InterstitialLoader = React.forwardRef<HTMLDivElement, InterstitialLoaderPr
       }
 
       // Show first summary immediately
-      setShownSummaries([summaries[0]])
+      setShownSummaries([{ message: summaries[0], completed: false }])
 
       // Add remaining summaries one by one with delay
       const timeouts: NodeJS.Timeout[] = []
@@ -91,9 +101,12 @@ const InterstitialLoader = React.forwardRef<HTMLDivElement, InterstitialLoaderPr
         const summaryToAdd = summaries[i] // Capture summary value in closure
         const timeout = setTimeout(() => {
           setShownSummaries((prev) => {
-            // Only add if we haven't added this summary yet
-            if (!prev.includes(summaryToAdd) && prev.length < summaries.length) {
-              return [...prev, summaryToAdd]
+            // Mark previous message as completed and add new one
+            if (prev.length < summaries.length) {
+              const updated = prev.map((item, idx) =>
+                idx === prev.length - 1 ? { ...item, completed: true } : item
+              )
+              return [...updated, { message: summaryToAdd, completed: false }]
             }
             return prev
           })
@@ -126,16 +139,36 @@ const InterstitialLoader = React.forwardRef<HTMLDivElement, InterstitialLoaderPr
             <h2 className="font-serif text-3xl font-light tracking-tight mb-4">{title}</h2>
           )}
           {description && <p className="text-muted-foreground mb-4">{description}</p>}
-          
+
+          {/* Free tier info box */}
+          {auditTier === 'free' && (
+            <div className="bg-muted/40 border border-border rounded-lg px-4 py-3 mb-6 max-w-sm mx-auto">
+              <p className="text-sm text-foreground">
+                <span className="font-medium">Free audit:</span>
+                <span className="text-muted-foreground"> up to 2 pages</span>
+              </p>
+            </div>
+          )}
+
           {/* Accumulating summaries list */}
           {shownSummaries.length > 0 && (
-            <div className="mt-6 mb-6 min-h-[100px] flex flex-col items-center justify-center space-y-3 max-w-lg mx-auto">
-              {shownSummaries.map((summary) => (
+            <div className="mt-6 mb-6 min-h-[100px] flex flex-col items-start justify-center space-y-3 max-w-lg mx-auto">
+              {shownSummaries.map((item, idx) => (
                 <div
-                  key={summary}
-                  className="text-base text-muted-foreground animate-in fade-in slide-in-from-bottom-2 duration-500"
+                  key={idx}
+                  className="flex items-center gap-3 text-base animate-in fade-in slide-in-from-bottom-2 duration-500 w-full"
                 >
-                  {summary}
+                  {item.completed ? (
+                    <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                  ) : (
+                    <div className="h-4 w-4 shrink-0" />
+                  )}
+                  <span className={cn(
+                    "transition-colors duration-300",
+                    item.completed ? "text-muted-foreground/70" : "text-muted-foreground"
+                  )}>
+                    {item.message}
+                  </span>
                 </div>
               ))}
             </div>
@@ -165,7 +198,8 @@ const InterstitialLoader = React.forwardRef<HTMLDivElement, InterstitialLoaderPr
               )}
             </div>
           )}
-          
+
+
           {children}
         </div>
       </div>

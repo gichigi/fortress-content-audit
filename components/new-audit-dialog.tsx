@@ -68,20 +68,18 @@ export function NewAuditDialog({ open, onOpenChange, onSuccess }: NewAuditDialog
         
         // Check if audit failed
         if (data.status === 'failed') {
-          toast({
-            title: "Audit failed",
-            description: data.error || "The audit encountered an error. Please try again.",
-            variant: "destructive",
-          })
+          // Don't show toast - dashboard's polling will show modal
+          // Just notify parent to reload
+          if (onSuccess) {
+            onSuccess(domainName)
+          }
           return
         }
-        
+
         // Check if audit is complete (status completed, regardless of issue count)
         if (data.status === 'completed') {
-          toast({
-            title: "Audit completed",
-            description: `${domainName} has been audited successfully.`,
-          })
+          // Don't show toast - dashboard's polling will show modal
+          // Just notify parent to reload
           if (onSuccess) {
             onSuccess(domainName)
           }
@@ -207,19 +205,12 @@ export function NewAuditDialog({ open, onOpenChange, onSuccess }: NewAuditDialog
       if (response.ok) {
         const data = await response.json()
         
-        // Close dialog and show "started" toast immediately
-        const durationText = plan === 'pro' || plan === 'enterprise'
-          ? ' This may take up to 15 minutes.'
-          : ' This may take a few minutes.'
-        toast({
-          title: "Audit started",
-          description: `Auditing ${normalizedDomain}...${durationText}`,
-        })
+        // Close dialog - dashboard will show "started" modal
         onOpenChange(false)
         setDomain("")
         setLoading(false)
 
-        // Notify parent immediately so it can show the banner
+        // Notify parent immediately so it can show the banner and modal
         if (onSuccess) {
           onSuccess(normalizedDomain)
         }
@@ -229,20 +220,16 @@ export function NewAuditDialog({ open, onOpenChange, onSuccess }: NewAuditDialog
           pollForCompletion(data.runId, normalizedDomain)
         } else if (data.status === 'completed') {
           // Audit already completed (mock data or very fast)
-          toast({
-            title: "Audit completed",
-            description: `${normalizedDomain} has been audited successfully.`,
-          })
+          // Dashboard will show success modal
           if (onSuccess) {
             onSuccess(normalizedDomain)
           }
         } else if (data.status === 'failed') {
           // Audit failed immediately (shouldn't happen but handle it)
-          toast({
-            title: "Audit failed",
-            description: data.error || "The audit encountered an error. Please try again.",
-            variant: "destructive",
-          })
+          // Dashboard will show failure modal
+          if (onSuccess) {
+            onSuccess(normalizedDomain)
+          }
         }
         
         return
@@ -279,15 +266,6 @@ export function NewAuditDialog({ open, onOpenChange, onSuccess }: NewAuditDialog
     }
   }
 
-  const isAtDomainLimit = plan === 'free' 
-    ? usageInfo?.domains >= 1
-    : plan === 'pro'
-    ? usageInfo?.domains >= 5
-    : false
-
-  const domainLimit = plan === 'free' ? 1 : plan === 'pro' ? 5 : Infinity
-  const canAddDomain = !isAtDomainLimit || plan === 'enterprise'
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
@@ -300,18 +278,6 @@ export function NewAuditDialog({ open, onOpenChange, onSuccess }: NewAuditDialog
 
         <form onSubmit={handleSubmit}>
           <div className="space-y-4 py-4">
-            {/* Domain Limit Warning */}
-            {isAtDomainLimit && plan !== 'enterprise' && (
-              <Alert variant="outline">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  Domain limit reached ({domainLimit} domain{domainLimit === 1 ? '' : 's'}).
-                  {plan === 'free' && ' Upgrade to Pro to audit up to 5 domains.'}
-                  {plan === 'pro' && ' Upgrade to Enterprise for unlimited domains.'}
-                </AlertDescription>
-              </Alert>
-            )}
-
             {/* Domain Input */}
             <div className="space-y-2">
               <Label htmlFor="domain">Domain</Label>
@@ -320,7 +286,7 @@ export function NewAuditDialog({ open, onOpenChange, onSuccess }: NewAuditDialog
                 placeholder="example.com"
                 value={domain}
                 onChange={(e) => setDomain(e.target.value)}
-                disabled={loading || !canAddDomain}
+                disabled={loading}
               />
               <p className="text-xs text-muted-foreground">
                 Enter the domain you want to audit (e.g., example.com)
@@ -351,7 +317,7 @@ export function NewAuditDialog({ open, onOpenChange, onSuccess }: NewAuditDialog
             </Button>
             <Button
               type="submit"
-              disabled={loading || !canAddDomain || !domain.trim()}
+              disabled={loading || !domain.trim()}
             >
               {loading ? (
                 <>
