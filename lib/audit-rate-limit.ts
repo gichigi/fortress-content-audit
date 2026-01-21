@@ -16,25 +16,25 @@ export interface AuditUsage {
 
 /**
  * Get audit limits for a plan tier
- * All users get 1 audit per day (cooldown)
+ * TEMPORARY: Daily limits disabled for alpha testing
  */
 export function getAuditLimits(plan: string): AuditLimits {
   switch (plan) {
     case 'pro':
       return {
         maxDomains: 5,
-        maxAuditsPerDay: 1, // per domain
+        maxAuditsPerDay: Infinity, // TEMP: unlimited for testing
       }
     case 'enterprise':
       return {
         maxDomains: Infinity,
-        maxAuditsPerDay: 1, // per domain - one audit per day cooldown
+        maxAuditsPerDay: Infinity, // TEMP: unlimited for testing
       }
     case 'free':
     default:
       return {
         maxDomains: 1,
-        maxAuditsPerDay: 1, // per domain
+        maxAuditsPerDay: Infinity, // TEMP: unlimited for testing
       }
   }
 }
