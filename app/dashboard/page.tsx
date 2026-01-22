@@ -1263,7 +1263,7 @@ export default function DashboardPage() {
   }
 
   const handleExport = async (format: 'pdf' | 'json' | 'md') => {
-    if (!mostRecentAudit?.id || !authToken) {
+    if (!mostRecentAudit?.id) {
       toast({
         title: "No audit available",
         description: "Please run an audit first before exporting.",
@@ -1275,9 +1275,21 @@ export default function DashboardPage() {
     setExportLoading(format)
 
     try {
+      // Get fresh session to avoid expired token issues
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        toast({
+          title: "Session expired",
+          description: "Please sign in again to export.",
+          variant: "error",
+        })
+        return
+      }
+
       const response = await fetch(`/api/audit/${mostRecentAudit.id}/export?format=${format}`, {
         headers: {
-          'Authorization': `Bearer ${authToken}`
+          'Authorization': `Bearer ${session.access_token}`
         }
       })
 
