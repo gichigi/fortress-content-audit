@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase-browser"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ArrowLeft, FileText, ExternalLink, RefreshCw, Loader2, TrendingUp, TrendingDown, Minus, CheckCircle2, Download, FileJson, FileType, Clock, X } from "lucide-react"
+import { ArrowLeft, FileText, ExternalLink, RefreshCw, Loader2, TrendingUp, TrendingDown, Minus, CheckCircle2, Download, FileJson, FileType, Clock } from "lucide-react"
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import { useToast } from "@/hooks/use-toast"
 import { PLAN_NAMES } from "@/lib/plans"
@@ -80,7 +80,6 @@ export default function DashboardPage() {
   const [pendingAuditId, setPendingAuditId] = useState<string | null>(null)
   const [severityFilter, setSeverityFilter] = useState<'all' | 'critical'>('all')
   const [newAuditDialogOpen, setNewAuditDialogOpen] = useState(false)
-  const [showFeedbackBanner, setShowFeedbackBanner] = useState(true)
 
   // Modal states for audit notifications
   const [auditStartedModal, setAuditStartedModal] = useState<{
@@ -213,14 +212,6 @@ export default function DashboardPage() {
 
   useEffect(() => {
     checkAuthAndLoad()
-  }, [])
-
-  // Check if feedback banner was dismissed
-  useEffect(() => {
-    const bannerDismissed = localStorage.getItem('fortress_feedback_banner_dismissed')
-    if (bannerDismissed === 'true') {
-      setShowFeedbackBanner(false)
-    }
   }, [])
 
   // Listen for domain changes from domain switcher
@@ -1413,37 +1404,6 @@ export default function DashboardPage() {
                     Your audit is running. Results will appear automatically when complete.
                   </AlertDescription>
                 </Alert>
-              </div>
-            )}
-
-            {/* Feedback Banner */}
-            {showFeedbackBanner && (
-              <div className="px-4 lg:px-6 pt-4">
-                <div className="bg-muted/40 border border-border rounded-lg px-4 py-3 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <p className="text-sm text-muted-foreground">
-                      Thanks for trying out this early version of Fortress.
-                    </p>
-                    <a
-                      href="https://tahi.notion.site/e0a60b19dbda459aa694a80337c5fc1e?pvs=105"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm font-medium text-foreground hover:text-foreground/80 underline transition-colors"
-                    >
-                      Give Feedback
-                    </a>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setShowFeedbackBanner(false)
-                      localStorage.setItem('fortress_feedback_banner_dismissed', 'true')
-                    }}
-                    className="ml-2 p-1 hover:bg-muted rounded transition-colors flex-shrink-0"
-                    aria-label="Close feedback banner"
-                  >
-                    <X className="h-4 w-4 text-muted-foreground hover:text-foreground" />
-                  </button>
-                </div>
               </div>
             )}
 
