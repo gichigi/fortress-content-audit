@@ -2,7 +2,7 @@
 // Available to all authenticated users
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { generateAuditMarkdown, generateAuditJSON, generateAuditPDF } from '@/lib/audit-exporter'
+import { generateAuditMarkdown, generateAuditJSON, generateAuditHTML } from '@/lib/audit-exporter'
 import PostHogClient from '@/lib/posthog'
 import Logger from '@/lib/logger'
 
@@ -181,13 +181,34 @@ export async function GET(
       }
 
       case 'pdf': {
-        const startTime = Date.now()
         try {
-          const pdfBlob = await generateAuditPDF(audit, issuesList)
-          const buffer = await pdfBlob.arrayBuffer()
+          // Generate HTML content on server for client-side PDF conversion
+          const auditedUrls = Array.isArray(audit.issues_json?.auditedUrls) ? audit.issues_json.auditedUrls : []
+          const domain = audit.domain || 'Unknown domain'
+          const pagesAudited = audit.pages_audited || 0
+
+          // Calculate pages with issues from issue page_url
+          const pagesWithIssues = new Set<string>()
+          issuesList.forEach(issue => {
+            if (issue.page_url) {
+              try {
+                const url = new URL(issue.page_url)
+                pagesWithIssues.add(url.pathname || '/')
+              } catch {
+                // Invalid URL, skip
+              }
+            }
+          })
+
+          const pagesWithIssuesCount = pagesWithIssues.size
+          const createdAt = audit.created_at ? new Date(audit.created_at).toLocaleDateString() : 'Unknown date'
+          const totalIssues = issuesList.length
+          const title = audit.title || audit.brand_name || 'Content Audit'
+
+          const html = generateAuditHTML(title, domain, pagesAudited, pagesWithIssuesCount, totalIssues, createdAt, issuesList, auditedUrls)
           const duration = Date.now() - startTime
-          
-          // Log successful PDF generation
+
+          // Log successful HTML generation
           try {
             const posthog = PostHogClient()
             posthog.capture({
@@ -199,6 +220,7 @@ export async function GET(
                 domain: audit.domain,
                 duration_ms: duration,
                 success: true,
+                conversionMethod: 'client-side',
               },
             })
             posthog.shutdown()
@@ -206,17 +228,18 @@ export async function GET(
             // Don't fail export if PostHog fails
             console.error('[Export] PostHog error:', phError)
           }
-          
-          return new NextResponse(buffer, {
+
+          return new NextResponse(html, {
             headers: {
-              'Content-Type': 'application/pdf',
-              'Content-Disposition': `attachment; filename="${sanitizedDomain}-audit-${date}.pdf"`,
+              'Content-Type': 'text/html',
+              'Content-Disposition': `attachment; filename="${sanitizedDomain}-audit-${date}.html"`,
+              'X-PDF-Conversion': 'client-side',
             },
           })
         } catch (error) {
           const duration = Date.now() - startTime
           const errorMessage = error instanceof Error ? error.message : 'Failed to generate PDF'
-          
+
           // Log export failure with details
           console.error('[Export] PDF generation error:', {
             error: errorMessage,
@@ -227,7 +250,7 @@ export async function GET(
             duration_ms: duration,
             timestamp: new Date().toISOString(),
           })
-          
+
           // Track export failure in PostHog
           try {
             const posthog = PostHogClient()
@@ -240,19 +263,16 @@ export async function GET(
                 domain: audit.domain,
                 error: errorMessage,
                 duration_ms: duration,
-                isTimeout: errorMessage.includes('timeout'),
               },
             })
             posthog.shutdown()
           } catch (phError) {
             console.error('[Export] PostHog error:', phError)
           }
-          
+
           return NextResponse.json(
-            { 
-              error: errorMessage.includes('timeout') 
-                ? 'PDF generation timed out. Please try again or export as Markdown/JSON instead.'
-                : 'Failed to generate PDF. Please try again or export as Markdown/JSON instead.'
+            {
+              error: 'Failed to generate PDF. Please try again or export as Markdown/JSON instead.'
             },
             { status: 500 }
           )

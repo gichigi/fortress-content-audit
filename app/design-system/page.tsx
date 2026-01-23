@@ -81,17 +81,20 @@ export default function DesignSystemPage() {
 
           <div className="space-y-12">
             <div>
-              <p className="text-sm text-muted-foreground mb-4 uppercase tracking-wider">Serif — Cormorant Garamond</p>
-              <div className="space-y-6">
+              <p className="text-sm text-muted-foreground mb-8 uppercase tracking-wider">Serif — Cormorant Garamond</p>
+              <div className="space-y-8">
                 <div>
+                  <p className="font-semibold text-lg mb-3 text-foreground">Headlines</p>
                   <p className="font-serif text-6xl font-light tracking-tight mb-2">Headlines</p>
                   <p className="text-sm text-muted-foreground">Light, 96px, -0.02em tracking</p>
                 </div>
                 <div>
+                  <p className="font-semibold text-lg mb-3 text-foreground">Subheadings</p>
                   <p className="font-serif text-4xl font-semibold mb-2">Subheadings</p>
                   <p className="text-sm text-muted-foreground">Semibold, 36px</p>
                 </div>
                 <div>
+                  <p className="font-semibold text-lg mb-3 text-foreground">Section Titles</p>
                   <p className="font-serif text-2xl font-semibold mb-2">Section Titles</p>
                   <p className="text-sm text-muted-foreground">Semibold, 24px</p>
                 </div>
@@ -99,9 +102,10 @@ export default function DesignSystemPage() {
             </div>
 
             <div className="border-t border-border pt-12">
-              <p className="text-sm text-muted-foreground mb-4 uppercase tracking-wider">Sans-Serif — Geist</p>
-              <div className="space-y-6">
+              <p className="text-sm text-muted-foreground mb-8 uppercase tracking-wider">Sans-Serif — Geist</p>
+              <div className="space-y-8">
                 <div>
+                  <p className="font-semibold text-lg mb-3 text-foreground">Body</p>
                   <p className="text-xl leading-relaxed mb-2">
                     Body text for reading and comprehension. Clear, neutral, functional. Line height of 1.6 ensures
                     readability across all screen sizes.
@@ -109,12 +113,14 @@ export default function DesignSystemPage() {
                   <p className="text-sm text-muted-foreground">Regular, 20px, 1.6 line-height</p>
                 </div>
                 <div>
+                  <p className="font-semibold text-lg mb-3 text-foreground">Secondary Body</p>
                   <p className="text-base leading-relaxed mb-2">
                     Secondary body text for supporting information and descriptions.
                   </p>
                   <p className="text-sm text-muted-foreground">Regular, 16px, 1.6 line-height</p>
                 </div>
                 <div>
+                  <p className="font-semibold text-lg mb-3 text-foreground">Small Text</p>
                   <p className="text-sm mb-2">Small text for metadata, captions, and labels.</p>
                   <p className="text-sm text-muted-foreground">Regular, 14px</p>
                 </div>

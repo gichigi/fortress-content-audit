@@ -1,7 +1,5 @@
 // Audit export utilities for PDF, JSON, and Markdown formats
 import { AuditRun, Issue } from '@/types/fortress'
-import puppeteer from 'puppeteer'
-import chromium from '@sparticuz/chromium'
 
 /**
  * Generate Markdown export with AI prompt header
@@ -149,129 +147,9 @@ export function generateAuditJSON(audit: AuditRun, issues: Issue[]): string {
 }
 
 /**
- * Generate PDF export using Puppeteer
- * Converts HTML to PDF via headless Chrome
- */
-export async function generateAuditPDF(audit: AuditRun, issues: Issue[]): Promise<Blob> {
-  const issuesJson = audit.issues_json as any
-  const auditedUrls = Array.isArray(issuesJson?.auditedUrls) ? issuesJson.auditedUrls : []
-  const domain = audit.domain || 'Unknown domain'
-  const pagesAudited = audit.pages_audited || audit.pages_audited || 0
-  // Calculate pages with issues from issue page_url
-  const pagesWithIssues = new Set<string>()
-  issues.forEach(issue => {
-    if (issue.page_url) {
-      try {
-        const url = new URL(issue.page_url)
-        pagesWithIssues.add(url.pathname || '/')
-      } catch {
-        // Invalid URL, skip
-      }
-    }
-  })
-  const pagesWithIssuesCount = pagesWithIssues.size
-  const createdAt = audit.created_at ? new Date(audit.created_at).toLocaleDateString() : 'Unknown date'
-  const totalIssues = issues.length
-  const title = audit.title || audit.brand_name || 'Content Audit'
-
-  // Generate HTML content
-  const html = generateAuditHTML(title, domain, pagesAudited, pagesWithIssuesCount, totalIssues, createdAt, issues, auditedUrls)
-
-  // Launch Puppeteer with timeout handling
-  const PDF_TIMEOUT_MS = 45000 // 45 seconds timeout for PDF generation
-
-  let browser: puppeteer.Browser | null = null
-
-  try {
-    // Debug: Log HTML length and issues count
-    console.log('[PDF Export] Generating PDF:', {
-      htmlLength: html.length,
-      issuesCount: issues.length,
-      domain: audit.domain,
-    })
-
-    const launchPromise = puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
-    })
-
-    // Timeout for browser launch (10 seconds)
-    browser = await Promise.race([
-      launchPromise,
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Puppeteer launch timeout after 10s')), 10000)
-      ),
-    ])
-
-    const page = await browser.newPage()
-    
-    // Set viewport for consistent rendering
-    await page.setViewport({ width: 1200, height: 1600 })
-    
-    // Set page timeout
-    page.setDefaultTimeout(PDF_TIMEOUT_MS)
-    
-    // Set content with timeout - use 'domcontentloaded' for faster rendering
-    await Promise.race([
-      page.setContent(html, { waitUntil: 'domcontentloaded' }),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Page content load timeout')), PDF_TIMEOUT_MS)
-      ),
-    ])
-    
-    // Wait a bit for styles to apply (using Promise-based setTimeout)
-    await new Promise(resolve => setTimeout(resolve, 500))
-    
-    // Generate PDF with timeout
-    const pdfBuffer = await Promise.race([
-      page.pdf({
-        format: 'A4',
-        printBackground: true,
-        margin: {
-          top: '20mm',
-          right: '15mm',
-          bottom: '20mm',
-          left: '15mm',
-        },
-        preferCSSPageSize: false,
-      }),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('PDF generation timeout after 45s')), PDF_TIMEOUT_MS)
-      ),
-    ])
-
-    console.log('[PDF Export] PDF generated successfully:', {
-      bufferSize: pdfBuffer.length,
-      domain: audit.domain,
-    })
-
-    return new Blob([pdfBuffer], { type: 'application/pdf' })
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown PDF generation error'
-    console.error('[Audit Exporter] PDF generation failed:', {
-      error: errorMessage,
-      domain: audit.domain,
-      auditId: audit.id,
-      timestamp: new Date().toISOString(),
-    })
-    throw new Error(`PDF generation failed: ${errorMessage}`)
-  } finally {
-    if (browser) {
-      try {
-        await browser.close()
-      } catch (closeError) {
-        console.error('[Audit Exporter] Error closing browser:', closeError)
-      }
-    }
-  }
-}
-
-/**
  * Generate HTML content for PDF conversion
  */
-function generateAuditHTML(
+export function generateAuditHTML(
   title: string,
   domain: string,
   pagesAudited: number,
@@ -302,26 +180,30 @@ function generateAuditHTML(
 
     issuesHTML += `
       <div class="issue-card">
-        <div class="issue-header">
-          <h3>${index + 1}. ${escapeHtml(issueText || `Issue ${index + 1}`)}</h3>
-          <span class="severity-badge ${severityClass}" style="background-color: ${severityColor}20; color: ${severityColor};">
+        <div class="issue-meta">
+          <span class="issue-number">${index + 1}.</span>
+          <span class="impact-badge">${escapeHtml(impactPrefix || 'general').toUpperCase()}</span>
+          <span class="severity-badge ${severityClass}" style="color: ${severityColor};">
             ${severity.toUpperCase()}
           </span>
         </div>
-        <div class="issue-content">
-          ${impactPrefix ? `<p><strong>Impact:</strong> ${escapeHtml(impactPrefix)}</p>` : ''}
-          <p><strong>Suggested Fix:</strong> ${escapeHtml(issue.suggested_fix || 'No fix provided')}</p>
-          ${issue.page_url ? `
-            <div class="examples">
-              <strong>Page Found:</strong>
-              <ul>
-                <li>
-                  <strong>URL:</strong> <a href="${escapeHtml(issue.page_url)}">${escapeHtml(issue.page_url)}</a>
-                </li>
-              </ul>
-            </div>
-          ` : ''}
+
+        <div class="issue-section">
+          <div class="section-label">Issue</div>
+          <div class="section-content">${escapeHtml(issueText || `Issue ${index + 1}`)}</div>
         </div>
+
+        <div class="issue-section">
+          <div class="section-label">Suggested Fix</div>
+          <div class="section-content">${escapeHtml(issue.suggested_fix || 'No fix provided')}</div>
+        </div>
+
+        ${issue.page_url ? `
+          <div class="issue-section page-section">
+            <div class="section-label">Page Found</div>
+            <a href="${escapeHtml(issue.page_url)}" class="page-url">${escapeHtml(issue.page_url)}</a>
+          </div>
+        ` : ''}
       </div>
     `
   })
@@ -339,37 +221,42 @@ function generateAuditHTML(
     }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      font-size: 16px;
       line-height: 1.6;
-      color: #1a1a1a;
+      color: #334155;
       padding: 0;
       background: #ffffff;
       margin: 0;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
     .header {
       background: #ffffff;
-      border-bottom: 2px solid #e5e5e5;
-      padding: 20px 40px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+      border-bottom: 1px solid #e5e5e5;
+      padding: 32px 40px;
       margin-bottom: 0;
     }
     .header-brand {
-      display: flex;
-      align-items: center;
-      gap: 8px;
+      display: block;
     }
     .header-text {
-      font-size: 24px;
+      font-size: 20px;
       font-family: Georgia, 'Times New Roman', serif;
       font-weight: 600;
       color: #0f172a;
-      letter-spacing: -0.02em;
+      letter-spacing: -0.01em;
+      line-height: 1.3;
+      display: block;
+      margin-bottom: 4px;
     }
     .header-tagline {
-      font-size: 12px;
-      color: #666;
-      margin-left: 12px;
+      font-size: 10px;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-weight: 500;
+      line-height: 1.4;
+      display: block;
     }
     .content {
       padding: 40px;
@@ -405,32 +292,44 @@ function generateAuditHTML(
     }
     .cover-page {
       page-break-after: always;
-      text-align: center;
-      padding: 80px 40px 60px 40px;
+      padding: 120px 40px 60px 40px;
     }
     .cover-page h1 {
-      font-size: 2.5em;
-      margin-bottom: 20px;
-      color: #1a1a1a;
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 48px;
+      font-weight: 300;
+      line-height: 1.1;
+      margin-bottom: 24px;
+      color: #0f172a;
+      letter-spacing: -0.02em;
     }
     .cover-page .meta {
-      margin-top: 40px;
-      font-size: 1.1em;
-      color: #666;
+      margin-top: 48px;
+      font-size: 14px;
+      color: #64748b;
+      line-height: 1.8;
     }
     .cover-page .meta p {
-      margin: 10px 0;
+      margin: 12px 0;
+    }
+    .cover-page .meta strong {
+      color: #0f172a;
+      font-weight: 600;
     }
     .summary {
-      background: #f5f5f5;
-      padding: 24px;
-      border-radius: 8px;
-      margin: 40px 0;
-      border: 1px solid #e5e5e5;
+      background: #f8fafc;
+      padding: 32px;
+      border-radius: 0;
+      margin: 48px 0;
+      border: 1px solid #e2e8f0;
     }
     .summary h2 {
-      margin-bottom: 15px;
-      font-size: 1.5em;
+      margin-bottom: 24px;
+      font-size: 24px;
+      font-family: Georgia, 'Times New Roman', serif;
+      font-weight: 600;
+      color: #0f172a;
+      letter-spacing: -0.01em;
     }
     .summary-grid {
       display: grid;
@@ -445,98 +344,128 @@ function generateAuditHTML(
     }
     .summary-item strong {
       display: block;
-      margin-bottom: 5px;
-      color: #666;
-      font-size: 0.9em;
+      margin-bottom: 8px;
+      color: #64748b;
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
     }
     .summary-item span {
-      font-size: 1.2em;
-      color: #1a1a1a;
+      font-size: 20px;
+      font-weight: 600;
+      color: #0f172a;
     }
     .issue-card {
-      margin: 30px 0;
-      padding: 20px;
-      border: 1px solid #e5e5e5;
-      border-radius: 8px;
+      margin: 24px 0;
+      padding: 24px;
+      border: 1px solid #e2e8f0;
+      border-radius: 0;
       page-break-inside: avoid;
       background: #ffffff;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     }
-    .issue-header {
+    .issue-meta {
       display: flex;
-      justify-content: space-between;
-      align-items: start;
-      margin-bottom: 15px;
-      padding-bottom: 15px;
-      border-bottom: 2px solid #e5e5e5;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #f1f5f9;
+      line-height: 1;
     }
-    .issue-header h3 {
-      font-size: 1.3em;
-      flex: 1;
-      margin-right: 15px;
-      color: #1a1a1a;
+    .issue-number {
+      font-size: 14px;
       font-weight: 600;
+      color: #64748b;
+      margin-right: 4px;
+      line-height: 1.2;
+    }
+    .impact-badge {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #64748b;
+      line-height: 1.2;
+      padding-top: 2px;
     }
     .severity-badge {
-      padding: 4px 12px;
-      border-radius: 12px;
-      font-size: 0.85em;
-      font-weight: bold;
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
       white-space: nowrap;
+      margin-left: auto;
+      line-height: 1;
+      display: inline-block;
     }
-    .issue-content {
-      margin-top: 15px;
+    .issue-section {
+      margin-bottom: 16px;
     }
-    .issue-content p {
-      margin: 10px 0;
-      color: #333;
+    .issue-section:last-child {
+      margin-bottom: 0;
     }
-    .issue-content strong {
-      color: #1a1a1a;
+    .section-label {
+      font-size: 11px;
       font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #64748b;
+      margin-bottom: 8px;
+      line-height: 1.4;
+      display: block;
     }
-    .examples {
-      margin-top: 15px;
-      padding: 15px;
-      background: #f9f9f9;
-      border-radius: 4px;
+    .section-content {
+      font-size: 16px;
+      line-height: 1.6;
+      color: #334155;
+      display: block;
     }
-    .examples ul {
-      margin-top: 10px;
-      padding-left: 20px;
+    .page-section {
+      padding-top: 16px;
+      border-top: 1px solid #f1f5f9;
     }
-    .examples li {
-      margin: 10px 0;
-      padding: 10px;
-      background: white;
-      border-radius: 4px;
-    }
-    .examples a {
+    .page-url {
       color: #3b82f6;
       text-decoration: none;
+      word-break: break-all;
+      font-size: 14px;
+      line-height: 1.6;
     }
     .audited-urls {
-      margin-top: 30px;
-      padding: 20px;
-      background: #f5f5f5;
-      border-radius: 8px;
+      margin-top: 48px;
+      padding: 24px;
+      background: #f8fafc;
+      border-radius: 0;
+      border: 1px solid #e2e8f0;
     }
     .audited-urls h2 {
-      margin-bottom: 15px;
+      margin-bottom: 16px;
     }
     .audited-urls ul {
       list-style: none;
       padding-left: 0;
     }
     .audited-urls li {
-      padding: 5px 0;
-      border-bottom: 1px solid #e5e5e5;
+      padding: 10px 0;
+      border-bottom: 1px solid #e2e8f0;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #475569;
+    }
+    .audited-urls li:last-child {
+      border-bottom: none;
     }
     h2 {
-      color: #1a1a1a;
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 28px;
       font-weight: 600;
-      margin-top: 30px;
-      margin-bottom: 15px;
+      color: #0f172a;
+      letter-spacing: -0.01em;
+      margin-top: 48px;
+      margin-bottom: 24px;
+      border-bottom: 1px solid #e2e8f0;
+      padding-bottom: 12px;
     }
     @media print {
       body {

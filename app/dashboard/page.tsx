@@ -1286,7 +1286,7 @@ export default function DashboardPage() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
-        
+
 
         throw new Error(errorData.error || `Failed to export as ${format.toUpperCase()}`)
       }
@@ -1302,20 +1302,55 @@ export default function DashboardPage() {
           filename = filenameMatch[1].replace(/^["']|["']$/g, '')
         }
       }
-      
+
       // Sanitize filename - remove any invalid characters
       filename = filename.replace(/[^a-zA-Z0-9._-]/g, '-').replace(/-+/g, '-')
 
-      // Download the file
-      const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = filename
-      document.body.appendChild(a)
-      a.click()
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
+      // Check if this is a client-side PDF conversion
+      const pdfConversionHeader = response.headers.get('X-PDF-Conversion')
+      const isClientSidePDF = format === 'pdf' && pdfConversionHeader === 'client-side'
+
+      console.log('[Dashboard] Export response:', {
+        format,
+        contentType: response.headers.get('Content-Type'),
+        pdfConversionHeader,
+        isClientSidePDF,
+      })
+
+      if (isClientSidePDF) {
+        // Handle client-side PDF generation
+        const html = await response.text()
+
+        console.log('[Dashboard] Received HTML for PDF conversion:', {
+          htmlLength: html.length,
+          htmlPreview: html.substring(0, 200),
+        })
+
+        // Generate proper PDF filename
+        const domain = mostRecentAudit.domain || 'audit'
+        const sanitizedDomain = domain.replace(/[^a-z0-9]/gi, '-').toLowerCase()
+        const date = new Date(mostRecentAudit.created_at || Date.now()).toISOString().split('T')[0]
+        const pdfFilename = `${sanitizedDomain}-audit-${date}.pdf`
+
+        console.log('[Dashboard] Calling generateAuditPDFClient...')
+
+        // Dynamic import for code splitting
+        const { generateAuditPDFClient } = await import('@/lib/audit-pdf-client')
+        await generateAuditPDFClient(html, pdfFilename)
+
+        console.log('[Dashboard] PDF generation complete')
+      } else {
+        // Handle JSON and Markdown formats - traditional blob download
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename
+        document.body.appendChild(a)
+        a.click()
+        window.URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+      }
 
       toast({
         title: "Export successful",
@@ -1415,7 +1450,7 @@ export default function DashboardPage() {
                   </h2>
 
                   {/* Second line: Toggle, Export, and Run New Audit buttons */}
-                  <div className="flex items-center gap-3 sm:gap-2">
+                  <div className="flex items-center gap-3 sm:gap-4">
                     {/* Auto Audit Status for Paid Users */}
                     {(plan === 'pro' || plan === 'enterprise') && selectedDomain && (
                       <div className="flex items-center gap-2 text-sm">
@@ -1452,7 +1487,7 @@ export default function DashboardPage() {
                             {exportLoading ? (
                               <>
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Exporting {exportLoading.toUpperCase()}...
+                                Exporting...
                               </>
                             ) : (
                               <>
