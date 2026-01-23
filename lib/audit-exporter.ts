@@ -1,6 +1,7 @@
 // Audit export utilities for PDF, JSON, and Markdown formats
 import { AuditRun, Issue } from '@/types/fortress'
 import puppeteer from 'puppeteer'
+import chromium from '@sparticuz/chromium'
 
 /**
  * Generate Markdown export with AI prompt header
@@ -177,12 +178,10 @@ export async function generateAuditPDF(audit: AuditRun, issues: Issue[]): Promis
   const html = generateAuditHTML(title, domain, pagesAudited, pagesWithIssuesCount, totalIssues, createdAt, issues, auditedUrls)
 
   // Launch Puppeteer with timeout handling
-  // Note: In serverless environments (Vercel), you may need to use @sparticuz/chromium
-  // or configure Puppeteer differently. This will work in Node.js environments.
   const PDF_TIMEOUT_MS = 45000 // 45 seconds timeout for PDF generation
-  
+
   let browser: puppeteer.Browser | null = null
-  
+
   try {
     // Debug: Log HTML length and issues count
     console.log('[PDF Export] Generating PDF:', {
@@ -192,16 +191,10 @@ export async function generateAuditPDF(audit: AuditRun, issues: Issue[]): Promis
     })
 
     const launchPromise = puppeteer.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process', // May be needed for serverless
-      ],
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
     })
 
     // Timeout for browser launch (10 seconds)
