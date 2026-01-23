@@ -107,6 +107,9 @@ importers:
       '@radix-ui/react-tooltip':
         specifier: 1.1.6
         version: 1.1.6(@types/react-dom@19.1.2(@types/react@19.1.2))(@types/react@19.1.2)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@sparticuz/chromium':
+        specifier: ^131.0.0
+        version: 131.0.1
       '@stripe/stripe-js':
         specifier: ^7.2.0
         version: 7.2.0
@@ -2081,6 +2084,10 @@ packages:
 
   '@sinonjs/fake-timers@10.3.0':
     resolution: {integrity: sha512-V4BG07kuYSUkTCSBHG8G8TNhM+F19jXFWnQtzj+we8DrkpSBCee9Z3Ms8yiGer/dlmhe35/Xdgyo3/0rQKg7YA==}
+
+  '@sparticuz/chromium@131.0.1':
+    resolution: {integrity: sha512-VfmHkQmb/Px0zjwdSQwjRMwFw63Qfj+g4Giumz4jiAGEpXHgIZk6xEwlUz6yiUHVDveK2TEgMR2MR6I3okOE7w==}
+    engines: {node: '>= 16'}
 
   '@stripe/stripe-js@7.2.0':
     resolution: {integrity: sha512-BXlt6BsFE599yOATuz78FiW9z4SyipCH3j1SDyKWe/3OUBdhcOr/BWnBi1xrtcC2kfqrTJjgvfH2PTfMPRmbTw==}
@@ -7021,6 +7028,16 @@ snapshots:
   '@sinonjs/fake-timers@10.3.0':
     dependencies:
       '@sinonjs/commons': 3.0.1
+
+  '@sparticuz/chromium@131.0.1':
+    dependencies:
+      follow-redirects: 1.15.11
+      tar-fs: 3.1.1
+    transitivePeerDependencies:
+      - bare-abort-controller
+      - bare-buffer
+      - debug
+      - react-native-b4a
 
   '@stripe/stripe-js@7.2.0': {}
 
