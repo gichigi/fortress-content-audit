@@ -1408,11 +1408,14 @@ export default function DashboardPage() {
             )}
 
             <div className="flex flex-1 flex-col gap-4 py-4 md:gap-6 md:py-6">
-                <div className="flex items-center justify-between px-4 lg:px-6">
+                <div className="flex flex-col gap-3 px-4 lg:px-6 sm:flex-row sm:items-center sm:justify-between">
+                  {/* First line: Domain name */}
                   <h2 className="font-serif text-2xl font-semibold">
                     {selectedDomain || 'Content Audits'}
                   </h2>
-                  <div className="flex items-center gap-3">
+
+                  {/* Second line: Toggle, Export, and Run New Audit buttons */}
+                  <div className="flex items-center gap-3 sm:gap-2">
                     {/* Auto Audit Status for Paid Users */}
                     {(plan === 'pro' || plan === 'enterprise') && selectedDomain && (
                       <div className="flex items-center gap-2 text-sm">
@@ -1421,17 +1424,17 @@ export default function DashboardPage() {
                         ) : (() => {
                           const scheduled = scheduledAudits.find(sa => sa.domain === selectedDomain)
                           const isEnabled = scheduled?.enabled || false
-                          
+
                           return (
                             <div className="flex items-center gap-2">
+                              <span className="text-xs sm:text-sm text-muted-foreground">
+                                Auto weekly
+                              </span>
                               <Switch
                                 checked={isEnabled}
                                 onCheckedChange={(checked) => toggleAutoAudit(selectedDomain, checked)}
                                 disabled={scheduledAuditsLoading}
                               />
-                              <span className="text-muted-foreground">
-                                Auto weekly
-                              </span>
                             </div>
                           )
                         })()}
@@ -1443,6 +1446,8 @@ export default function DashboardPage() {
                           <Button
                             variant="outline"
                             disabled={exportLoading !== null}
+                            size="sm"
+                            className="sm:size-default"
                           >
                             {exportLoading ? (
                               <>
@@ -1458,21 +1463,21 @@ export default function DashboardPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem 
+                          <DropdownMenuItem
                             onClick={() => handleExport('pdf')}
                             disabled={exportLoading !== null}
                           >
                             <FileText className="mr-2 h-4 w-4" />
                             PDF
                           </DropdownMenuItem>
-                          <DropdownMenuItem 
+                          <DropdownMenuItem
                             onClick={() => handleExport('json')}
                             disabled={exportLoading !== null}
                           >
                             <FileJson className="mr-2 h-4 w-4" />
                             JSON
                           </DropdownMenuItem>
-                          <DropdownMenuItem 
+                          <DropdownMenuItem
                             onClick={() => handleExport('md')}
                             disabled={exportLoading !== null}
                           >
@@ -1485,11 +1490,9 @@ export default function DashboardPage() {
                     <Button
                       onClick={handleStartAudit}
                       disabled={startingAudit}
-                      // TEMPORARILY DISABLED: Daily limit check for testing
-                      // disabled={(usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit) || startingAudit}
                       variant="default"
-                      // variant={usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit ? "outline" : "default"}
-                      // className={usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit ? "opacity-70 cursor-not-allowed border-muted-foreground/50" : ""}
+                      size="sm"
+                      className="sm:size-default"
                     >
                       {startingAudit ? (
                         <>
@@ -1499,10 +1502,6 @@ export default function DashboardPage() {
                       ) : (
                         'Run New Audit'
                       )}
-                      {/* TEMPORARILY DISABLED: Daily limit reached text */}
-                      {/* ) : usageInfo && usageInfo.limit > 0 && usageInfo.today >= usageInfo.limit ? (
-                        "Daily limit reached"
-                      ) : ( */}
                     </Button>
                   </div>
                 </div>

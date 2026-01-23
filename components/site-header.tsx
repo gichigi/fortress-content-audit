@@ -60,20 +60,20 @@ export function SiteHeader() {
 
   return (
     <header className="group-has-data-[collapsible=icon]/sidebar-wrapper:h-12 flex h-12 shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear">
-      <div className="flex w-full items-center justify-between gap-1 px-4 lg:gap-2 lg:px-6">
-        <div className="flex items-center gap-1 lg:gap-2">
+      <div className="flex w-full items-center justify-between gap-2 px-4 lg:gap-3 lg:px-6">
+        <div className="flex items-center gap-2 lg:gap-3 min-w-0">
           <SidebarTrigger className="-ml-1" />
           <Separator
             orientation="vertical"
-            className="mx-2 data-[orientation=vertical]:h-4"
+            className="hidden sm:block mx-2 data-[orientation=vertical]:h-4"
           />
-          <Link href="/dashboard" className="text-2xl font-serif font-semibold tracking-tight hover:opacity-80 transition-opacity">
+          <Link href="/dashboard" className="text-lg sm:text-2xl font-serif font-semibold tracking-tight hover:opacity-80 transition-opacity">
             Dashboard
           </Link>
           {isAuthenticated && plan && (
             <Badge
               variant={plan === 'pro' || plan === 'enterprise' ? 'default' : 'secondary'}
-              className="ml-2"
+              className="hidden sm:flex ml-2"
             >
               {PLAN_NAMES[plan as keyof typeof PLAN_NAMES] || 'Free'}
             </Badge>
