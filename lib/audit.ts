@@ -1,6 +1,8 @@
 import OpenAI from "openai"
 import { z } from "zod"
 import Logger from "./logger"
+import { extractElementManifest, formatManifestForPrompt } from "./manifest-extractor"
+import { buildMiniAuditPrompt, buildFullAuditPrompt } from "./audit-prompts"
 
 // ============================================================================
 // Content Audit
@@ -23,15 +25,8 @@ export const AUDIT_TIERS = {
 
 export type AuditTier = keyof typeof AUDIT_TIERS
 
-// Reusable OpenAI prompt ID for content audits
-// Set via OPENAI_AUDIT_PROMPT_ID env var or use default
-const AUDIT_PROMPT_ID = process.env.OPENAI_AUDIT_PROMPT_ID || "pmpt_695e4d1f54048195a54712ce6446be87061fc1380da21889"
-const AUDIT_PROMPT_VERSION = process.env.OPENAI_AUDIT_PROMPT_VERSION || "18"
-
-// Mini audit prompt ID for free tier (1 audit pass, no reasoning summaries for faster processing)
-// Set via OPENAI_MINI_AUDIT_PROMPT_ID env var or use default
-const MINI_AUDIT_PROMPT_ID = process.env.OPENAI_MINI_AUDIT_PROMPT_ID || "pmpt_695fd80f94188197ab2151841cf20d6a00213764662a5853"
-const MINI_AUDIT_PROMPT_VERSION = process.env.OPENAI_MINI_AUDIT_PROMPT_VERSION || "6"
+// Prompt IDs removed - now using inline prompts with manifest integration
+// See lib/audit-prompts.ts for prompt definitions
 
 // Zod schemas for structured audit output (new prompt format)
 const NewPromptIssueSchema = z.object({
@@ -234,33 +229,40 @@ export async function miniAudit(
   try {
     Logger.info(`[MiniAudit] Starting GPT-5 web_search audit for ${normalizedDomain}`)
     const modelStartTime = Date.now()
-    
+
     let response: any
     let finalResponse: any
-    
+
     if (existingResponseId) {
       // Use existing response (for SSE streaming scenario)
       finalResponse = await openai.responses.retrieve(existingResponseId)
       response = { id: existingResponseId } // Store id for return value
     } else {
-      // Create new response
-      // Note: Model config params (effort, summary, store, text.format, verbosity) 
-      // are configured in the prompt definition itself - don't override here
+      // Extract manifest for false positive prevention
+      Logger.debug(`[MiniAudit] Extracting element manifest...`)
+      const manifests = await extractElementManifest(normalizedDomain)
+      const manifestText = formatManifestForPrompt(manifests)
+      Logger.debug(`[MiniAudit] Manifest extraction complete (${manifests.length} pages)`)
+
+      // Build inline prompt with manifest
+      const excludedIssuesJson = issueContext?.excluded?.length
+        ? JSON.stringify(issueContext.excluded)
+        : "[]"
+      const activeIssuesJson = issueContext?.active?.length
+        ? JSON.stringify(issueContext.active)
+        : "[]"
+
+      const promptText = buildMiniAuditPrompt(
+        normalizedDomain,
+        manifestText,
+        excludedIssuesJson,
+        activeIssuesJson
+      )
+
+      // Create new response with inline prompt
       const params: any = {
         model: "gpt-5.1-2025-11-13",
-        prompt: {
-          id: MINI_AUDIT_PROMPT_ID,
-          version: MINI_AUDIT_PROMPT_VERSION,
-          variables: {
-            url: normalizedDomain,
-            excluded_issues: issueContext?.excluded?.length
-              ? JSON.stringify(issueContext.excluded)
-              : "[]",
-            active_issues: issueContext?.active?.length
-              ? JSON.stringify(issueContext.active)
-              : "[]",
-          }
-        },
+        input: promptText,
         tools: [{
           type: "web_search",
           filters: {
@@ -270,18 +272,17 @@ export async function miniAudit(
         max_tool_calls: tier.maxToolCalls, // Allow opening homepage + key pages
         max_output_tokens: 20000, // Increased for full JSON response
         include: ["web_search_call.action.sources"], // Include sources to get URLs
-        // Model config params (matching prompt definition settings)
         text: {
           format: { type: "text" },
           verbosity: "low"
         },
         reasoning: {
           effort: "medium",
-          summary: null // Explicitly disable reasoning summaries (version 3 optimized for speed)
+          summary: null // Explicitly disable reasoning summaries for speed
         },
         store: true
       }
-      
+
       try {
         response = await openai.responses.create(params)
         finalResponse = response
@@ -462,23 +463,31 @@ export async function auditSite(
   try {
     Logger.info(`[AuditSite] Starting GPT-5.1 web_search audit for ${normalizedDomain} (tier: ${tier}, synchronous mode)`)
     const modelStartTime = Date.now()
-    
+
+    // Extract manifest for false positive prevention
+    Logger.debug(`[AuditSite] Extracting element manifest...`)
+    const manifests = await extractElementManifest(normalizedDomain)
+    const manifestText = formatManifestForPrompt(manifests)
+    Logger.debug(`[AuditSite] Manifest extraction complete (${manifests.length} pages)`)
+
+    // Build inline prompt with manifest
+    const excludedIssuesJson = issueContext?.excluded?.length
+      ? JSON.stringify(issueContext.excluded)
+      : "[]"
+    const activeIssuesJson = issueContext?.active?.length
+      ? JSON.stringify(issueContext.active)
+      : "[]"
+
+    const promptText = buildFullAuditPrompt(
+      normalizedDomain,
+      manifestText,
+      excludedIssuesJson,
+      activeIssuesJson
+    )
+
     const params: any = {
       model: tierConfig.model,
-      prompt: {
-        id: AUDIT_PROMPT_ID,
-        version: AUDIT_PROMPT_VERSION,
-        variables: {
-          url: normalizedDomain,
-          excluded_issues: issueContext?.excluded?.length
-            ? JSON.stringify(issueContext.excluded)
-            : "[]",
-          active_issues: issueContext?.active?.length
-            ? JSON.stringify(issueContext.active)
-            : "[]",
-          // Note: tier variable removed - prompt v15 doesn't use it
-        }
-      },
+      input: promptText,
       tools: [{
         type: "web_search",
         filters: {
