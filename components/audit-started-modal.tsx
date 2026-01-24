@@ -18,6 +18,8 @@ interface AuditStartedModalProps {
   domain: string
   tier: 'free' | 'pro' | 'enterprise'
   estimatedDuration: string
+  pagesFound?: number | null
+  pagesAudited?: number
 }
 
 export function AuditStartedModal({
@@ -26,15 +28,25 @@ export function AuditStartedModal({
   domain,
   tier,
   estimatedDuration,
+  pagesFound,
+  pagesAudited,
 }: AuditStartedModalProps) {
   const getTierMessage = () => {
+    const maxPages = tier === 'free' ? 2 : tier === 'pro' ? 20 : 60
+
+    // If we have pages found, show it
+    if (pagesFound && pagesFound > 0) {
+      return `Found ${pagesFound} ${pagesFound === 1 ? 'page' : 'pages'} · Auditing up to ${maxPages}`
+    }
+
+    // Fallback to tier-based messaging
     switch (tier) {
       case 'free':
-        return 'Free tier: up to 2 pages'
+        return 'Auditing up to 2 pages (Free)'
       case 'pro':
-        return 'Pro tier: Auditing up to 10-20 pages'
+        return 'Auditing up to 20 pages (Pro)'
       case 'enterprise':
-        return 'Enterprise tier: Full site audit'
+        return 'Full site audit (Enterprise)'
       default:
         return 'Auditing your site'
     }
@@ -74,9 +86,15 @@ export function AuditStartedModal({
           </Alert>
 
           <div className="space-y-2 text-sm">
+            {pagesFound !== null && pagesFound !== undefined && pagesFound > 0 && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Pages found:</span>
+                <span className="font-medium">{pagesFound}</span>
+              </div>
+            )}
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Plan:</span>
-              <span className="font-medium">{getTierMessage()}</span>
+              <span className="text-muted-foreground">Auditing:</span>
+              <span className="font-medium">Up to {tier === 'free' ? 2 : tier === 'pro' ? 20 : 60} pages</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Expected duration:</span>

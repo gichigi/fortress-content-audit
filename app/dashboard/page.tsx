@@ -87,11 +87,15 @@ export default function DashboardPage() {
     domain: string
     tier: 'free' | 'pro' | 'enterprise'
     estimatedDuration: string
+    pagesFound?: number | null
+    pagesAudited?: number
   }>({
     open: false,
     domain: '',
     tier: 'free',
-    estimatedDuration: '2-4 minutes'
+    estimatedDuration: '2-4 minutes',
+    pagesFound: null,
+    pagesAudited: 0
   })
 
   const [auditSuccessModal, setAuditSuccessModal] = useState<{
@@ -100,12 +104,16 @@ export default function DashboardPage() {
     totalIssues: number
     issueBreakdown: { critical: number; medium: number; low: number }
     milestones: any[]
+    pagesFound?: number | null
+    pagesAudited?: number
   }>({
     open: false,
     domain: '',
     totalIssues: 0,
     issueBreakdown: { critical: 0, medium: 0, low: 0 },
-    milestones: []
+    milestones: [],
+    pagesFound: null,
+    pagesAudited: 0
   })
 
   const [auditFailureModal, setAuditFailureModal] = useState<{
@@ -446,7 +454,9 @@ export default function DashboardPage() {
               domain: selectedDomain || '',
               totalIssues,
               issueBreakdown,
-              milestones
+              milestones,
+              pagesFound: pollData.meta?.pagesFound || null,
+              pagesAudited: pollData.meta?.pagesAudited || 0
             })
 
             // Reload all data
@@ -1020,7 +1030,16 @@ export default function DashboardPage() {
                 return
               }
               
-              // Still pending - continue polling
+              // Still pending - update audit started modal with progress if available
+              if (pollData.meta?.pagesFound) {
+                setAuditStartedModal(prev => ({
+                  ...prev,
+                  pagesFound: pollData.meta.pagesFound,
+                  pagesAudited: pollData.meta.pagesAudited || 0
+                }))
+              }
+
+              // Continue polling
               attempts++
               if (attempts < maxAttempts) {
                 setTimeout(poll, pollIntervalMs)
@@ -1708,6 +1727,8 @@ export default function DashboardPage() {
         domain={auditStartedModal.domain}
         tier={auditStartedModal.tier}
         estimatedDuration={auditStartedModal.estimatedDuration}
+        pagesFound={auditStartedModal.pagesFound}
+        pagesAudited={auditStartedModal.pagesAudited}
       />
 
       {/* Audit Success Modal */}
@@ -1718,6 +1739,8 @@ export default function DashboardPage() {
         totalIssues={auditSuccessModal.totalIssues}
         issueBreakdown={auditSuccessModal.issueBreakdown}
         milestones={auditSuccessModal.milestones}
+        pagesFound={auditSuccessModal.pagesFound}
+        pagesAudited={auditSuccessModal.pagesAudited}
         onViewResults={() => {
           // Scroll to results table
           const resultsSection = document.querySelector('[data-audit-results]')

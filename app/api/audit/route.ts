@@ -261,8 +261,8 @@ export async function POST(request: Request) {
       } else {
         console.log(`[API] Running ${auditTier} audit for ${normalized}`)
         result = auditTier === 'FREE'
-          ? await miniAudit(normalized, undefined, issueContext)
-          : await auditSite(normalized, auditTier, issueContext)
+          ? await miniAudit(normalized, undefined, issueContext, runId)
+          : await auditSite(normalized, auditTier, issueContext, runId)
       }
       
       if (result.status !== 'completed') {

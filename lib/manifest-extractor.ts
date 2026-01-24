@@ -204,3 +204,39 @@ export function formatManifestForPrompt(manifests: ElementManifest[]): string {
 
   return output
 }
+
+/**
+ * Count unique internal pages from manifests
+ * Includes the manifested pages themselves + all internal links
+ */
+export function countInternalPages(manifests: ElementManifest[]): number {
+  const uniquePages = new Set<string>()
+
+  for (const manifest of manifests) {
+    // Add the page itself
+    uniquePages.add(normalizeUrl(manifest.page_url))
+
+    // Add all internal links (type: 'link' = internal, type: 'external' = external)
+    for (const link of manifest.links) {
+      if (link.type === 'link') {
+        uniquePages.add(normalizeUrl(link.href))
+      }
+    }
+  }
+
+  return uniquePages.size
+}
+
+/**
+ * Normalize URL for deduplication
+ * Removes trailing slashes, hashes, query params
+ */
+function normalizeUrl(url: string): string {
+  try {
+    const parsed = new URL(url)
+    // Remove trailing slash, hash, query params
+    return `${parsed.origin}${parsed.pathname}`.replace(/\/$/, '')
+  } catch {
+    return url
+  }
+}

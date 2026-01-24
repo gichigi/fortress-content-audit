@@ -32,6 +32,8 @@ interface AuditSuccessModalProps {
   milestones?: Milestone[]
   onViewResults: () => void
   onExport?: () => void
+  pagesFound?: number | null
+  pagesAudited?: number
 }
 
 export function AuditSuccessModal({
@@ -43,6 +45,8 @@ export function AuditSuccessModal({
   milestones,
   onViewResults,
   onExport,
+  pagesFound,
+  pagesAudited,
 }: AuditSuccessModalProps) {
   const handleViewResults = () => {
     onOpenChange(false)
@@ -96,6 +100,24 @@ export function AuditSuccessModal({
               </div>
             )}
           </div>
+
+          {/* Pages audited info */}
+          {(pagesFound !== null && pagesFound !== undefined) || (pagesAudited && pagesAudited > 0) ? (
+            <div className="rounded-lg border bg-muted/50 p-4 space-y-2">
+              {pagesFound !== null && pagesFound !== undefined && pagesFound > 0 && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Pages found</span>
+                  <span className="font-medium">{pagesFound}</span>
+                </div>
+              )}
+              {pagesAudited && pagesAudited > 0 && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Pages audited</span>
+                  <span className="font-medium">{pagesAudited}</span>
+                </div>
+              )}
+            </div>
+          ) : null}
 
           {/* Milestones (if any) */}
           {milestones && milestones.length > 0 && (

@@ -83,10 +83,11 @@ export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [authToken, setAuthToken] = useState<string | null>(null)
   const [auditTier, setAuditTier] = useState<'free' | 'pro' | 'enterprise'>('free')
-  const [progressInfo, setProgressInfo] = useState<{ pagesAudited: number; pagesBeingCrawled: string[]; reasoningSummaries: string[] }>({
+  const [progressInfo, setProgressInfo] = useState<{ pagesAudited: number; pagesBeingCrawled: string[]; reasoningSummaries: string[]; pagesFound: number | null }>({
     pagesAudited: 0,
     pagesBeingCrawled: [],
-    reasoningSummaries: []
+    reasoningSummaries: [],
+    pagesFound: null
   })
   const [severityFilter, setSeverityFilter] = useState<'all' | 'critical'>('all')
   
@@ -386,7 +387,17 @@ export default function Home() {
                 return
               }
               
-              // Still pending - continue polling
+              // Still pending - update progress info if available
+              if (pollData.meta) {
+                setProgressInfo({
+                  pagesAudited: pollData.meta.pagesAudited || 0,
+                  pagesBeingCrawled: pollData.meta.auditedUrls || [],
+                  reasoningSummaries: [],
+                  pagesFound: pollData.meta.pagesFound || null
+                })
+              }
+
+              // Continue polling
               attempts++
               if (attempts < maxAttempts) {
                 pollTimeoutRef.current = setTimeout(pollForCompletion, pollIntervalMs)
@@ -607,6 +618,7 @@ export default function Home() {
         description="This may take a few minutes"
         pagesAudited={progressInfo.pagesAudited}
         pagesBeingCrawled={progressInfo.pagesBeingCrawled}
+        pagesFound={progressInfo.pagesFound}
         auditTier={auditTier}
         isAuthenticated={isAuthenticated}
       />

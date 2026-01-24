@@ -45,6 +45,10 @@ export interface InterstitialLoaderProps extends React.HTMLAttributes<HTMLDivEle
    * Whether user is authenticated (affects tier messaging)
    */
   isAuthenticated?: boolean
+  /**
+   * Number of pages found on the site (from manifest extraction)
+   */
+  pagesFound?: number | null
 }
 
 const InterstitialLoader = React.forwardRef<HTMLDivElement, InterstitialLoaderProps>(
@@ -61,12 +65,16 @@ const InterstitialLoader = React.forwardRef<HTMLDivElement, InterstitialLoaderPr
       reasoningSummaries = [],
       auditTier,
       isAuthenticated = false,
+      pagesFound,
       children,
       ...props
     },
     ref
   ) => {
     const [shownSummaries, setShownSummaries] = React.useState<{ message: string; completed: boolean }[]>([])
+
+    // Calculate max pages audited based on tier
+    const maxPagesAudited = auditTier === 'free' ? 2 : auditTier === 'pro' ? 20 : 60
 
     // Canned reasoning summaries in the same style as model output
     const cannedSummaries = [
@@ -86,38 +94,75 @@ const InterstitialLoader = React.forwardRef<HTMLDivElement, InterstitialLoaderPr
     const summaries = cannedSummaries
 
     // Add summaries one by one, accumulating them on screen
+    // Only start after pages found appears (or after 20s timeout if manifest extraction fails)
     React.useEffect(() => {
       if (!open || summaries.length === 0) {
         setShownSummaries([])
         return
       }
 
-      // Show first summary immediately
-      setShownSummaries([{ message: summaries[0], completed: false }])
+      // Don't show progress messages until pages found appears
+      // (or after 20s timeout in case manifest extraction fails)
+      const shouldShowMessages = pagesFound !== null && pagesFound !== undefined
 
-      // Add remaining summaries one by one with delay
+      // If pages not found yet, set timeout to show messages anyway after 20s
       const timeouts: NodeJS.Timeout[] = []
-      for (let i = 1; i < summaries.length; i++) {
-        const summaryToAdd = summaries[i] // Capture summary value in closure
-        const timeout = setTimeout(() => {
-          setShownSummaries((prev) => {
-            // Mark previous message as completed and add new one
-            if (prev.length < summaries.length) {
-              const updated = prev.map((item, idx) =>
-                idx === prev.length - 1 ? { ...item, completed: true } : item
-              )
-              return [...updated, { message: summaryToAdd, completed: false }]
-            }
-            return prev
-          })
-        }, i * 25000) // 25 seconds between each message (for 4+ minute audits)
-        timeouts.push(timeout)
+      let startTimeout: NodeJS.Timeout | null = null
+
+      if (!shouldShowMessages) {
+        // Wait up to 20 seconds for pages found, then show messages anyway
+        startTimeout = setTimeout(() => {
+          // Start showing messages if still open
+          if (!open) return
+          setShownSummaries([{ message: summaries[0], completed: false }])
+
+          // Add remaining summaries
+          for (let i = 1; i < summaries.length; i++) {
+            const summaryToAdd = summaries[i]
+            const timeout = setTimeout(() => {
+              setShownSummaries((prev) => {
+                if (prev.length < summaries.length) {
+                  const updated = prev.map((item, idx) =>
+                    idx === prev.length - 1 ? { ...item, completed: true } : item
+                  )
+                  return [...updated, { message: summaryToAdd, completed: false }]
+                }
+                return prev
+              })
+            }, i * 25000)
+            timeouts.push(timeout)
+          }
+        }, 20000)
+      } else {
+        // Pages found - wait 2 seconds, then show first message
+        const initialDelay = setTimeout(() => {
+          setShownSummaries([{ message: summaries[0], completed: false }])
+
+          // Add remaining summaries one by one with delay
+          for (let i = 1; i < summaries.length; i++) {
+            const summaryToAdd = summaries[i]
+            const timeout = setTimeout(() => {
+              setShownSummaries((prev) => {
+                if (prev.length < summaries.length) {
+                  const updated = prev.map((item, idx) =>
+                    idx === prev.length - 1 ? { ...item, completed: true } : item
+                  )
+                  return [...updated, { message: summaryToAdd, completed: false }]
+                }
+                return prev
+              })
+            }, i * 25000)
+            timeouts.push(timeout)
+          }
+        }, 2000) // 2 second delay after pages found appears
+        timeouts.push(initialDelay)
       }
 
       return () => {
+        if (startTimeout) clearTimeout(startTimeout)
         timeouts.forEach((timeout) => clearTimeout(timeout))
       }
-    }, [open]) // Reset when open changes
+    }, [open, pagesFound]) // Trigger when open changes or pages found becomes available
 
     if (!open) return null
 
@@ -140,21 +185,42 @@ const InterstitialLoader = React.forwardRef<HTMLDivElement, InterstitialLoaderPr
           )}
           {description && <p className="text-muted-foreground mb-4">{description}</p>}
 
+          {/* Pages found/auditing info - only show when pages found is available */}
+          {pagesFound !== null && pagesFound > 0 && (
+            <div className="mt-6 mb-8 mx-auto max-w-sm animate-in fade-in slide-in-from-bottom-3 duration-700 ease-out">
+              <div className="bg-muted/30 border border-border/50 rounded-lg px-6 py-4 space-y-2.5">
+                <p className="text-sm text-foreground flex items-center justify-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                  <span>Found {pagesFound} {pagesFound === 1 ? 'page' : 'pages'} on your site</span>
+                </p>
+                {auditTier && (
+                  <p className="text-sm text-muted-foreground text-center">
+                    → Auditing up to {maxPagesAudited} {maxPagesAudited === 1 ? 'page' : 'pages'}{auditTier === 'free' ? ' (Free)' : ''}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Accumulating summaries list */}
           {shownSummaries.length > 0 && (
-            <div className="mt-6 mb-6 min-h-[100px] flex flex-col items-start justify-center space-y-3 max-w-lg mx-auto">
+            <div className="mt-6 mb-6 min-h-[100px] flex flex-col items-start justify-center space-y-3 max-w-lg mx-auto transition-all duration-500 ease-out">
               {shownSummaries.map((item, idx) => (
                 <div
                   key={idx}
-                  className="flex items-center gap-3 text-base animate-in fade-in slide-in-from-bottom-2 duration-500 w-full"
+                  className="flex items-center gap-3 text-base w-full animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out"
+                  style={{
+                    animationDelay: `${idx * 50}ms`,
+                    animationFillMode: 'backwards'
+                  }}
                 >
                   {item.completed ? (
-                    <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                    <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0 transition-all duration-300" />
                   ) : (
                     <div className="h-4 w-4 shrink-0" />
                   )}
                   <span className={cn(
-                    "transition-colors duration-300",
+                    "transition-all duration-500 ease-out",
                     item.completed ? "text-muted-foreground/70" : "text-muted-foreground"
                   )}>
                     {item.message}
@@ -164,42 +230,6 @@ const InterstitialLoader = React.forwardRef<HTMLDivElement, InterstitialLoaderPr
             </div>
           )}
           
-          {/* Progress info */}
-          {(pagesAudited > 0 || pagesBeingCrawled.length > 0) && (
-            <div className="mt-6 space-y-3 text-left max-w-lg mx-auto">
-              {pagesAudited > 0 && (
-                <p className="text-sm text-muted-foreground text-center">
-                  Pages audited: {pagesAudited}
-                </p>
-              )}
-              {pagesBeingCrawled.length > 0 && (
-                <div className="space-y-2 bg-muted/30 rounded-lg p-4">
-                  <p className="text-sm font-medium text-foreground text-center mb-2">
-                    Currently crawling:
-                  </p>
-                  <ul className="text-xs text-muted-foreground space-y-1.5 max-h-40 overflow-y-auto">
-                    {pagesBeingCrawled.map((url, idx) => (
-                      <li key={idx} className="truncate px-2 py-1 bg-background/50 rounded">
-                        {url}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Free tier info box - absolute bottom positioning */}
-          {auditTier === 'free' && (
-            <div className="absolute bottom-0 left-0 right-0 pb-8 flex justify-center px-6">
-              <div className="bg-muted/40 border border-border rounded-lg px-4 py-3 max-w-sm">
-                <p className="text-sm text-foreground">
-                  <span className="font-medium">Free audit:</span>
-                  <span className="text-muted-foreground"> up to 2 pages</span>
-                </p>
-              </div>
-            </div>
-          )}
 
           {children}
         </div>

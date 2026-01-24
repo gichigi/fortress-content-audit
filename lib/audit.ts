@@ -1,7 +1,7 @@
 import OpenAI from "openai"
 import { z } from "zod"
 import Logger from "./logger"
-import { extractElementManifest, formatManifestForPrompt } from "./manifest-extractor"
+import { extractElementManifest, formatManifestForPrompt, countInternalPages } from "./manifest-extractor"
 import { buildMiniAuditPrompt, buildFullAuditPrompt } from "./audit-prompts"
 
 // ============================================================================
@@ -213,7 +213,8 @@ function extractOpenedPagesCount(response: any): number {
 export async function miniAudit(
   domain: string,
   existingResponseId?: string,
-  issueContext?: AuditIssueContext
+  issueContext?: AuditIssueContext,
+  runId?: string
 ): Promise<AuditResult> {
   const tier = AUDIT_TIERS.FREE
 
@@ -242,7 +243,22 @@ export async function miniAudit(
       Logger.debug(`[MiniAudit] Extracting element manifest...`)
       const manifests = await extractElementManifest(normalizedDomain)
       const manifestText = formatManifestForPrompt(manifests)
-      Logger.debug(`[MiniAudit] Manifest extraction complete (${manifests.length} pages)`)
+      const pagesFound = countInternalPages(manifests)
+      Logger.debug(`[MiniAudit] Manifest extraction complete (${manifests.length} pages extracted, ${pagesFound} unique pages found)`)
+
+      // Store pages_found in database immediately
+      if (runId && pagesFound > 0) {
+        try {
+          await supabaseAdmin
+            .from('brand_audit_runs')
+            .update({ pages_found: pagesFound })
+            .eq('id', runId)
+          Logger.debug(`[MiniAudit] Updated pages_found: ${pagesFound}`)
+        } catch (err) {
+          Logger.warn('[MiniAudit] Failed to update pages_found', err instanceof Error ? err : undefined)
+          // Non-fatal - continue audit even if update fails
+        }
+      }
 
       // Build inline prompt with manifest
       const excludedIssuesJson = issueContext?.excluded?.length
@@ -440,7 +456,8 @@ export async function miniAudit(
 export async function auditSite(
   domain: string,
   tier: AuditTier = "PAID",
-  issueContext?: AuditIssueContext
+  issueContext?: AuditIssueContext,
+  runId?: string
 ): Promise<AuditResult> {
   // Type guard: FREE tier should use miniAudit() instead
   if (tier === 'FREE') {
@@ -468,7 +485,22 @@ export async function auditSite(
     Logger.debug(`[AuditSite] Extracting element manifest...`)
     const manifests = await extractElementManifest(normalizedDomain)
     const manifestText = formatManifestForPrompt(manifests)
-    Logger.debug(`[AuditSite] Manifest extraction complete (${manifests.length} pages)`)
+    const pagesFound = countInternalPages(manifests)
+    Logger.debug(`[AuditSite] Manifest extraction complete (${manifests.length} pages extracted, ${pagesFound} unique pages found)`)
+
+    // Store pages_found in database immediately
+    if (runId && pagesFound > 0) {
+      try {
+        await supabaseAdmin
+          .from('brand_audit_runs')
+          .update({ pages_found: pagesFound })
+          .eq('id', runId)
+        Logger.debug(`[AuditSite] Updated pages_found: ${pagesFound}`)
+      } catch (err) {
+        Logger.warn('[AuditSite] Failed to update pages_found', err instanceof Error ? err : undefined)
+        // Non-fatal - continue audit even if update fails
+      }
+    }
 
     // Build inline prompt with manifest
     const excludedIssuesJson = issueContext?.excluded?.length

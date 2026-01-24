@@ -102,6 +102,7 @@ export async function GET(
         milestones: run.issues_json?.milestones || [],
         meta: {
           pagesAudited: run.pages_audited || run.pages_scanned || 0,
+          pagesFound: run.pages_found || null,
           createdAt: run.created_at,
           auditedUrls: run.issues_json?.auditedUrls || [],
         },
