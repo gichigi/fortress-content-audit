@@ -6,7 +6,7 @@ import { AuditTableRow } from "@/lib/audit-table-adapter"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowRight } from "lucide-react"
+import { ArrowRight, Lock } from "lucide-react"
 import { createClient } from "@/lib/supabase-browser"
 import { useState, useEffect } from "react"
 
@@ -97,9 +97,19 @@ export function AuditTable({
         />
       )}
       {showPreview && data.length > 0 && (
-        <div className="flex justify-center pt-8 pb-4">
+        <div className="flex flex-col items-center pt-8 pb-4 gap-3">
+          {!isAuthenticated && !checking && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Lock className="h-3.5 w-3.5" />
+              <span>Sign in required to view full audit</span>
+            </div>
+          )}
           <Button variant="default" size="lg" onClick={handleViewAll} disabled={checking} className="font-semibold shadow-md">
-            {(totalIssues ?? data.length) > data.length ? (
+            {!isAuthenticated && !checking ? (
+              <>
+                Sign in to view all {totalIssues ?? data.length} issue{(totalIssues ?? data.length) !== 1 ? 's' : ''}
+              </>
+            ) : (totalIssues ?? data.length) > data.length ? (
               <>
                 View all {totalIssues ?? data.length} issue{(totalIssues ?? data.length) !== 1 ? 's' : ''}
               </>
