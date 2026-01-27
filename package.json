@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
+    "dev:clean": "rm -rf .next && next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -18,7 +19,8 @@
     "generate-logos": "node scripts/generate-logo-svgs.js",
     "generate-favicons": "node scripts/generate-favicons.js",
     "generate-icons": "pnpm generate-logos && pnpm generate-favicons",
-    "test:audit-pages": "tsx scripts/test-paid-audit-pages.ts"
+    "test:audit-pages": "tsx scripts/test-paid-audit-pages.ts",
+    "test:parallel-audit": "tsx scripts/test-parallel-audit.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "latest",

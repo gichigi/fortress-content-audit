@@ -32,7 +32,7 @@ export function AuditStartedModal({
   pagesAudited,
 }: AuditStartedModalProps) {
   const getTierMessage = () => {
-    const maxPages = tier === 'free' ? 2 : tier === 'pro' ? 20 : 60
+    const maxPages = tier === 'free' ? 5 : tier === 'pro' ? 20 : 60
 
     // If we have pages found, show it
     if (pagesFound && pagesFound > 0) {
@@ -42,7 +42,7 @@ export function AuditStartedModal({
     // Fallback to tier-based messaging
     switch (tier) {
       case 'free':
-        return 'Auditing up to 2 pages (Free)'
+        return 'Auditing up to 5 pages (Free)'
       case 'pro':
         return 'Auditing up to 20 pages (Pro)'
       case 'enterprise':
@@ -94,7 +94,7 @@ export function AuditStartedModal({
             )}
             <div className="flex justify-between">
               <span className="text-muted-foreground">Auditing:</span>
-              <span className="font-medium">Up to {tier === 'free' ? 2 : tier === 'pro' ? 20 : 60} pages</span>
+              <span className="font-medium">Up to {tier === 'free' ? 5 : tier === 'pro' ? 20 : 60} pages</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Expected duration:</span>

@@ -135,7 +135,7 @@ export function AuditSuccessModal({
             <AlertTitle>Next Steps</AlertTitle>
             <AlertDescription>
               <ol className="list-decimal list-inside space-y-2 mt-2 text-sm">
-                <li>Review issues in the table below</li>
+                <li>Click "View Results" to see all issues</li>
                 <li>Mark issues as resolved or ignored</li>
                 <li>Export results as PDF or JSON for your records</li>
               </ol>

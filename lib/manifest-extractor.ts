@@ -228,6 +228,28 @@ export function countInternalPages(manifests: ElementManifest[]): number {
 }
 
 /**
+ * Extract list of discovered pages from manifests
+ * Returns sorted array of unique normalized URLs
+ */
+export function extractDiscoveredPagesList(manifests: ElementManifest[]): string[] {
+  const uniquePages = new Set<string>()
+
+  for (const manifest of manifests) {
+    // Add the page itself
+    uniquePages.add(normalizeUrl(manifest.page_url))
+
+    // Add all internal links (type: 'link' = internal)
+    for (const link of manifest.links) {
+      if (link.type === 'link') {
+        uniquePages.add(normalizeUrl(link.href))
+      }
+    }
+  }
+
+  return Array.from(uniquePages).sort()
+}
+
+/**
  * Normalize URL for deduplication
  * Removes trailing slashes, hashes, query params
  */

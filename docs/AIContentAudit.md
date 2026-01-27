@@ -27,6 +27,127 @@
 
 ---
 
+## Recent Updates (January 2026)
+
+### Page Discovery UI & Field Cleanup ✅ COMPLETED
+
+**Fixed discoveredPages population bug**
+- ✅ `extractDiscoveredPagesList()` function existed but was never called
+- ✅ Added calls in both `miniAudit()` and `auditSite()` functions
+- ✅ Added `discoveredPages: string[]` to `AuditResult` type
+- ✅ Fixed API response to include discoveredPages in meta object
+- ✅ Deprecated unreliable `auditedUrls` field (just tool calls, not actual auditing)
+- ✅ Created migration to drop unused `pages_found_urls` database column
+
+**Built inline page discovery UI component**
+- ✅ Created `PageDiscoveryInline` component showing "X of Y pages audited"
+- ✅ Expandable list with checkmarks (✓) for audited pages, (○) for discovered pages
+- ✅ Progressive disclosure: shows first 5, then "+X more" button
+- ✅ Integrated into homepage results display
+- ✅ Displays tier messaging (Free: 2 pages, Pro: up to 20)
+
+**Files modified:**
+- `lib/audit.ts` - Fixed discoveredPages population in both audit functions
+- `app/api/audit/[id]/route.ts` - Fixed API response to include discoveredPages
+- `components/PageDiscoveryInline.tsx` - New component
+- `app/page.tsx` - Integrated new component
+- `supabase/migrations/025_drop_unused_pages_found_urls.sql` - Database cleanup
+- `docs/page-fields-audit.md` - Field inventory documentation
+
+---
+
+### Audit Timeout Configuration Fix ✅ COMPLETED
+
+**Fixed mini audit timeout bug**
+- ✅ Problem: `miniAudit()` had hardcoded 60-second timeout
+- ✅ Root cause: Used `maxAttempts = 60` instead of tier config
+- ✅ Fix: Changed to use `tier.maxPollSeconds` (240s for FREE tier = 4 minutes)
+- ✅ Added proper timeout error message matching `auditSite()` behavior
+- ✅ Applied same fix to `auditSite()` for consistency
+
+**Impact:**
+- Free tier audits now have 4 minutes instead of 1 minute to complete
+- Reduces false timeout failures for legitimate audits
+- Properly respects tier configuration
+
+**Files modified:**
+- `lib/audit.ts` - Lines 318-335 (miniAudit timeout), similar changes in auditSite
+
+---
+
+### Domain Display Bug Fix ✅ COMPLETED
+
+**Fixed homepage domain header showing wrong URL**
+- ✅ Problem: Domain header changed when typing in URL input field
+- ✅ Root cause: `displayDomain` derived from URL input, not from audit results
+- ✅ Fix: Updated `displayDomain` useMemo to prioritize `auditResults.domain` over URL input
+- ✅ Now displays the actual audited domain, not the input field value
+
+**Files modified:**
+- `app/page.tsx` - Updated displayDomain calculation logic
+
+---
+
+### Dev Server Hot Reload Workaround ✅ COMPLETED
+
+**Next.js 15 hot reload issue**
+- ✅ Problem: Internal server errors after code changes, requiring full restart
+- ✅ Root cause: Next.js 15 corrupts `.next` build cache during hot reload
+- ✅ Specific errors: `ENOENT: no such file or directory, open '.next/routes-manifest.json'`
+- ✅ Particularly affects: API routes (`app/api/**`) and lib files (`lib/**`)
+
+**Workaround implemented:**
+- ✅ Created `pnpm dev:clean` command in package.json
+- ✅ Command deletes `.next` folder and restarts dev server
+- ✅ Documented issue and workarounds in `docs/dev-hot-reload-issue.md`
+- ✅ Includes guidance on when clean restart is needed vs regular restart
+
+**Long-term solutions:**
+- Wait for Next.js 15.x patch with better hot reload stability
+- Consider moving heavy lib code to separate service
+- Experiment with turbo mode (`pnpm dev --turbo`)
+
+**Files modified:**
+- `package.json` - Added `dev:clean` script
+- `docs/dev-hot-reload-issue.md` - Full documentation with workarounds
+- `next.config.js` - Already has webpack cache disabled (line 78), but issue persists
+
+---
+
+### Future: Multi-Model Parallel Execution 🧪 TEST SCRIPT READY
+
+**Exploration documented for future optimization**
+- 📝 Run multiple specialized model instances simultaneously
+- 📝 Split audit into 3 parallel streams: Language, Facts & Consistency, Links & Formatting
+- 📝 Potential 3x speed improvement (~60s to ~20s)
+- 📝 Potential cost reduction with smaller focused prompts
+- 📝 Higher accuracy with specialized models per category
+
+**Test script created:**
+```bash
+pnpm test:parallel-audit <domain>
+# Example: pnpm test:parallel-audit stripe.com
+```
+
+The script compares single-model vs 3 parallel models, tracking:
+- Run time (wall clock)
+- Token usage (input/output)
+- Cost calculation
+- Issues found by category
+- Saves results to JSON for analysis
+
+**Next steps:**
+- [x] Create test script (`scripts/test-parallel-audit.ts`)
+- [ ] Run test on 5-10 different domains
+- [ ] Analyze results for speed, cost, accuracy patterns
+- [ ] Evaluate if gains justify production implementation
+
+**Documentation:**
+- `docs/future-multi-model-exploration.md` - Full details and open questions
+- `scripts/test-parallel-audit.ts` - Test script source
+
+---
+
 ## North Star
 
 Deliver a trustworthy, low‑noise content QA audit (copy + facts + links) that teams can track over time, suppress known issues, and monitor for regressions.

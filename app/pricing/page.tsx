@@ -127,7 +127,7 @@ export default function PricingPage() {
                 {/* Tier 1 specific features */}
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span className="text-sm">Homepage + 1 key page</span>
+                  <span className="text-sm">Up to 5 key pages</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />

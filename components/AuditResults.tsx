@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { FileText, Search, AlertCircle, CheckCircle2, Sparkles, LockKeyhole, Clock, Mail, Loader2 } from "lucide-react"
 import { createClient } from "@/lib/supabase-browser"
 import { EmptyAuditState } from "@/components/empty-audit-state"
+import { SiteDiscoveryCard } from "@/components/SiteDiscoveryCard"
 
 interface AuditResultsProps {
   results: any

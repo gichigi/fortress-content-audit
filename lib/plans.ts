@@ -20,7 +20,7 @@ export const PLAN_FEATURES = {
   free: {
     model: 'gpt-5.1-2025-11-13',
     maxToolCalls: 10,
-    pagesAnalyzed: '2 pages (homepage + 1 key)',
+    pagesAnalyzed: 'Up to 5 key pages',
     issueCategories: 'High-signal only',
     issuesShown: '3 (preview with fade-out)',
     exportFormat: 'None',

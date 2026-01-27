@@ -22,13 +22,13 @@ export interface HealthScoreResult {
 
 /**
  * Calculate health score for a single audit
- * 
+ *
  * Formula: 100 - (low×1 + medium×3 + high×7) - (criticalPages×10)
  * - Excludes ignored/resolved issues (only counts active)
  * - Critical pages = pages with at least one high-severity issue
- * - Score clamped to 0-100
+ * - Score clamped to 1-100 (minimum 1 if issues exist, can be 100 if no issues)
  * - Counts issues, not instances
- * 
+ *
  * @param audit - Audit run (issues queried from issues table)
  * @returns Health score result with metrics
  */
@@ -114,9 +114,9 @@ export async function calculateHealthScore(
   score -= bySeverity.medium * 3
   score -= bySeverity.critical * 7
   score -= criticalPages * 10
-  
-  // Clamp to 0-100
-  score = Math.max(0, Math.min(100, score))
+
+  // Clamp to 1-100 (minimum 1 if issues exist, can be 100 if no issues)
+  score = Math.max(1, Math.min(100, score))
   
   return {
     score,
@@ -236,9 +236,9 @@ export async function calculateAggregatedHealthScore(
   score -= bySeverity.medium * 3
   score -= bySeverity.critical * 7
   score -= criticalPages * 10
-  
-  // Clamp to 0-100
-  score = Math.max(0, Math.min(100, score))
+
+  // Clamp to 1-100 (minimum 1 if issues exist, can be 100 if no issues)
+  score = Math.max(1, Math.min(100, score))
   
   return {
     score,

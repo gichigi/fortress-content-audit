@@ -18,6 +18,7 @@ import { HealthScoreChart } from "@/components/health-score-chart"
 import { useHealthScoreMetrics } from "@/hooks/use-health-score-metrics"
 import { transformIssuesToTableRows } from "@/lib/audit-table-adapter"
 import { EmptyAuditState } from "@/components/empty-audit-state"
+import { PageDiscoveryInline } from "@/components/PageDiscoveryInline"
 
 // Client-side URL validation (simplified version of validateUrl)
 function validateUrlClient(input: string): { isValid: boolean; error?: string; normalizedUrl?: string } {
@@ -150,6 +151,17 @@ export default function Home() {
 
   // Extract domain for display (remove protocol, trailing slashes)
   const displayDomain = React.useMemo(() => {
+    // If we have audit results, use the domain from the actual audit
+    if (auditResults?.domain) {
+      try {
+        const urlObj = new URL(auditResults.domain.startsWith('http') ? auditResults.domain : `https://${auditResults.domain}`)
+        return urlObj.hostname
+      } catch {
+        return auditResults.domain
+      }
+    }
+
+    // Otherwise, derive from URL input field
     if (!url) return null
     try {
       // Use the normalized URL if available from validation, otherwise parse the input
@@ -169,7 +181,7 @@ export default function Home() {
       // If parsing fails, return the input as-is (cleaned)
       return url.replace(/^https?:\/\//, '').replace(/\/$/, '')
     }
-  }, [url])
+  }, [url, auditResults?.domain])
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -642,13 +654,20 @@ export default function Home() {
             {/* Results Heading with URL */}
             {displayDomain && (
               <div className="px-4 lg:px-6">
-                <h2 className="font-serif text-3xl md:text-4xl font-light tracking-tight">
+                <h2 className="font-serif text-3xl md:text-4xl font-light tracking-tight mb-2">
                   {displayDomain}
                 </h2>
+                {auditResults?.meta && (
+                  <PageDiscoveryInline
+                    discoveredPages={auditResults.meta.discoveredPages || []}
+                    auditedUrls={auditResults.meta.auditedUrls || []}
+                    pagesFound={auditResults.meta.pagesFound}
+                    isAuthenticated={isAuthenticated}
+                  />
+                )}
               </div>
             )}
-            
-            
+
             {/* Health Score Cards */}
             <HealthScoreCards
               currentScore={!isLoading ? {

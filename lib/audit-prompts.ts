@@ -278,3 +278,90 @@ ${excludedIssues && excludedIssues !== '[]' ? `\n# Previously Resolved/Ignored I
 ${activeIssues && activeIssues !== '[]' ? `\n# Active Issues from Previous Audit\n\nThe following issues were found in a previous audit. Verify if they still exist:\n${activeIssues}\n` : ''}
 `
 }
+
+/**
+ * Build a category-specific audit prompt for parallel mini audits.
+ * Each category model focuses on ONE issue type only.
+ *
+ * @param category - The category to audit
+ * @param urlsToAudit - Explicit list of URLs to audit (no more, no less)
+ * @param manifestText - Element manifest for false positive prevention
+ * @param excludedIssues - Issues to skip (already resolved/ignored)
+ * @param activeIssues - Issues to verify still exist
+ */
+export function buildCategoryAuditPrompt(
+  category: "Language" | "Facts & Consistency" | "Links & Formatting",
+  urlsToAudit: string[],
+  manifestText: string,
+  excludedIssues: string,
+  activeIssues: string
+): string {
+  const categoryInstructions = {
+    "Language": `Focus ONLY on Language issues:
+- Typos and misspellings
+- Grammar errors
+- Punctuation mistakes
+- Spelling inconsistencies
+- Awkward phrasing
+
+DO NOT report Facts/Consistency or Links/Formatting issues.`,
+
+    "Facts & Consistency": `Focus ONLY on Facts & Consistency issues:
+- Factual errors or incorrect information
+- Inconsistent data, numbers, or stats across pages
+- Contradictory statements
+- Outdated information
+- Naming inconsistencies (product names, company name variations)
+
+DO NOT report Language or Links/Formatting issues.`,
+
+    "Links & Formatting": `Focus ONLY on Links & Formatting issues:
+- Broken links (404s, 500s)
+- Links pointing to wrong destinations
+- Confusing or unclear link text
+- Formatting problems
+- Layout issues affecting readability
+
+DO NOT report Language or Facts/Consistency issues.`
+  }
+
+  // Format URL list for prompt
+  const urlListText = urlsToAudit.map((u, i) => `${i + 1}. ${u}`).join('\n')
+
+  return `You are auditing for ${category} issues ONLY.
+
+**AUDIT EXACTLY THESE ${urlsToAudit.length} URLs:**
+${urlListText}
+
+Do NOT audit any other pages. Focus only on these specific URLs.
+
+${manifestText ? `Below is an ELEMENT MANIFEST showing interactive elements on the page:\n${manifestText}\n\n---\n` : ''}
+
+${categoryInstructions[category]}
+
+**HOW TO USE THE MANIFEST:**
+- Use it to avoid false positives about missing elements
+- Still test all links by clicking them
+- The manifest shows code structure, NOT functionality
+
+If you encounter bot protection, return: BOT_PROTECTION_OR_FIREWALL_BLOCKED
+
+For every issue, provide:
+- page_url: The URL where issue was found
+- category: "${category}" (always this category)
+- issue_description: Start with impact word (professionalism:, frustration:, trust:, credibility:) then concise problem
+- severity: "critical", "medium", or "low"
+- suggested_fix: Direct, actionable fix
+
+Output format:
+{
+  "issues": [...],
+  "total_issues": <number>,
+  "pages_with_issues": <number>,
+  "pages_audited": ${urlsToAudit.length}
+}
+
+If no ${category} issues found, return: null
+${excludedIssues && excludedIssues !== '[]' ? `\n# Previously Resolved/Ignored Issues\n\nDO NOT report these again:\n${excludedIssues}\n` : ''}
+${activeIssues && activeIssues !== '[]' ? `\n# Active Issues\n\nVerify if these still exist:\n${activeIssues}\n` : ''}`
+}

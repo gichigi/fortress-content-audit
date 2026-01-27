@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { after } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { validateUrl } from '@/lib/url-validation'
-import { auditSite, miniAudit, AuditTier, AuditResult, getExcludedIssues, getActiveIssues, AuditIssueContext } from '@/lib/audit'
+import { auditSite, miniAudit, parallelMiniAudit, parallelProAudit, AuditTier, AuditResult, getExcludedIssues, getActiveIssues, AuditIssueContext } from '@/lib/audit'
 import PostHogClient from '@/lib/posthog'
 import Logger from '@/lib/logger'
 import { checkDailyLimit, checkDomainLimit, isNewDomain, incrementAuditUsage, getAuditUsage } from '@/lib/audit-rate-limit'
@@ -261,8 +261,10 @@ export async function POST(request: Request) {
       } else {
         console.log(`[API] Running ${auditTier} audit for ${normalized}`)
         result = auditTier === 'FREE'
-          ? await miniAudit(normalized, undefined, issueContext, runId)
-          : await auditSite(normalized, auditTier, issueContext, runId)
+          ? await parallelMiniAudit(normalized, issueContext, runId)
+          : auditTier === 'PAID'
+            ? await parallelProAudit(normalized, issueContext, runId)
+            : await auditSite(normalized, 'ENTERPRISE', issueContext, runId)
       }
       
       if (result.status !== 'completed') {
@@ -276,36 +278,16 @@ export async function POST(request: Request) {
         return null
       }
       
-      // Filter issues for FREE tier (homepage only)
-      let filteredIssues = result.issues || []
-      if (auditTier === 'FREE' && !useMockData) {
-        const homepageUrls = [
-          normalized,
-          normalized.replace(/\/$/, ''),
-          normalized + '/',
-          normalized.replace(/^https?:\/\//, 'https://www.'),
-          normalized.replace(/^https?:\/\//, 'https://www.') + '/',
-        ]
-        
-        filteredIssues = filteredIssues.filter((issue: any) => {
-          const issueUrl = issue.page_url || ''
-          if (!issueUrl) return false
-          return homepageUrls.some(homepageUrl => 
-            issueUrl === homepageUrl || 
-            issueUrl.startsWith(homepageUrl + '/') ||
-            issueUrl.replace(/\/$/, '') === homepageUrl.replace(/\/$/, '')
-          )
-        })
-        
-        if (filteredIssues.length === 0) {
-          console.log(`[API] No issues found on homepage for ${normalized} - returning empty results`)
-        }
-      }
+      // Get all issues from audit result
+      // Note: Previously filtered to homepage-only for FREE tier, but parallel audit
+      // intentionally audits multiple pages (homepage + 1 per category model)
+      const filteredIssues = result.issues || []
       
       // Update audit record with results
       const issuesJson = {
         issues: filteredIssues,
         auditedUrls: result.auditedUrls || [],
+        discoveredPages: result.discoveredPages || [],
         status: 'completed',
         tier: auditTier,
       }

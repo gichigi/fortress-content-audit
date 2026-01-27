@@ -74,7 +74,7 @@ const InterstitialLoader = React.forwardRef<HTMLDivElement, InterstitialLoaderPr
     const [shownSummaries, setShownSummaries] = React.useState<{ message: string; completed: boolean }[]>([])
 
     // Calculate max pages audited based on tier
-    const maxPagesAudited = auditTier === 'free' ? 2 : auditTier === 'pro' ? 20 : 60
+    const maxPagesAudited = auditTier === 'free' ? 5 : auditTier === 'pro' ? 20 : 60
 
     // Canned reasoning summaries in the same style as model output
     const cannedSummaries = [
