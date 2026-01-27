@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton"
 import { ArrowLeft, FileText, ExternalLink, RefreshCw, Loader2, TrendingUp, TrendingDown, Minus, CheckCircle2, Download, FileJson, FileType, Clock } from "lucide-react"
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
+import { Progress } from "@/components/ui/progress"
 import { useToast } from "@/hooks/use-toast"
 import { PLAN_NAMES } from "@/lib/plans"
 import { HealthScoreChart } from "@/components/health-score-chart"
@@ -78,6 +79,7 @@ export default function DashboardPage() {
   const [startingAudit, setStartingAudit] = useState(false)
   const [rerunningAuditId, setRerunningAuditId] = useState<string | null>(null)
   const [pendingAuditId, setPendingAuditId] = useState<string | null>(null)
+  const [auditProgress, setAuditProgress] = useState(0)
   const [severityFilter, setSeverityFilter] = useState<'all' | 'critical'>('all')
   const [newAuditDialogOpen, setNewAuditDialogOpen] = useState(false)
 
@@ -412,6 +414,29 @@ export default function DashboardPage() {
     }
   }, [router, toast])
 
+  // Animate progress bar when audit is pending (tier-aware timing)
+  // Uses asymptotic curve - keeps moving but slows down, never quite reaches 99%
+  useEffect(() => {
+    if (!pendingAuditId) {
+      setAuditProgress(0)
+      return
+    }
+
+    const startTime = Date.now()
+    // Half-life: time to reach ~50% progress (Free: 20s, Pro: 45s)
+    const halfLife = plan === 'free' ? 20000 : 45000
+
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - startTime
+      // Asymptotic formula: approaches 98% but never stops moving
+      // progress = 98 * elapsed / (elapsed + halfLife)
+      const progress = 98 * elapsed / (elapsed + halfLife)
+      setAuditProgress(Math.round(progress))
+    }, 150)
+
+    return () => clearInterval(interval)
+  }, [pendingAuditId, plan])
+
   // Poll for pending audit detected on page load
   useEffect(() => {
     if (!pendingAuditId || !authToken) return
@@ -441,6 +466,7 @@ export default function DashboardPage() {
           console.log('[Dashboard] Poll status:', pollData.status)
 
           if (pollData.status === 'completed') {
+            setAuditProgress(100) // Complete the progress bar
             setPendingAuditId(null)
 
             // Show success modal with issue breakdown
@@ -979,6 +1005,7 @@ export default function DashboardPage() {
               const pollData = await pollResponse.json()
               
               if (pollData.status === 'completed') {
+                setAuditProgress(100) // Complete the progress bar
                 setPendingAuditId(null)
                 setStartingAudit(false)
 
@@ -1448,20 +1475,40 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* Pending Audit Banner */}
+            {/* Pending Audit Banner with Progress Bar */}
             {pendingAuditId && (
               <div className="px-4 lg:px-6 pt-4">
                 <Alert className="border-blue-500 bg-blue-50 dark:bg-blue-950 dark:border-blue-800">
                   <Loader2 className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400" />
                   <AlertTitle className="text-blue-900 dark:text-blue-100">Audit in progress</AlertTitle>
-                  <AlertDescription className="text-blue-800 dark:text-blue-200">
-                    Your audit is running. Results will appear automatically when complete.
+                  <AlertDescription className="text-blue-800 dark:text-blue-200 space-y-2">
+                    <Progress value={auditProgress} className="h-1.5 mt-2" />
+                    <p className="text-xs">
+                      {auditProgress < 85 ? 'Analyzing your content...' : 'Finalizing results...'}
+                    </p>
                   </AlertDescription>
                 </Alert>
               </div>
             )}
 
             <div className="flex flex-1 flex-col gap-4 py-4 md:gap-6 md:py-6">
+                {/* Free vs Pro comparison banner */}
+                {plan === 'free' && !loading && (
+                  <div className="px-4 lg:px-6">
+                    <div className="bg-muted/50 rounded-lg p-3 flex items-center justify-between text-sm">
+                      <div>
+                        <span className="font-medium">Free: Up to 5 pages</span>
+                        <span className="text-muted-foreground ml-2">
+                          Upgrade to Pro for 20 pages + weekly auto-audits
+                        </span>
+                      </div>
+                      <Button variant="ghost" size="sm" asChild>
+                        <Link href="/pricing">Compare plans →</Link>
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex flex-col gap-3 px-4 lg:px-6 sm:flex-row sm:items-center sm:justify-between">
                   {/* First line: Domain name */}
                   <h2 className="font-serif text-2xl font-semibold">
@@ -1554,7 +1601,7 @@ export default function DashboardPage() {
                           Running audit...
                         </>
                       ) : (
-                        'Run New Audit'
+                        'Rerun audit'
                       )}
                     </Button>
                   </div>

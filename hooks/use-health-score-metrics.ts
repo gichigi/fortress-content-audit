@@ -59,7 +59,9 @@ export function useHealthScoreMetrics(tableRows: AuditTableRow[]): HealthScoreMe
     score -= bySeverity.medium * 3
     score -= bySeverity.critical * 7
     score -= criticalPagesSet.size * 10
-    score = Math.max(0, Math.min(100, score))
+
+    // Clamp to 1-100 (minimum 1 if issues exist, matches server-side)
+    score = Math.max(1, Math.min(100, score))
 
     return {
       score: Math.round(score),
