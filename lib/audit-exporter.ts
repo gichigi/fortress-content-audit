@@ -173,14 +173,6 @@ export function generateAuditHTML(
     else severityCounts.low++
   })
 
-  // ============================================
-  // STYLE SELECTOR: Change this to test layouts
-  // 'subtle-cards' = Option 2: Light background, no borders
-  // 'zebra' = Option 3: Alternating backgrounds
-  // 'minimal-cards' = Option 4: Subtle border + generous spacing
-  // ============================================
-  const issueStyle: 'subtle-cards' | 'zebra' | 'minimal-cards' = 'subtle-cards'
-
   // Format date as "January 28, 2026"
   const formatFullDate = (dateStr: string): string => {
     try {
@@ -198,7 +190,9 @@ export function generateAuditHTML(
   const formattedDate = formatFullDate(createdAt)
 
   // Build issue cards with streamlined design
-  let issuesHTML = ''
+  let firstIssueHTML = ''
+  let remainingIssuesHTML = ''
+
   issues.forEach((issue: Issue, index: number) => {
     const severity = issue.severity || 'low'
     // Muted severity colors
@@ -211,14 +205,9 @@ export function generateAuditHTML(
     const impactType = colonIndex > 0 ? description.substring(0, colonIndex).trim() : 'Content Issue'
     const issueText = colonIndex > 0 ? description.substring(colonIndex + 1).trim() : description
 
-    // Determine CSS class based on style
-    let itemClass = 'issue-item'
-    if (issueStyle === 'zebra') {
-      itemClass = index % 2 === 0 ? 'issue-item issue-zebra-even' : 'issue-item issue-zebra-odd'
-    }
 
-    issuesHTML += `
-      <div class="${itemClass}">
+    const issueCard = `
+      <div class="issue-item">
         <div class="issue-header">
           ${issue.page_url ? `
             <a href="${escapeHtml(issue.page_url)}" class="issue-title-link">
@@ -232,9 +221,17 @@ export function generateAuditHTML(
 
         <p class="issue-text">${escapeHtml(issueText)}</p>
 
+        ${issue.page_url ? `<p class="issue-url">Found on: <a href="${escapeHtml(issue.page_url)}" class="issue-url-link">${escapeHtml(issue.page_url)}</a></p>` : ''}
+
         <p class="issue-fix">&rarr; ${escapeHtml(issue.suggested_fix || 'Review and update this content.')}</p>
       </div>
     `
+
+    if (index === 0) {
+      firstIssueHTML = issueCard
+    } else {
+      remainingIssuesHTML += issueCard
+    }
   })
 
   // Build scope/pages audited section
@@ -442,39 +439,24 @@ export function generateAuditHTML(
       margin-bottom: 16px;
       padding-bottom: 12px;
       border-bottom: 1px solid #e4e4e7;
-      page-break-after: avoid;
     }
 
-    /* Issue items - styles vary based on issueStyle setting */
+    /* Wrapper to keep Issues heading with first issue */
+    .issues-heading-wrapper {
+      page-break-before: always;
+      page-break-inside: avoid;
+    }
+
+    /* Issue items - subtle cards style */
     .issue-item {
       page-break-inside: avoid;
-      ${issueStyle === 'subtle-cards' ? `
-        margin: 0 0 24px 0;
-        padding: 24px;
-        background: #fafafa;
-        border: none;
-      ` : issueStyle === 'zebra' ? `
-        margin: 0;
-        padding: 20px 0;
-        border-bottom: 1px solid #e4e4e7;
-      ` : `
-        margin: 0 0 32px 0;
-        padding: 24px;
-        border: 1px solid #e4e4e7;
-        background: #ffffff;
-      `}
+      margin: 0 0 24px 0;
+      padding: 24px;
+      background: #fafafa;
+      border: none;
     }
     .issue-item:last-child {
-      ${issueStyle === 'zebra' ? 'border-bottom: none;' : ''}
-      ${issueStyle === 'subtle-cards' ? 'margin-bottom: 0;' : ''}
-    }
-
-    /* Zebra striping */
-    .issue-zebra-even {
-      background: #ffffff;
-    }
-    .issue-zebra-odd {
-      background: #fafafa;
+      margin-bottom: 0;
     }
 
     /* Issue header - title left, severity right */
@@ -511,6 +493,22 @@ export function generateAuditHTML(
       line-height: 1.6;
       color: #18181b;
       margin: 0 0 12px 0;
+    }
+
+    /* Issue URL */
+    .issue-url {
+      font-size: 11px;
+      line-height: 1.5;
+      color: #71717a;
+      margin: 0 0 12px 0;
+      word-break: break-all;
+    }
+    .issue-url-link {
+      color: #52525b;
+      text-decoration: none;
+    }
+    .issue-url-link:hover {
+      text-decoration: underline;
     }
 
     /* Issue fix */
@@ -624,8 +622,16 @@ export function generateAuditHTML(
     ${scopeHTML}
 
     <!-- Issues section -->
-    <h2>Issues</h2>
-    ${issues.length > 0 ? issuesHTML : '<p class="no-issues">No issues found in this audit.</p>'}
+    ${issues.length > 0 ? `
+      <div class="issues-heading-wrapper">
+        <h2>Issues</h2>
+      </div>
+      ${firstIssueHTML}
+      ${remainingIssuesHTML}
+    ` : `
+      <h2>Issues</h2>
+      <p class="no-issues">No issues found in this audit.</p>
+    `}
   </div>
 
   <div class="footer">

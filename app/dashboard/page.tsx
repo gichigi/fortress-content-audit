@@ -1789,11 +1789,8 @@ export default function DashboardPage() {
         pagesFound={auditSuccessModal.pagesFound}
         pagesAudited={auditSuccessModal.pagesAudited}
         onViewResults={() => {
-          // Scroll to results table
-          const resultsSection = document.querySelector('[data-audit-results]')
-          if (resultsSection) {
-            resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' })
-          }
+          // Refresh page to show updated audit results
+          window.location.reload()
         }}
         onExport={() => {
           // Trigger PDF export
