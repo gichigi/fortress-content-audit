@@ -1,170 +1,92 @@
-// Audit export utilities for PDF, JSON, and Markdown formats
-import { AuditRun, Issue } from '@/types/fortress'
-
 /**
- * Generate Markdown export with AI prompt header
- * Format optimized for AI consumption - users can drop into their IDE
+ * Export the seline.com audit in all three PDF style versions
+ * Run with: npx tsx export-three-versions.ts
  */
-export function generateAuditMarkdown(audit: AuditRun, issues: Issue[]): string {
-  const issuesJson = audit.issues_json as any
-  const domain = audit.domain || 'Unknown domain'
-  
-  // Filter auditedUrls to only include URLs from the audit domain
-  // Also include URLs from issues to ensure consistency with dashboard
-  const rawAuditedUrls = Array.isArray(issuesJson?.auditedUrls) ? issuesJson.auditedUrls : []
-  const issueUrls = issues
-    .map(issue => issue.page_url)
-    .filter((url): url is string => !!url && typeof url === 'string')
-  
-  // Extract domain from audit domain (handle both with and without protocol)
-  let auditDomain: string | null = null
-  try {
-    const domainUrl = domain.startsWith('http') ? domain : `https://${domain}`
-    const urlObj = new URL(domainUrl)
-    auditDomain = urlObj.hostname
-  } catch {
-    // If domain parsing fails, use domain as-is
-    auditDomain = domain.replace(/^https?:\/\//, '').replace(/\/$/, '')
+
+import fs from 'fs'
+import path from 'path'
+
+// Read the audit data
+const auditData = JSON.parse(
+  fs.readFileSync('parallel-audit-results-seline-com-1769533573357.json', 'utf-8')
+)
+
+// Transform parallel model issues into flat array
+const allIssues: any[] = []
+const models = auditData.parallelModels || {}
+
+Object.keys(models).forEach(modelKey => {
+  const modelData = models[modelKey]
+  if (modelData && Array.isArray(modelData.issues)) {
+    allIssues.push(...modelData.issues)
   }
-  
-  // Filter URLs to only include those from the audit domain
-  const auditedUrls = [...new Set([...rawAuditedUrls, ...issueUrls])]
-    .filter((url: string) => {
-      if (!url || typeof url !== 'string') return false
-      try {
-        const urlObj = new URL(url.startsWith('http') ? url : `https://${url}`)
-        return urlObj.hostname === auditDomain || urlObj.hostname.endsWith(`.${auditDomain}`)
-      } catch {
-        return false
-      }
-    })
-  const pagesAudited = audit.pages_audited || audit.pages_audited || 0
-  // Calculate pages with issues from issue page_url
-  const pagesWithIssues = new Set<string>()
-  issues.forEach(issue => {
-    if (issue.page_url) {
-      try {
-        const url = new URL(issue.page_url)
-        pagesWithIssues.add(url.pathname || '/')
-      } catch {
-        // Invalid URL or relative path, use as-is
-        pagesWithIssues.add(issue.page_url)
-      }
-    }
-  })
-  const pagesWithIssuesCount = pagesWithIssues.size
-  const createdAt = audit.created_at ? new Date(audit.created_at).toLocaleDateString() : 'Unknown date'
-  const totalIssues = issues.length
+})
 
-  let markdown = `# Content Audit Issues - Fix Required
+console.log(`Found ${allIssues.length} total issues`)
 
-You are reviewing a content audit report. Below are content quality issues found on a website.
-Each issue includes: title, severity, impact, suggested fix, and examples with URLs where the issue was found.
+// Collect unique URLs
+const auditedUrls = [...new Set(allIssues.map(issue => issue.page_url).filter(Boolean))]
+console.log(`Found ${auditedUrls.length} unique pages`)
 
-Your task: For each issue listed below, provide the corrected content that fixes the problem.
-When fixing issues:
-- Apply the suggested fix provided
-- Maintain the original tone and style
-- Ensure fixes are consistent across all instances
-- Preserve URLs and structure
+// Format date
+const auditDate = new Date(auditData.timestamp).toLocaleDateString('en-US', {
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric'
+})
 
-## Audit Metadata
+// Count pages with issues
+const pagesWithIssues = auditedUrls.length
 
-- **Domain**: ${domain}
-- **Pages Audited**: ${pagesAudited}
-- **Pages with Issues**: ${pagesWithIssuesCount}${pagesAudited > 0 ? ` (${pagesWithIssuesCount}/${pagesAudited})` : ''}
-- **Total Issues**: ${totalIssues}
-- **Audit Date**: ${createdAt}
+// Generate HTML for each style
+const styles: Array<'subtle-cards' | 'zebra' | 'minimal-cards'> = [
+  'subtle-cards',
+  'zebra',
+  'minimal-cards'
+]
 
-## Issues to fix:
+styles.forEach((issueStyle) => {
+  console.log(`\nGenerating ${issueStyle} version...`)
 
-`
-
-  if (issues.length === 0) {
-    markdown += `\nNo issues found in this audit.\n\n`
-  } else {
-    issues.forEach((issue: Issue, index: number) => {
-      const severity = issue.severity || 'low'
-      const severityEmoji = severity === 'critical' ? '🔴' : severity === 'medium' ? '🟡' : '🟢'
-
-      // Parse issue_description to extract impact and description
-      const description = issue.issue_description
-      const colonIndex = description.indexOf(':')
-      const impactPrefix = colonIndex > 0 ? description.substring(0, colonIndex).trim() : ''
-      const issueText = colonIndex > 0 ? description.substring(colonIndex + 1).trim() : description
-
-      // Make title clickable if URL exists
-      const title = issue.page_url
-        ? `[${index + 1}. ${issueText}](${issue.page_url}) ${severityEmoji}`
-        : `${index + 1}. ${issueText} ${severityEmoji}`
-
-      markdown += `### ${title}
-
-**Severity**: ${severity.toUpperCase()}
-${impactPrefix ? `**Impact**: ${impactPrefix}\n` : ''}
-**Suggested Fix**: ${issue.suggested_fix || 'No fix provided'}
-
----
-
-`
-    })
-  }
-
-  if (auditedUrls.length > 0) {
-    markdown += `## Pages Opened\n\n`
-    auditedUrls.forEach((url: string) => {
-      markdown += `- ${url}\n`
-    })
-  }
-
-  return markdown
-}
-
-/**
- * Generate JSON export
- * Straightforward implementation using JSON.stringify
- */
-export function generateAuditJSON(audit: AuditRun, issues: Issue[]): string {
-  const issuesJson = audit.issues_json as any
-  const auditedUrls = Array.isArray(issuesJson?.auditedUrls) ? issuesJson.auditedUrls : []
-  const tier = issuesJson?.tier || null
-
-  const exportData = {
-    domain: audit.domain,
-    title: audit.title || audit.brand_name || 'Audit',
-    brandName: audit.brand_name,
-    pagesAudited: audit.pages_audited || audit.pages_audited || 0,
-    totalIssues: issues.length,
-    createdAt: audit.created_at,
-    tier,
-    issues,
+  // Generate the HTML with dynamic style injection
+  const html = generateAuditHTML(
+    'Content Audit Report',
+    auditData.domain,
+    auditedUrls.length,
+    pagesWithIssues,
+    allIssues.length,
+    auditDate,
+    allIssues,
     auditedUrls,
-  }
+    issueStyle
+  )
 
-  return JSON.stringify(exportData, null, 2)
-}
+  // Save to file
+  const filename = `seline-audit-${issueStyle}.html`
+  fs.writeFileSync(filename, html)
+  console.log(`✓ Saved ${filename}`)
+})
 
-/**
- * Generate HTML content for PDF conversion
- * Design: Editorial, premium aesthetic with muted colors and generous spacing
- */
-export function generateAuditHTML(
+console.log('\n✅ All three versions generated!')
+console.log('Open each HTML file in your browser and use "Print to PDF" to create PDFs')
+console.log('Files created:')
+console.log('  - seline-audit-subtle-cards.html')
+console.log('  - seline-audit-zebra.html')
+console.log('  - seline-audit-minimal-cards.html')
+
+// Helper function to generate HTML
+function generateAuditHTML(
   title: string,
   domain: string,
   pagesAudited: number,
   pagesWithIssues: number,
   totalIssues: number,
   createdAt: string,
-  issues: Issue[],
-  auditedUrls: string[]
+  issues: any[],
+  auditedUrls: string[],
+  issueStyle: 'subtle-cards' | 'zebra' | 'minimal-cards'
 ): string {
-  // Validate issues array
-  if (!Array.isArray(issues)) {
-    console.error('[PDF Export] Issues is not an array:', typeof issues)
-    issues = []
-  }
-
-  // Count issues by severity for summary
+  // Count issues by severity
   const severityCounts = { critical: 0, medium: 0, low: 0 }
   issues.forEach(issue => {
     const sev = issue.severity || 'low'
@@ -173,45 +95,18 @@ export function generateAuditHTML(
     else severityCounts.low++
   })
 
-  // ============================================
-  // STYLE SELECTOR: Change this to test layouts
-  // 'subtle-cards' = Option 2: Light background, no borders
-  // 'zebra' = Option 3: Alternating backgrounds
-  // 'minimal-cards' = Option 4: Subtle border + generous spacing
-  // ============================================
-  const issueStyle: 'subtle-cards' | 'zebra' | 'minimal-cards' = 'subtle-cards'
-
-  // Format date as "January 28, 2026"
-  const formatFullDate = (dateStr: string): string => {
-    try {
-      const date = new Date(dateStr)
-      if (isNaN(date.getTime())) return dateStr
-      return date.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      })
-    } catch {
-      return dateStr
-    }
-  }
-  const formattedDate = formatFullDate(createdAt)
-
-  // Build issue cards with streamlined design
+  // Build issue items
   let issuesHTML = ''
-  issues.forEach((issue: Issue, index: number) => {
+  issues.forEach((issue: any, index: number) => {
     const severity = issue.severity || 'low'
-    // Muted severity colors
     const severityColor = severity === 'critical' ? '#7f1d1d' : severity === 'medium' ? '#78350f' : '#1e3a5f'
     const severityLabel = severity === 'critical' ? 'HIGH' : severity === 'medium' ? 'MEDIUM' : 'LOW'
 
-    // Parse issue_description to extract impact type and description
     const description = issue.issue_description
     const colonIndex = description.indexOf(':')
     const impactType = colonIndex > 0 ? description.substring(0, colonIndex).trim() : 'Content Issue'
     const issueText = colonIndex > 0 ? description.substring(colonIndex + 1).trim() : description
 
-    // Determine CSS class based on style
     let itemClass = 'issue-item'
     if (issueStyle === 'zebra') {
       itemClass = index % 2 === 0 ? 'issue-item issue-zebra-even' : 'issue-item issue-zebra-odd'
@@ -220,24 +115,21 @@ export function generateAuditHTML(
     issuesHTML += `
       <div class="${itemClass}">
         <div class="issue-header">
-          ${issue.page_url ? `
-            <a href="${escapeHtml(issue.page_url)}" class="issue-title-link">
-              <span class="issue-title">IMPACT: ${escapeHtml(impactType).toUpperCase()}</span>
-            </a>
-          ` : `
-            <span class="issue-title">IMPACT: ${escapeHtml(impactType).toUpperCase()}</span>
-          `}
+          <span class="issue-title">IMPACT: ${escapeHtml(impactType).toUpperCase()}</span>
           <span class="issue-severity" style="color: ${severityColor};">${severityLabel}</span>
         </div>
 
         <p class="issue-text">${escapeHtml(issueText)}</p>
 
         <p class="issue-fix">&rarr; ${escapeHtml(issue.suggested_fix || 'Review and update this content.')}</p>
+
+        ${issue.page_url ? `
+          <p class="issue-url">Found on: ${escapeHtml(issue.page_url)}</p>
+        ` : ''}
       </div>
     `
   })
 
-  // Build scope/pages audited section
   const scopeHTML = auditedUrls.length > 0 ? `
     <div class="scope-section">
       <h2>Scope of Audit</h2>
@@ -252,7 +144,7 @@ export function generateAuditHTML(
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>${escapeHtml(title)} - Content Audit</title>
+  <title>${escapeHtml(title)} - ${escapeHtml(domain)} (${issueStyle})</title>
   <style>
     * {
       margin: 0;
@@ -267,11 +159,6 @@ export function generateAuditHTML(
       color: #18181b;
       background: #ffffff;
       -webkit-font-smoothing: antialiased;
-    }
-
-    /* Editorial headline font stack */
-    .headline-font {
-      font-family: 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif;
     }
 
     /* Header */
@@ -301,7 +188,7 @@ export function generateAuditHTML(
       padding: 32px 40px;
     }
 
-    /* Cover page - simplified */
+    /* Cover page */
     .cover-page {
       page-break-after: always;
       padding: 80px 0 40px 0;
@@ -344,7 +231,6 @@ export function generateAuditHTML(
       border-bottom: none;
     }
 
-    /* Summary rows - table-like layout for html2pdf compatibility */
     .summary-row {
       margin-bottom: 12px;
       padding-bottom: 12px;
@@ -377,7 +263,6 @@ export function generateAuditHTML(
       color: #52525b;
     }
 
-    /* Severity breakdown inline */
     .severity-breakdown {
       margin-top: 6px;
       font-size: 12px;
@@ -390,7 +275,7 @@ export function generateAuditHTML(
     .sev-medium { color: #78350f; }
     .sev-low { color: #1e3a5f; }
 
-    /* Scope section - appears after summary */
+    /* Scope section */
     .scope-section {
       background: #fafafa;
       padding: 16px 28px 20px 28px;
@@ -445,7 +330,7 @@ export function generateAuditHTML(
       page-break-after: avoid;
     }
 
-    /* Issue items - styles vary based on issueStyle setting */
+    /* Issue items - dynamic based on style */
     .issue-item {
       page-break-inside: avoid;
       ${issueStyle === 'subtle-cards' ? `
@@ -469,7 +354,6 @@ export function generateAuditHTML(
       ${issueStyle === 'subtle-cards' ? 'margin-bottom: 0;' : ''}
     }
 
-    /* Zebra striping */
     .issue-zebra-even {
       background: #ffffff;
     }
@@ -477,18 +361,10 @@ export function generateAuditHTML(
       background: #fafafa;
     }
 
-    /* Issue header - title left, severity right */
     .issue-header {
       display: block;
       margin-bottom: 12px;
       line-height: 1;
-    }
-    .issue-title-link {
-      text-decoration: none;
-      color: inherit;
-    }
-    .issue-title-link:hover .issue-title {
-      color: #52525b;
     }
     .issue-title {
       font-size: 9px;
@@ -505,7 +381,6 @@ export function generateAuditHTML(
       letter-spacing: 0.08em;
     }
 
-    /* Issue text */
     .issue-text {
       font-size: 14px;
       line-height: 1.6;
@@ -513,15 +388,20 @@ export function generateAuditHTML(
       margin: 0 0 12px 0;
     }
 
-    /* Issue fix */
     .issue-fix {
       font-size: 13px;
       line-height: 1.55;
       color: #52525b;
-      margin: 0;
+      margin: 0 0 12px 0;
     }
 
-    /* No issues state */
+    .issue-url {
+      font-size: 11px;
+      color: #71717a;
+      margin: 0;
+      word-break: break-all;
+    }
+
     .no-issues {
       color: #71717a;
       font-style: italic;
@@ -553,12 +433,11 @@ export function generateAuditHTML(
       text-decoration: none;
     }
 
-    /* Print styles */
     @media print {
       .content {
         padding: 24px;
       }
-      .issue-card {
+      .issue-item {
         page-break-inside: avoid;
       }
       .scope-list {
@@ -574,13 +453,11 @@ export function generateAuditHTML(
   </div>
 
   <div class="content">
-    <!-- Cover page - simplified -->
     <div class="cover-page">
       <h1>${escapeHtml(domain)}</h1>
-      <div class="cover-date">${escapeHtml(formattedDate)}</div>
+      <div class="cover-date">${escapeHtml(createdAt)}</div>
     </div>
 
-    <!-- Summary section -->
     <div class="summary">
       <h2>Summary</h2>
 
@@ -620,10 +497,8 @@ export function generateAuditHTML(
       </div>
     </div>
 
-    <!-- Scope section - shows pages audited -->
     ${scopeHTML}
 
-    <!-- Issues section -->
     <h2>Issues</h2>
     ${issues.length > 0 ? issuesHTML : '<p class="no-issues">No issues found in this audit.</p>'}
   </div>
@@ -631,16 +506,13 @@ export function generateAuditHTML(
   <div class="footer">
     <div class="footer-brand">Fortress</div>
     <div class="footer-meta">
-      Report generated ${escapeHtml(formattedDate)}
+      Report generated ${escapeHtml(createdAt)}
     </div>
   </div>
 </body>
 </html>`
 }
 
-/**
- * Escape HTML to prevent XSS
- */
 function escapeHtml(text: string): string {
   const map: Record<string, string> = {
     '&': '&amp;',
@@ -651,4 +523,3 @@ function escapeHtml(text: string): string {
   }
   return text.replace(/[&<>"']/g, (m) => map[m])
 }
-
