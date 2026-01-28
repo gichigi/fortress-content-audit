@@ -13,7 +13,7 @@ const steps = [
   { id: 'complete', label: 'Audit Complete' },
   { id: 'review', label: 'Review Issues' },
   { id: 'fix', label: 'Fix Issues' },
-  { id: 'reaudit', label: 'Re-audit' },
+  { id: 'reaudit', label: 'Rerun audit' },
 ] as const
 
 export function AuditProgress({ currentStep = 'review' }: AuditProgressProps) {
