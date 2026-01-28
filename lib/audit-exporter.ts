@@ -86,29 +86,27 @@ When fixing issues:
     issues.forEach((issue: Issue, index: number) => {
       const severity = issue.severity || 'low'
       const severityEmoji = severity === 'critical' ? '🔴' : severity === 'medium' ? '🟡' : '🟢'
-      
+
       // Parse issue_description to extract impact and description
       const description = issue.issue_description
       const colonIndex = description.indexOf(':')
       const impactPrefix = colonIndex > 0 ? description.substring(0, colonIndex).trim() : ''
       const issueText = colonIndex > 0 ? description.substring(colonIndex + 1).trim() : description
-      
-      markdown += `### ${index + 1}. ${issueText} ${severityEmoji}
+
+      // Make title clickable if URL exists
+      const title = issue.page_url
+        ? `[${index + 1}. ${issueText}](${issue.page_url}) ${severityEmoji}`
+        : `${index + 1}. ${issueText} ${severityEmoji}`
+
+      markdown += `### ${title}
 
 **Severity**: ${severity.toUpperCase()}
 ${impactPrefix ? `**Impact**: ${impactPrefix}\n` : ''}
 **Suggested Fix**: ${issue.suggested_fix || 'No fix provided'}
 
-**Page Found**:
+---
+
 `
-
-      if (issue.page_url) {
-        markdown += `**URL**: ${issue.page_url}\n\n`
-      } else {
-        markdown += `   No specific page captured.\n\n`
-      }
-
-      markdown += `---\n\n`
     })
   }
 
@@ -148,6 +146,7 @@ export function generateAuditJSON(audit: AuditRun, issues: Issue[]): string {
 
 /**
  * Generate HTML content for PDF conversion
+ * Design: Editorial, premium aesthetic with muted colors and generous spacing
  */
 export function generateAuditHTML(
   title: string,
@@ -159,399 +158,481 @@ export function generateAuditHTML(
   issues: Issue[],
   auditedUrls: string[]
 ): string {
-  let issuesHTML = ''
-
   // Validate issues array
   if (!Array.isArray(issues)) {
     console.error('[PDF Export] Issues is not an array:', typeof issues)
     issues = []
   }
 
+  // Count issues by severity for summary
+  const severityCounts = { critical: 0, medium: 0, low: 0 }
+  issues.forEach(issue => {
+    const sev = issue.severity || 'low'
+    if (sev === 'critical') severityCounts.critical++
+    else if (sev === 'medium') severityCounts.medium++
+    else severityCounts.low++
+  })
+
+  // ============================================
+  // STYLE SELECTOR: Change this to test layouts
+  // 'subtle-cards' = Option 2: Light background, no borders
+  // 'zebra' = Option 3: Alternating backgrounds
+  // 'minimal-cards' = Option 4: Subtle border + generous spacing
+  // ============================================
+  const issueStyle: 'subtle-cards' | 'zebra' | 'minimal-cards' = 'subtle-cards'
+
+  // Format date as "January 28, 2026"
+  const formatFullDate = (dateStr: string): string => {
+    try {
+      const date = new Date(dateStr)
+      if (isNaN(date.getTime())) return dateStr
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      })
+    } catch {
+      return dateStr
+    }
+  }
+  const formattedDate = formatFullDate(createdAt)
+
+  // Build issue cards with streamlined design
+  let issuesHTML = ''
   issues.forEach((issue: Issue, index: number) => {
     const severity = issue.severity || 'low'
-    const severityClass = severity === 'critical' ? 'high' : severity === 'medium' ? 'medium' : 'low'
-    const severityColor = severity === 'critical' ? '#dc2626' : severity === 'medium' ? '#f59e0b' : '#3b82f6'
+    // Muted severity colors
+    const severityColor = severity === 'critical' ? '#7f1d1d' : severity === 'medium' ? '#78350f' : '#1e3a5f'
+    const severityLabel = severity === 'critical' ? 'HIGH' : severity === 'medium' ? 'MEDIUM' : 'LOW'
 
-    // Parse issue_description to extract impact and description
+    // Parse issue_description to extract impact type and description
     const description = issue.issue_description
     const colonIndex = description.indexOf(':')
-    const impactPrefix = colonIndex > 0 ? description.substring(0, colonIndex).trim() : ''
+    const impactType = colonIndex > 0 ? description.substring(0, colonIndex).trim() : 'Content Issue'
     const issueText = colonIndex > 0 ? description.substring(colonIndex + 1).trim() : description
 
+    // Determine CSS class based on style
+    let itemClass = 'issue-item'
+    if (issueStyle === 'zebra') {
+      itemClass = index % 2 === 0 ? 'issue-item issue-zebra-even' : 'issue-item issue-zebra-odd'
+    }
+
     issuesHTML += `
-      <div class="issue-card">
-        <div class="issue-meta">
-          <span class="issue-number">${index + 1}.</span>
-          <span class="impact-badge">${escapeHtml(impactPrefix || 'general').toUpperCase()}</span>
-          <span class="severity-badge ${severityClass}" style="color: ${severityColor};">
-            ${severity.toUpperCase()}
-          </span>
+      <div class="${itemClass}">
+        <div class="issue-header">
+          ${issue.page_url ? `
+            <a href="${escapeHtml(issue.page_url)}" class="issue-title-link">
+              <span class="issue-title">IMPACT: ${escapeHtml(impactType).toUpperCase()}</span>
+            </a>
+          ` : `
+            <span class="issue-title">IMPACT: ${escapeHtml(impactType).toUpperCase()}</span>
+          `}
+          <span class="issue-severity" style="color: ${severityColor};">${severityLabel}</span>
         </div>
 
-        <div class="issue-section">
-          <div class="section-label">Issue</div>
-          <div class="section-content">${escapeHtml(issueText || `Issue ${index + 1}`)}</div>
-        </div>
+        <p class="issue-text">${escapeHtml(issueText)}</p>
 
-        <div class="issue-section">
-          <div class="section-label">Suggested Fix</div>
-          <div class="section-content">${escapeHtml(issue.suggested_fix || 'No fix provided')}</div>
-        </div>
-
-        ${issue.page_url ? `
-          <div class="issue-section page-section">
-            <div class="section-label">Page Found</div>
-            <a href="${escapeHtml(issue.page_url)}" class="page-url">${escapeHtml(issue.page_url)}</a>
-          </div>
-        ` : ''}
+        <p class="issue-fix">&rarr; ${escapeHtml(issue.suggested_fix || 'Review and update this content.')}</p>
       </div>
     `
   })
+
+  // Build scope/pages audited section
+  const scopeHTML = auditedUrls.length > 0 ? `
+    <div class="scope-section">
+      <h2>Scope of Audit</h2>
+      <p class="scope-intro">${auditedUrls.length} page${auditedUrls.length !== 1 ? 's' : ''} analyzed for content quality issues.</p>
+      <ul class="scope-list">
+        ${auditedUrls.map(url => `<li>${escapeHtml(url)}</li>`).join('')}
+      </ul>
+    </div>
+  ` : ''
 
   return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>${escapeHtml(title)} - Fortress Content Audit</title>
+  <title>${escapeHtml(title)} - Content Audit</title>
   <style>
     * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
     }
+
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      font-size: 16px;
-      line-height: 1.6;
-      color: #334155;
-      padding: 0;
+      font-size: 15px;
+      line-height: 1.65;
+      color: #18181b;
       background: #ffffff;
-      margin: 0;
       -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
     }
+
+    /* Editorial headline font stack */
+    .headline-font {
+      font-family: 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif;
+    }
+
+    /* Header */
     .header {
-      background: #ffffff;
-      border-bottom: 1px solid #e5e5e5;
-      padding: 32px 40px;
-      margin-bottom: 0;
-    }
-    .header-brand {
-      display: block;
+      padding: 28px 40px;
+      border-bottom: 1px solid #e4e4e7;
     }
     .header-text {
-      font-size: 20px;
-      font-family: Georgia, 'Times New Roman', serif;
-      font-weight: 600;
-      color: #0f172a;
-      letter-spacing: -0.01em;
-      line-height: 1.3;
-      display: block;
-      margin-bottom: 4px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+      color: #18181b;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
     }
     .header-tagline {
       font-size: 10px;
-      color: #94a3b8;
+      color: #71717a;
       text-transform: uppercase;
-      letter-spacing: 0.1em;
+      letter-spacing: 0.12em;
       font-weight: 500;
-      line-height: 1.4;
-      display: block;
+      margin-top: 4px;
     }
+
+    /* Content wrapper */
     .content {
-      padding: 40px;
+      padding: 32px 40px;
     }
-    .footer {
-      margin-top: 60px;
-      padding: 30px 40px;
-      border-top: 1px solid #e5e5e5;
-      text-align: center;
-      color: #666;
-      font-size: 12px;
-    }
-    .footer-brand {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-bottom: 8px;
-    }
-    .footer-text {
-      font-size: 16px;
-      font-family: Georgia, 'Times New Roman', serif;
-      font-weight: 600;
-      color: #0f172a;
-      letter-spacing: -0.01em;
-    }
-    .footer-link {
-      color: #3B82F6;
-      text-decoration: none;
-      font-weight: 500;
-    }
-    .footer-link:hover {
-      text-decoration: underline;
-    }
+
+    /* Cover page - simplified */
     .cover-page {
       page-break-after: always;
-      padding: 120px 40px 60px 40px;
+      padding: 80px 0 40px 0;
     }
     .cover-page h1 {
-      font-family: Georgia, 'Times New Roman', serif;
-      font-size: 48px;
+      font-family: 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif;
+      font-size: 52px;
       font-weight: 300;
-      line-height: 1.1;
-      margin-bottom: 24px;
-      color: #0f172a;
+      line-height: 1.05;
+      color: #18181b;
       letter-spacing: -0.02em;
+      margin-bottom: 0;
     }
-    .cover-page .meta {
-      margin-top: 48px;
-      font-size: 14px;
-      color: #64748b;
-      line-height: 1.8;
+    .cover-date {
+      font-family: 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif;
+      font-size: 15px;
+      font-weight: 400;
+      font-style: italic;
+      color: #71717a;
+      margin-top: 24px;
+      letter-spacing: 0.01em;
     }
-    .cover-page .meta p {
-      margin: 12px 0;
-    }
-    .cover-page .meta strong {
-      color: #0f172a;
-      font-weight: 600;
-    }
+
+    /* Summary section */
     .summary {
-      background: #f8fafc;
-      padding: 32px;
-      border-radius: 0;
-      margin: 48px 0;
-      border: 1px solid #e2e8f0;
+      background: #fafafa;
+      padding: 20px 28px 24px 28px;
+      margin: 0 0 40px 0;
+      border: 1px solid #e4e4e7;
     }
     .summary h2 {
-      margin-bottom: 24px;
-      font-size: 24px;
-      font-family: Georgia, 'Times New Roman', serif;
-      font-weight: 600;
-      color: #0f172a;
+      font-family: 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif;
+      font-size: 18px;
+      font-weight: 500;
+      color: #18181b;
       letter-spacing: -0.01em;
+      margin-top: 0;
+      margin-bottom: 16px;
+      padding-bottom: 0;
+      border-bottom: none;
     }
-    .summary-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 15px;
-      margin-top: 15px;
+
+    /* Summary rows - table-like layout for html2pdf compatibility */
+    .summary-row {
+      margin-bottom: 12px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #e4e4e7;
     }
-    .summary-item {
-      padding: 10px;
-      background: white;
-      border-radius: 4px;
+    .summary-row:last-child {
+      margin-bottom: 0;
+      padding-bottom: 0;
+      border-bottom: none;
     }
-    .summary-item strong {
+    .summary-row-inner {
       display: block;
-      margin-bottom: 8px;
-      color: #64748b;
-      font-size: 13px;
+    }
+    .summary-label {
+      font-size: 9px;
       font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.12em;
+      color: #71717a;
+      margin-bottom: 5px;
     }
-    .summary-item span {
-      font-size: 20px;
+    .summary-value {
+      font-size: 16px;
       font-weight: 600;
-      color: #0f172a;
+      color: #18181b;
     }
-    .issue-card {
-      margin: 24px 0;
-      padding: 24px;
-      border: 1px solid #e2e8f0;
-      border-radius: 0;
+    .summary-value-small {
+      font-size: 14px;
+      font-weight: 500;
+      color: #52525b;
+    }
+
+    /* Severity breakdown inline */
+    .severity-breakdown {
+      margin-top: 6px;
+      font-size: 12px;
+      color: #52525b;
+    }
+    .severity-breakdown span {
+      margin-right: 12px;
+    }
+    .sev-critical { color: #7f1d1d; }
+    .sev-medium { color: #78350f; }
+    .sev-low { color: #1e3a5f; }
+
+    /* Scope section - appears after summary */
+    .scope-section {
+      background: #fafafa;
+      padding: 16px 28px 20px 28px;
+      margin-bottom: 40px;
+      border: 1px solid #e4e4e7;
+    }
+    .scope-section h2 {
+      font-family: 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif;
+      font-size: 16px;
+      font-weight: 500;
+      color: #18181b;
+      margin-top: 0;
+      margin-bottom: 8px;
+      padding-bottom: 0;
+      border-bottom: none;
+    }
+    .scope-intro {
+      font-size: 13px;
+      color: #52525b;
+      margin-bottom: 12px;
+    }
+    .scope-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      column-count: 2;
+      column-gap: 24px;
+    }
+    .scope-list li {
+      font-size: 12px;
+      color: #71717a;
+      padding: 4px 0;
+      border-bottom: 1px solid #e4e4e7;
+      break-inside: avoid;
+      word-break: break-all;
+    }
+    .scope-list li:last-child {
+      border-bottom: none;
+    }
+
+    /* Section headings */
+    h2 {
+      font-family: 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif;
+      font-size: 26px;
+      font-weight: 500;
+      color: #18181b;
+      letter-spacing: -0.01em;
+      margin-top: 40px;
+      margin-bottom: 24px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #e4e4e7;
+    }
+
+    /* Issue items - styles vary based on issueStyle setting */
+    .issue-item {
       page-break-inside: avoid;
+      ${issueStyle === 'subtle-cards' ? `
+        margin: 0 0 24px 0;
+        padding: 24px;
+        background: #fafafa;
+        border: none;
+      ` : issueStyle === 'zebra' ? `
+        margin: 0;
+        padding: 20px 0;
+        border-bottom: 1px solid #e4e4e7;
+      ` : `
+        margin: 0 0 32px 0;
+        padding: 24px;
+        border: 1px solid #e4e4e7;
+        background: #ffffff;
+      `}
+    }
+    .issue-item:last-child {
+      ${issueStyle === 'zebra' ? 'border-bottom: none;' : ''}
+      ${issueStyle === 'subtle-cards' ? 'margin-bottom: 0;' : ''}
+    }
+
+    /* Zebra striping */
+    .issue-zebra-even {
       background: #ffffff;
     }
-    .issue-meta {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 20px;
-      padding-bottom: 16px;
-      border-bottom: 1px solid #f1f5f9;
+    .issue-zebra-odd {
+      background: #fafafa;
+    }
+
+    /* Issue header - title left, severity right */
+    .issue-header {
+      display: block;
+      margin-bottom: 12px;
       line-height: 1;
     }
-    .issue-number {
-      font-size: 14px;
-      font-weight: 600;
-      color: #64748b;
-      margin-right: 4px;
-      line-height: 1.2;
+    .issue-title-link {
+      text-decoration: none;
+      color: inherit;
     }
-    .impact-badge {
-      font-size: 10px;
-      font-weight: 600;
+    .issue-title-link:hover .issue-title {
+      color: #52525b;
+    }
+    .issue-title {
+      font-size: 9px;
+      font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.1em;
-      color: #64748b;
-      line-height: 1.2;
-      padding-top: 2px;
+      letter-spacing: 0.12em;
+      color: #18181b;
     }
-    .severity-badge {
+    .issue-severity {
+      float: right;
       font-size: 9px;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.08em;
-      white-space: nowrap;
-      margin-left: auto;
-      line-height: 1;
-      display: inline-block;
     }
-    .issue-section {
-      margin-bottom: 16px;
+
+    /* Issue text */
+    .issue-text {
+      font-size: 14px;
+      line-height: 1.6;
+      color: #18181b;
+      margin: 0 0 12px 0;
     }
-    .issue-section:last-child {
-      margin-bottom: 0;
+
+    /* Issue fix */
+    .issue-fix {
+      font-size: 13px;
+      line-height: 1.55;
+      color: #52525b;
+      margin: 0;
     }
-    .section-label {
-      font-size: 11px;
-      font-weight: 600;
+
+    /* No issues state */
+    .no-issues {
+      color: #71717a;
+      font-style: italic;
+      padding: 32px 0;
+    }
+
+    /* Footer */
+    .footer {
+      margin-top: 48px;
+      padding: 24px 40px;
+      border-top: 1px solid #e4e4e7;
+      text-align: center;
+    }
+    .footer-brand {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      color: #18181b;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
-      letter-spacing: 0.1em;
-      color: #64748b;
       margin-bottom: 8px;
-      line-height: 1.4;
-      display: block;
     }
-    .section-content {
-      font-size: 16px;
-      line-height: 1.6;
-      color: #334155;
-      display: block;
+    .footer-meta {
+      font-size: 12px;
+      color: #71717a;
     }
-    .page-section {
-      padding-top: 16px;
-      border-top: 1px solid #f1f5f9;
-    }
-    .page-url {
-      color: #3b82f6;
+    .footer-link {
+      color: #52525b;
       text-decoration: none;
-      word-break: break-all;
-      font-size: 14px;
-      line-height: 1.6;
     }
-    .audited-urls {
-      margin-top: 48px;
-      padding: 24px;
-      background: #f8fafc;
-      border-radius: 0;
-      border: 1px solid #e2e8f0;
-    }
-    .audited-urls h2 {
-      margin-bottom: 16px;
-    }
-    .audited-urls ul {
-      list-style: none;
-      padding-left: 0;
-    }
-    .audited-urls li {
-      padding: 10px 0;
-      border-bottom: 1px solid #e2e8f0;
-      font-size: 14px;
-      line-height: 1.6;
-      color: #475569;
-    }
-    .audited-urls li:last-child {
-      border-bottom: none;
-    }
-    h2 {
-      font-family: Georgia, 'Times New Roman', serif;
-      font-size: 28px;
-      font-weight: 600;
-      color: #0f172a;
-      letter-spacing: -0.01em;
-      margin-top: 48px;
-      margin-bottom: 24px;
-      border-bottom: 1px solid #e2e8f0;
-      padding-bottom: 12px;
-    }
+
+    /* Print styles */
     @media print {
-      body {
-        padding: 0;
-      }
-      .header {
-        padding: 15px 20px;
-      }
       .content {
-        padding: 20px;
-      }
-      .footer {
-        padding: 20px;
-        margin-top: 40px;
+        padding: 24px;
       }
       .issue-card {
         page-break-inside: avoid;
+      }
+      .scope-list {
+        column-count: 1;
       }
     }
   </style>
 </head>
 <body>
   <div class="header">
-    <div class="header-brand">
-      <span class="header-text">Fortress</span>
-      <span class="header-tagline">Content Audit Report</span>
-    </div>
+    <div class="header-text">Fortress</div>
+    <div class="header-tagline">Content Audit Report</div>
   </div>
 
   <div class="content">
+    <!-- Cover page - simplified -->
     <div class="cover-page">
-      <h1>${escapeHtml(title)}</h1>
-      <div class="meta">
-        <p><strong>Domain:</strong> ${escapeHtml(domain)}</p>
-        <p><strong>Date:</strong> ${escapeHtml(createdAt)}</p>
-        <p><strong>Pages Audited:</strong> ${pagesAudited}</p>
-        <p><strong>Pages with Issues:</strong> ${pagesWithIssues}${pagesAudited > 0 ? ` (${pagesWithIssues}/${pagesAudited})` : ''}</p>
-        <p><strong>Total Issues:</strong> ${totalIssues}</p>
-      </div>
+      <h1>${escapeHtml(domain)}</h1>
+      <div class="cover-date">${escapeHtml(formattedDate)}</div>
     </div>
 
+    <!-- Summary section -->
     <div class="summary">
-    <h2>Audit Summary</h2>
-    <div class="summary-grid">
-      <div class="summary-item">
-        <strong>Domain</strong>
-        <span>${escapeHtml(domain)}</span>
+      <h2>Summary</h2>
+
+      <div class="summary-row">
+        <div class="summary-row-inner">
+          <div class="summary-label">Domain</div>
+          <div class="summary-value-small">${escapeHtml(domain)}</div>
+        </div>
       </div>
-      <div class="summary-item">
-        <strong>Pages Audited</strong>
-        <span>${pagesAudited}</span>
+
+      <div class="summary-row">
+        <div class="summary-row-inner">
+          <div class="summary-label">Pages Audited</div>
+          <div class="summary-value">${pagesAudited}</div>
+        </div>
       </div>
-      <div class="summary-item">
-        <strong>Pages with Issues</strong>
-        <span>${pagesWithIssues}${pagesAudited > 0 ? ` / ${pagesAudited}` : ''}</span>
+
+      <div class="summary-row">
+        <div class="summary-row-inner">
+          <div class="summary-label">Issues Found</div>
+          <div class="summary-value">${totalIssues}</div>
+          ${totalIssues > 0 ? `
+            <div class="severity-breakdown">
+              ${severityCounts.critical > 0 ? `<span class="sev-critical">${severityCounts.critical} Critical</span>` : ''}
+              ${severityCounts.medium > 0 ? `<span class="sev-medium">${severityCounts.medium} Medium</span>` : ''}
+              ${severityCounts.low > 0 ? `<span class="sev-low">${severityCounts.low} Low</span>` : ''}
+            </div>
+          ` : ''}
+        </div>
       </div>
-      <div class="summary-item">
-        <strong>Total Issues</strong>
-        <span>${totalIssues}</span>
-      </div>
-      <div class="summary-item">
-        <strong>Audit Date</strong>
-        <span>${escapeHtml(createdAt)}</span>
+
+      <div class="summary-row">
+        <div class="summary-row-inner">
+          <div class="summary-label">Pages with Issues</div>
+          <div class="summary-value-small">${pagesWithIssues}${pagesAudited > 0 ? ` of ${pagesAudited}` : ''}</div>
+        </div>
       </div>
     </div>
-  </div>
 
-  <h2 style="margin-top: 40px; margin-bottom: 20px;">Issues Found</h2>
-  ${issues.length > 0 ? issuesHTML : '<p style="color: #666; font-style: italic;">No issues found in this audit.</p>'}
+    <!-- Scope section - shows pages audited -->
+    ${scopeHTML}
 
-  ${auditedUrls.length > 0 ? `
-    <div class="audited-urls">
-      <h2>Pages Opened</h2>
-      <ul>
-        ${auditedUrls.map(url => `<li>${escapeHtml(url)}</li>`).join('')}
-      </ul>
-    </div>
-  ` : ''}
+    <!-- Issues section -->
+    <h2>Issues</h2>
+    ${issues.length > 0 ? issuesHTML : '<p class="no-issues">No issues found in this audit.</p>'}
   </div>
 
   <div class="footer">
-    <div class="footer-brand">
-      <span class="footer-text">Fortress</span>
+    <div class="footer-brand">Fortress</div>
+    <div class="footer-meta">
+      Report generated ${escapeHtml(formattedDate)} &middot;
+      <a href="https://usefortress.vercel.app" class="footer-link">usefortress.vercel.app</a>
     </div>
-    <p>Generated by <a href="https://aistyleguide.com" class="footer-link">Fortress</a> - Content quality audit platform</p>
-    <p style="margin-top: 8px; color: #999;">This report was automatically generated from your content audit</p>
   </div>
 </body>
 </html>`
