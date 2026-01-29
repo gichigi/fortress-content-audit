@@ -42,6 +42,7 @@ import { AuditStartedModal } from "@/components/audit-started-modal"
 import { AuditSuccessModal } from "@/components/audit-success-modal"
 import { AuditFailureModal } from "@/components/audit-failure-modal"
 import { DomainLimitReachedModal } from "@/components/domain-limit-reached-modal"
+import { PageDiscoveryInline } from "@/components/PageDiscoveryInline"
 import { classifyError } from "@/lib/error-classifier"
 import type { ClassifiedError } from "@/lib/error-classifier"
 import { useCheckDomainLimit } from "@/hooks/use-check-domain-limit"
@@ -1510,12 +1511,25 @@ export default function DashboardPage() {
                 )}
 
                 <div className="flex flex-col gap-3 px-4 lg:px-6 sm:flex-row sm:items-center sm:justify-between">
-                  {/* First line: Domain name */}
-                  <h2 className="font-serif text-2xl font-semibold">
-                    {selectedDomain || 'Content Audits'}
-                  </h2>
+                  {/* Domain name + pages found/audited toggle */}
+                  <div className="flex flex-col gap-1 min-w-0">
+                    <h2 className="font-serif text-2xl font-semibold">
+                      {selectedDomain || 'Content Audits'}
+                    </h2>
+                    {mostRecentAudit &&
+                      !pendingAuditId &&
+                      (mostRecentAudit.pages_found != null && mostRecentAudit.pages_found > 0 ||
+                        (mostRecentAudit.issues_json?.discoveredPages?.length ?? 0) > 0) && (
+                      <PageDiscoveryInline
+                        discoveredPages={mostRecentAudit.issues_json?.discoveredPages || []}
+                        auditedUrls={mostRecentAudit.issues_json?.auditedUrls || []}
+                        pagesFound={mostRecentAudit.pages_found ?? mostRecentAudit.issues_json?.pagesFound ?? null}
+                        isAuthenticated={true}
+                      />
+                    )}
+                  </div>
 
-                  {/* Second line: Toggle, Export, and Run New Audit buttons */}
+                  {/* Toggle, Export, and Run New Audit buttons */}
                   <div className="flex items-center gap-3 sm:gap-4">
                     {/* Auto Audit Status for Paid Users */}
                     {(plan === 'pro' || plan === 'enterprise') && selectedDomain && (
@@ -1648,7 +1662,13 @@ export default function DashboardPage() {
                   } : healthScoreData?.currentScore}
                   pagesAudited={mostRecentAudit?.pages_audited ?? null}
                   previousScore={previousScore}
-                  onFilterChange={(filter) => setSeverityFilter(filter === null ? 'all' : filter)}
+                  onFilterChange={(filter) => {
+                    setSeverityFilter(filter === null ? 'all' : filter)
+                    // Scroll to table so user sees the filtered results
+                    requestAnimationFrame(() => {
+                      document.querySelector('[data-issues-section]')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                    })
+                  }}
                   activeFilter={severityFilter === 'all' ? null : severityFilter}
                 />
 

@@ -47,7 +47,7 @@ export function useHealthScoreMetrics(tableRows: AuditTableRow[]): HealthScoreMe
       }
     })
 
-    // Calculate health score from metrics
+    // Calculate health score from metrics (matches lib/health-score.ts: fairer calibration)
     const bySeverity = {
       low: activeIssues.filter(i => i.severity === 'low').length,
       medium: activeIssues.filter(i => i.severity === 'medium').length,
@@ -55,10 +55,10 @@ export function useHealthScoreMetrics(tableRows: AuditTableRow[]): HealthScoreMe
     }
     
     let score = 100
-    score -= bySeverity.low * 1
-    score -= bySeverity.medium * 3
-    score -= bySeverity.critical * 7
-    score -= criticalPagesSet.size * 10
+    score -= bySeverity.low * 0.5
+    score -= bySeverity.medium * 2
+    score -= bySeverity.critical * 4
+    score -= criticalPagesSet.size * 5
 
     // Clamp to 1-100 (minimum 1 if issues exist, matches server-side)
     score = Math.max(1, Math.min(100, score))

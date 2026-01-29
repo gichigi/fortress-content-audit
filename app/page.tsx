@@ -657,7 +657,8 @@ export default function Home() {
                 <h2 className="font-serif text-3xl md:text-4xl font-light tracking-tight mb-2">
                   {displayDomain}
                 </h2>
-                {auditResults?.meta && (
+                {auditResults?.meta &&
+                  (auditResults.meta.pagesFound > 0 || (auditResults.meta.discoveredPages?.length ?? 0) > 0) && (
                   <PageDiscoveryInline
                     discoveredPages={auditResults.meta.discoveredPages || []}
                     auditedUrls={auditResults.meta.auditedUrls || []}
@@ -668,7 +669,7 @@ export default function Home() {
               </div>
             )}
 
-            {/* Health Score Cards */}
+            {/* Health Score Cards - no filter clicks on homepage (preview, can't see everything) */}
             <HealthScoreCards
               currentScore={!isLoading ? {
                 score: metrics.score,
@@ -681,8 +682,6 @@ export default function Home() {
               } : undefined}
               previousScore={undefined}
               loading={isLoading}
-              onFilterChange={(filter) => setSeverityFilter(filter === null ? 'all' : filter)}
-              activeFilter={severityFilter === 'all' ? null : severityFilter}
             />
 
 

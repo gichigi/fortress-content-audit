@@ -11,17 +11,17 @@ import { createMockAuditData } from '@/lib/mock-audit-data'
 import { detectMilestoneCrossings, getMilestoneToastContent } from '@/lib/milestones'
 
 /**
- * Simple in-memory health score calculation from issues array
- * Formula: 100 - (low×1 + medium×3 + critical×7)
+ * Simple in-memory health score calculation from issues array.
+ * Matches lib/health-score.ts severity weights (no critical-pages here): fairer calibration.
  */
 function calculateScoreFromIssues(issues: Array<{ severity: string }>): number {
   let penalty = 0
   for (const issue of issues) {
     switch (issue.severity) {
-      case 'low': penalty += 1; break
-      case 'medium': penalty += 3; break
+      case 'low': penalty += 0.5; break
+      case 'medium': penalty += 2; break
       case 'high':
-      case 'critical': penalty += 7; break
+      case 'critical': penalty += 4; break
     }
   }
   return Math.max(0, Math.min(100, 100 - penalty))

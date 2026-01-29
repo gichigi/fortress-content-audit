@@ -23,11 +23,11 @@ export interface HealthScoreResult {
 /**
  * Calculate health score for a single audit
  *
- * Formula: 100 - (low×1 + medium×3 + high×7) - (criticalPages×10)
+ * Formula: 100 - (low×0.5 + medium×2 + critical×4) - (criticalPages×5)
  * - Excludes ignored/resolved issues (only counts active)
- * - Critical pages = pages with at least one high-severity issue
+ * - Critical pages = pages with at least one critical-severity issue
  * - Score clamped to 1-100 (minimum 1 if issues exist, can be 100 if no issues)
- * - Counts issues, not instances
+ * - Counts issues, not instances; calibrated so a few criticals don’t tank the score
  *
  * @param audit - Audit run (issues queried from issues table)
  * @returns Health score result with metrics
@@ -108,12 +108,12 @@ export async function calculateHealthScore(
   const criticalPages = criticalPagesSet.size
   const pagesWithIssues = pagesWithIssuesSet.size
   
-  // Apply formula: 100 - (low×1 + medium×3 + critical×7) - (criticalPages×10)
+  // Apply formula: 100 - (low×0.5 + medium×2 + critical×4) - (criticalPages×5)
   let score = 100
-  score -= bySeverity.low * 1
-  score -= bySeverity.medium * 3
-  score -= bySeverity.critical * 7
-  score -= criticalPages * 10
+  score -= bySeverity.low * 0.5
+  score -= bySeverity.medium * 2
+  score -= bySeverity.critical * 4
+  score -= criticalPages * 5
 
   // Clamp to 1-100 (minimum 1 if issues exist, can be 100 if no issues)
   score = Math.max(1, Math.min(100, score))
@@ -230,12 +230,12 @@ export async function calculateAggregatedHealthScore(
   const criticalPages = criticalPagesSet.size
   const pagesWithIssues = pagesWithIssuesSet.size
   
-  // Apply formula
+  // Apply formula (same as single-audit: fairer so few criticals don’t tank score)
   let score = 100
-  score -= bySeverity.low * 1
-  score -= bySeverity.medium * 3
-  score -= bySeverity.critical * 7
-  score -= criticalPages * 10
+  score -= bySeverity.low * 0.5
+  score -= bySeverity.medium * 2
+  score -= bySeverity.critical * 4
+  score -= criticalPages * 5
 
   // Clamp to 1-100 (minimum 1 if issues exist, can be 100 if no issues)
   score = Math.max(1, Math.min(100, score))

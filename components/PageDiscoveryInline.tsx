@@ -90,23 +90,16 @@ export function PageDiscoveryInline({
 }: PageDiscoveryInlineProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [showAll, setShowAll] = useState(false)
-  const [numColumns, setNumColumns] = useState(1)
+  const [isDesktop, setIsDesktop] = useState(false)
 
-  // Detect screen size for responsive column-major ordering
+  // Detect screen size: desktop = 5-down-then-across; mobile = single column
   useEffect(() => {
-    const updateColumns = () => {
-      if (window.innerWidth >= 1024) {
-        setNumColumns(3) // lg breakpoint
-      } else if (window.innerWidth >= 768) {
-        setNumColumns(2) // md breakpoint
-      } else {
-        setNumColumns(1) // mobile
-      }
+    const update = () => {
+      setIsDesktop(window.innerWidth >= 768)
     }
-
-    updateColumns()
-    window.addEventListener('resize', updateColumns)
-    return () => window.removeEventListener('resize', updateColumns)
+    update()
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
   }, [])
 
   // Use pagesFound if available, otherwise fall back to discoveredPages length
@@ -138,10 +131,11 @@ export function PageDiscoveryInline({
   const limitedPages = showAll ? sortedPages : sortedPages.slice(0, initialShowCount)
   const hasMore = sortedPages.length > initialShowCount
 
-  // Reorder for column-major layout (top-to-bottom, left-to-right) based on screen size
+  // Desktop: 5 down then across (column-major). Mobile: single column.
+  const numColumns = isDesktop ? Math.max(1, Math.ceil(limitedPages.length / 5)) : 1
   const pagesToShow = numColumns > 1
     ? reorderForColumns(limitedPages, numColumns)
-    : limitedPages // No reordering needed for single column
+    : limitedPages
 
   // Tier limits
   const freeLimit = 5
@@ -178,7 +172,10 @@ export function PageDiscoveryInline({
       {/* Expandable page list - single column mobile, multi-column desktop */}
       {isExpanded && discoveredPages.length > 0 && (
         <div className="mt-3 pl-0.5 animate-in fade-in slide-in-from-top-2 duration-200">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-1.5">
+          <div
+            className="grid grid-cols-1 gap-x-6 gap-y-1.5"
+            style={isDesktop && numColumns > 1 ? { gridTemplateColumns: `repeat(${numColumns}, 1fr)` } : undefined}
+          >
             {pagesToShow.map((url, i) => {
               const audited = isAudited(url, auditedUrls)
               return (
