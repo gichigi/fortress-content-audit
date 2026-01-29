@@ -43,6 +43,7 @@ import { AuditSuccessModal } from "@/components/audit-success-modal"
 import { AuditFailureModal } from "@/components/audit-failure-modal"
 import { DomainLimitReachedModal } from "@/components/domain-limit-reached-modal"
 import { PageDiscoveryInline } from "@/components/PageDiscoveryInline"
+import { PagesSummaryModal } from "@/components/pages-summary-modal"
 import { classifyError } from "@/lib/error-classifier"
 import type { ClassifiedError } from "@/lib/error-classifier"
 import { useCheckDomainLimit } from "@/hooks/use-check-domain-limit"
@@ -53,6 +54,7 @@ interface AuditRun {
   title: string | null
   brand_name: string | null
   pages_audited: number | null
+  pages_found?: number | null
   issues_json: any
   created_at: string | null
   guideline_id: string | null
@@ -130,6 +132,7 @@ export default function DashboardPage() {
   })
 
   const [domainLimitModalOpen, setDomainLimitModalOpen] = useState(false)
+  const [pagesSummaryModalOpen, setPagesSummaryModalOpen] = useState(false)
   const { isAtLimit, plan: limitPlan, currentDomains, domainLimit, checkLimit } = useCheckDomainLimit()
 
   // Helper function to calculate issue breakdown by severity
@@ -160,6 +163,22 @@ export default function DashboardPage() {
 
   // Calculate metrics using shared hook
   const metrics = useHealthScoreMetrics(displayTableRows)
+
+  // Paths (from page_url) that have at least one active issue — for pages summary modal
+  const pagePathsWithIssues = useMemo(() => {
+    const set = new Set<string>()
+    displayTableRows
+      .filter((row) => (row.status || "active") === "active" && row.page_url)
+      .forEach((row) => {
+        try {
+          const path = new URL(row.page_url!).pathname.replace(/\/$/, "") || "/"
+          set.add(path)
+        } catch {
+          /* skip invalid URL */
+        }
+      })
+    return set
+  }, [displayTableRows])
 
   // Merge chart data with current table metrics
   const chartDataWithCurrent = useMemo(() => {
@@ -1664,12 +1683,18 @@ export default function DashboardPage() {
                   previousScore={previousScore}
                   onFilterChange={(filter) => {
                     setSeverityFilter(filter === null ? 'all' : filter)
-                    // Scroll to table so user sees the filtered results
                     requestAnimationFrame(() => {
                       document.querySelector('[data-issues-section]')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
                     })
                   }}
                   activeFilter={severityFilter === 'all' ? null : severityFilter}
+                  onPagesWithIssuesClick={
+                    mostRecentAudit &&
+                    (mostRecentAudit.issues_json?.discoveredPages?.length > 0 ||
+                      (mostRecentAudit.pages_found != null && mostRecentAudit.pages_found > 0))
+                      ? () => setPagesSummaryModalOpen(true)
+                      : undefined
+                  }
                 />
 
                 {/* Health Score Chart - Show if we have data (historical or current) */}
@@ -1843,6 +1868,20 @@ export default function DashboardPage() {
         currentDomains={currentDomains}
         domainLimit={domainLimit}
       />
+
+      {/* Pages summary modal — pages found, audited, with issues */}
+      {mostRecentAudit && (
+        <PagesSummaryModal
+          open={pagesSummaryModalOpen}
+          onOpenChange={setPagesSummaryModalOpen}
+          pagesFound={mostRecentAudit.pages_found ?? mostRecentAudit.issues_json?.pagesFound ?? null}
+          pagesAudited={mostRecentAudit.issues_json?.auditedUrls?.length ?? mostRecentAudit.pages_audited ?? 0}
+          pagesWithIssues={metrics.pagesWithIssues ?? 0}
+          discoveredPages={mostRecentAudit.issues_json?.discoveredPages ?? []}
+          auditedUrls={mostRecentAudit.issues_json?.auditedUrls ?? []}
+          pagePathsWithIssues={pagePathsWithIssues}
+        />
+      )}
     </>
   )
 }

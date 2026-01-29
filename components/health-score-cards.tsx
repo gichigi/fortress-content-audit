@@ -26,6 +26,7 @@ interface HealthScoreCardsProps {
   loading?: boolean
   onFilterChange?: (filter: 'all' | 'critical' | null) => void
   activeFilter?: 'all' | 'critical' | null // null means 'all' (show all), 'critical' means filter to critical
+  onPagesWithIssuesClick?: () => void
 }
 
 export function HealthScoreCards({ 
@@ -34,7 +35,8 @@ export function HealthScoreCards({
   previousScore, 
   loading,
   onFilterChange,
-  activeFilter = null
+  activeFilter = null,
+  onPagesWithIssuesClick,
 }: HealthScoreCardsProps) {
   // Show loading state only while actively loading
   if (loading) {
@@ -155,7 +157,12 @@ export function HealthScoreCards({
         </CardFooter>
       </Card>
       
-      <Card className="@container/card border border-border">
+      <Card
+        className={`@container/card border transition-all ${
+          onPagesWithIssuesClick ? 'cursor-pointer hover:shadow-md hover:border-foreground/20' : ''
+        }`}
+        onClick={onPagesWithIssuesClick ?? undefined}
+      >
         <CardHeader className="relative">
           <CardDescription>Pages with Issues</CardDescription>
           <CardTitle className="@[250px]/card:text-3xl text-2xl font-semibold tabular-nums">
@@ -170,10 +177,11 @@ export function HealthScoreCards({
             Pages requiring content fixes
           </div>
           <div className="text-muted-foreground">
-            {pagesAudited !== null && pagesAudited !== undefined
-              ? `${metrics.pagesWithIssues || 0} pages with issues out of ${pagesAudited} pages audited`
-              : 'Unique pages with active issues'
-            }
+            {onPagesWithIssuesClick
+              ? 'Click to view pages summary'
+              : pagesAudited !== null && pagesAudited !== undefined
+                ? `${metrics.pagesWithIssues || 0} pages with issues out of ${pagesAudited} pages audited`
+                : 'Unique pages with active issues'}
           </div>
         </CardFooter>
       </Card>
