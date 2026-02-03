@@ -178,6 +178,13 @@ export async function PUT(request: Request) {
           { status: 400 }
         )
       }
+      // Sanitize: reject keywords with newlines or tabs
+      if (flag_keywords.some((k) => typeof k === "string" && /[\n\r\t]/.test(k))) {
+        return NextResponse.json(
+          { error: "flag_keywords cannot contain newlines or tabs" },
+          { status: 400 }
+        )
+      }
     }
 
     if (ignore_keywords && Array.isArray(ignore_keywords)) {
@@ -190,6 +197,13 @@ export async function PUT(request: Request) {
       if (ignore_keywords.some((k) => typeof k === "string" && k.length > MAX_KEYWORD_LENGTH)) {
         return NextResponse.json(
           { error: `ignore_keywords item exceeds maximum length of ${MAX_KEYWORD_LENGTH} characters` },
+          { status: 400 }
+        )
+      }
+      // Sanitize: reject keywords with newlines or tabs
+      if (ignore_keywords.some((k) => typeof k === "string" && /[\n\r\t]/.test(k))) {
+        return NextResponse.json(
+          { error: "ignore_keywords cannot contain newlines or tabs" },
           { status: 400 }
         )
       }

@@ -83,7 +83,7 @@ export async function POST(request: Request) {
       validFlagKeywords = validFlagKeywords.slice(0, MAX_KEYWORDS)
     }
     validFlagKeywords = validFlagKeywords.filter(
-      (k) => typeof k === "string" && k.length > 0 && k.length <= MAX_KEYWORD_LENGTH
+      (k) => typeof k === "string" && k.length > 0 && k.length <= MAX_KEYWORD_LENGTH && !/[\n\r\t]/.test(k)
     )
 
     let validIgnoreKeywords = Array.isArray(result.ignore_keywords) ? result.ignore_keywords : []
@@ -91,7 +91,7 @@ export async function POST(request: Request) {
       validIgnoreKeywords = validIgnoreKeywords.slice(0, MAX_KEYWORDS)
     }
     validIgnoreKeywords = validIgnoreKeywords.filter(
-      (k) => typeof k === "string" && k.length > 0 && k.length <= MAX_KEYWORD_LENGTH
+      (k) => typeof k === "string" && k.length > 0 && k.length <= MAX_KEYWORD_LENGTH && !/[\n\r\t]/.test(k)
     )
 
     // Validate voice summary length

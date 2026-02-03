@@ -17,6 +17,7 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, X, Check } from "lucide-react"
+import { VALID_READABILITY, VALID_FORMALITY, VALID_LOCALE } from "@/lib/brand-voice-constants"
 
 interface ContentCheckSettings {
   readability_level: string | null
@@ -213,9 +214,9 @@ export default function ContentChecksPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Not set</SelectItem>
-                  <SelectItem value="grade_6_8">Grade 6–8</SelectItem>
-                  <SelectItem value="grade_10_12">Grade 10–12</SelectItem>
-                  <SelectItem value="grade_13_plus">13+</SelectItem>
+                  <SelectItem value={VALID_READABILITY[0]}>Grade 6–8</SelectItem>
+                  <SelectItem value={VALID_READABILITY[1]}>Grade 10–12</SelectItem>
+                  <SelectItem value={VALID_READABILITY[2]}>13+</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -227,11 +228,11 @@ export default function ContentChecksPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Not set</SelectItem>
-                  <SelectItem value="very_casual">Very casual</SelectItem>
-                  <SelectItem value="casual">Casual</SelectItem>
-                  <SelectItem value="neutral">Neutral</SelectItem>
-                  <SelectItem value="formal">Formal</SelectItem>
-                  <SelectItem value="very_formal">Very formal</SelectItem>
+                  <SelectItem value={VALID_FORMALITY[0]}>Very casual</SelectItem>
+                  <SelectItem value={VALID_FORMALITY[1]}>Casual</SelectItem>
+                  <SelectItem value={VALID_FORMALITY[2]}>Neutral</SelectItem>
+                  <SelectItem value={VALID_FORMALITY[3]}>Formal</SelectItem>
+                  <SelectItem value={VALID_FORMALITY[4]}>Very formal</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -243,8 +244,8 @@ export default function ContentChecksPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Not set</SelectItem>
-                  <SelectItem value="en-US">US English</SelectItem>
-                  <SelectItem value="en-GB">UK English</SelectItem>
+                  <SelectItem value={VALID_LOCALE[0]}>US English</SelectItem>
+                  <SelectItem value={VALID_LOCALE[1]}>UK English</SelectItem>
                 </SelectContent>
               </Select>
             </div>
