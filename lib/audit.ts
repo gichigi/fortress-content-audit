@@ -1622,17 +1622,20 @@ async function selectPagesToAudit(
         role: "user",
         content: `Pick the ${targetCount} most important pages to audit for content quality from this website.
 
+CRITICAL: You MUST ONLY select URLs from the "Available URLs" list below. Do NOT make up or guess URLs.
+
 Prioritize in order:
 1. Homepage (always include)
-2. Pricing/plans page
-3. About/company page
+2. Pricing/plans page (if one exists in the list)
+3. About/company page (if one exists in the list)
 4. Key product/feature pages
-5. Contact/support page
+5. Contact/support page (if one exists in the list)
 6. Blog posts (1-2 max)
 7. Other high-value marketing pages
 
 Return ONLY a JSON object with this exact format: {"urls": ["url1", "url2", ...]}
 Do not include any explanation or other text.
+Only include URLs that appear in the list below.
 
 Available URLs:
 ${discoveredUrls.join('\n')}`
@@ -1656,16 +1659,51 @@ ${discoveredUrls.join('\n')}`
       return [homepage, ...discoveredUrls.filter(u => u !== homepage).slice(0, targetCount - 1)]
     }
 
-    // Ensure homepage is included
-    if (!selectedUrls.includes(homepage)) {
-      selectedUrls.unshift(homepage)
-      if (selectedUrls.length > targetCount) {
-        selectedUrls.pop()
+    // CRITICAL: Validate that selected URLs actually exist in discovered URLs
+    // Prevents model from hallucinating URLs based on priority list (e.g., /pricing, /contact)
+    const normalizeForComparison = (url: string) => {
+      try {
+        const parsed = new URL(url)
+        return `${parsed.origin}${parsed.pathname}`.replace(/\/$/, '').toLowerCase()
+      } catch {
+        return url.replace(/\/$/, '').toLowerCase()
       }
     }
 
-    Logger.info(`[PageSelection] Selected ${selectedUrls.length} pages to audit`)
-    return selectedUrls
+    const normalizedDiscoveredUrls = discoveredUrls.map(normalizeForComparison)
+    const validUrls: string[] = []
+    const hallucinatedUrls: string[] = []
+
+    for (const url of selectedUrls) {
+      const normalized = normalizeForComparison(url)
+      if (normalizedDiscoveredUrls.includes(normalized)) {
+        validUrls.push(url)
+      } else {
+        hallucinatedUrls.push(url)
+      }
+    }
+
+    // Log hallucinated URLs for debugging
+    if (hallucinatedUrls.length > 0) {
+      Logger.warn(`[PageSelection] Model hallucinated ${hallucinatedUrls.length} URLs not in discovered list: ${hallucinatedUrls.join(', ')}`)
+    }
+
+    // If all URLs were hallucinated, fall back to default selection
+    if (validUrls.length === 0) {
+      Logger.warn('[PageSelection] All selected URLs were hallucinated, falling back to first N URLs')
+      return [homepage, ...discoveredUrls.filter(u => u !== homepage).slice(0, targetCount - 1)]
+    }
+
+    // Ensure homepage is included
+    if (!validUrls.includes(homepage)) {
+      validUrls.unshift(homepage)
+      if (validUrls.length > targetCount) {
+        validUrls.pop()
+      }
+    }
+
+    Logger.info(`[PageSelection] Selected ${validUrls.length} valid pages to audit (filtered ${hallucinatedUrls.length} hallucinated URLs)`)
+    return validUrls
   } catch (error) {
     Logger.warn('[PageSelection] Error selecting pages, falling back to first N URLs', error instanceof Error ? error : undefined)
     // Fallback: homepage + first N-1 other URLs
