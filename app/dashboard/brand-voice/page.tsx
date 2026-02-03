@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
 import { GuidelinesEditor } from "@/components/guidelines-editor"
 import { Loader2, Save, Sparkles } from "lucide-react"
+import { MAX_VOICE_SUMMARY } from "@/lib/brand-voice-constants"
 
 interface GuidelinesData {
   enabled: boolean
@@ -72,6 +73,17 @@ export default function GuidelinesPage() {
 
   const handleSave = async () => {
     if (!authToken || !domain) return
+
+    // Validate voice summary length
+    if (voiceSummary.length > MAX_VOICE_SUMMARY) {
+      toast({
+        title: "Too long",
+        description: `Brand voice guidelines cannot exceed ${MAX_VOICE_SUMMARY} characters. Current: ${voiceSummary.length}`,
+        variant: "destructive",
+      })
+      return
+    }
+
     setSaving(true)
     try {
       // Get current profile to preserve other fields

@@ -1,11 +1,22 @@
 // POST /api/brand-voice/generate – extract brand voice from website (stub; agent implemented in lib)
 import { NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase-admin"
+import {
+  VALID_READABILITY,
+  VALID_FORMALITY,
+  VALID_LOCALE,
+  MAX_VOICE_SUMMARY,
+  MAX_KEYWORDS,
+  MAX_KEYWORD_LENGTH,
+  isValidDomain,
+} from "@/lib/brand-voice-constants"
 
 function getBearer(req: Request) {
-  const a = req.headers.get("authorization") || req.headers.get("Authorization")
-  if (!a?.toLowerCase().startsWith("bearer ")) return null
-  return a.split(" ")[1]
+  const auth = req.headers.get("authorization") || req.headers.get("Authorization")
+  if (!auth?.toLowerCase().startsWith("bearer ")) return null
+  const parts = auth.split(" ")
+  if (parts.length !== 2) return null
+  return parts[1]
 }
 
 function normalizeDomain(domain: string): string {
@@ -42,21 +53,63 @@ export async function POST(request: Request) {
     }
 
     const normalized = normalizeDomain(domain)
+    if (!isValidDomain(normalized)) {
+      return NextResponse.json({ error: "Invalid domain format" }, { status: 400 })
+    }
 
     // Extraction will be implemented in brand-voice-agents; for now stub
     const { extractBrandVoiceFromSite } = await import("@/lib/brand-voice-extract")
     const result = await extractBrandVoiceFromSite(normalized)
 
+    // Validate and coerce extracted enum values to valid ones or null
+    const validReadability: string | null =
+      result.readability_level && VALID_READABILITY.includes(result.readability_level as any)
+        ? result.readability_level
+        : null
+
+    const validFormality: string | null =
+      result.formality && VALID_FORMALITY.includes(result.formality as any)
+        ? result.formality
+        : null
+
+    const validLocale: string | null =
+      result.locale && VALID_LOCALE.includes(result.locale as any)
+        ? result.locale
+        : null
+
+    // Validate array lengths
+    let validFlagKeywords = Array.isArray(result.flag_keywords) ? result.flag_keywords : []
+    if (validFlagKeywords.length > MAX_KEYWORDS) {
+      validFlagKeywords = validFlagKeywords.slice(0, MAX_KEYWORDS)
+    }
+    validFlagKeywords = validFlagKeywords.filter(
+      (k) => typeof k === "string" && k.length > 0 && k.length <= MAX_KEYWORD_LENGTH
+    )
+
+    let validIgnoreKeywords = Array.isArray(result.ignore_keywords) ? result.ignore_keywords : []
+    if (validIgnoreKeywords.length > MAX_KEYWORDS) {
+      validIgnoreKeywords = validIgnoreKeywords.slice(0, MAX_KEYWORDS)
+    }
+    validIgnoreKeywords = validIgnoreKeywords.filter(
+      (k) => typeof k === "string" && k.length > 0 && k.length <= MAX_KEYWORD_LENGTH
+    )
+
+    // Validate voice summary length
+    let validVoiceSummary = result.voice_summary ?? null
+    if (validVoiceSummary && validVoiceSummary.length > MAX_VOICE_SUMMARY) {
+      validVoiceSummary = validVoiceSummary.substring(0, MAX_VOICE_SUMMARY)
+    }
+
     const row = {
       user_id: userId,
       domain: normalized,
-      readability_level: result.readability_level ?? null,
-      formality: result.formality ?? null,
-      locale: result.locale ?? null,
-      flag_keywords: result.flag_keywords ?? [],
-      ignore_keywords: result.ignore_keywords ?? [],
+      readability_level: validReadability,
+      formality: validFormality,
+      locale: validLocale,
+      flag_keywords: validFlagKeywords,
+      ignore_keywords: validIgnoreKeywords,
       source: "auto",
-      voice_summary: result.voice_summary ?? null,
+      voice_summary: validVoiceSummary,
       source_domain: normalized,
       source_pages: result.source_pages ?? null,
       source_summary: result.source_summary ?? null,
@@ -74,6 +127,13 @@ export async function POST(request: Request) {
 
     if (error) {
       console.error("[BrandVoice Generate] Save error:", error)
+      // PostgreSQL error code 23505 = unique violation
+      if (error.code === "23505") {
+        return NextResponse.json(
+          { error: "This domain already has a profile for this user" },
+          { status: 409 }
+        )
+      }
       return NextResponse.json({ error: "Failed to save profile" }, { status: 500 })
     }
 

@@ -173,14 +173,16 @@ export default function ContentChecksPage() {
 
   const addFlagKeyword = () => {
     const v = flagKeywordInput.trim()
-    if (v) {
+    // Validate: no newlines, no whitespace-only, length limit
+    if (v && v.length <= 100 && !v.includes('\n') && !/^\s+$/.test(v)) {
       setFlagKeywords((prev) => [...prev, v])
       setFlagKeywordInput("")
     }
   }
   const addIgnoreKeyword = () => {
     const v = ignoreKeywordInput.trim()
-    if (v) {
+    // Validate: no newlines, no whitespace-only, length limit
+    if (v && v.length <= 100 && !v.includes('\n') && !/^\s+$/.test(v)) {
       setIgnoreKeywords((prev) => [...prev, v])
       setIgnoreKeywordInput("")
     }
@@ -284,6 +286,7 @@ export default function ContentChecksPage() {
                       value={flagKeywordInput}
                       onChange={(e) => setFlagKeywordInput(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addFlagKeyword())}
+                      maxLength={100}
                       className="max-w-[200px]"
                     />
                     <Button type="button" variant="secondary" size="sm" onClick={addFlagKeyword}>Add</Button>
@@ -321,6 +324,7 @@ export default function ContentChecksPage() {
                       value={ignoreKeywordInput}
                       onChange={(e) => setIgnoreKeywordInput(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addIgnoreKeyword())}
+                      maxLength={100}
                       className="max-w-[200px]"
                     />
                     <Button type="button" variant="secondary" size="sm" onClick={addIgnoreKeyword}>Add</Button>
