@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { createClient } from "@/lib/supabase-browser"
 import { Globe, Check, Plus, Trash2, MoreHorizontalIcon, Loader2 } from "lucide-react"
 import {
@@ -10,6 +11,9 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuAction,
+  SidebarMenuSub,
+  SidebarMenuSubItem,
+  SidebarMenuSubButton,
   useSidebar,
 } from "@/components/ui/sidebar"
 import {
@@ -331,16 +335,43 @@ export function DomainSwitcher() {
         {domains.map((domain, index) => (
           <SidebarMenuItem key={`${domain}-${index}`}>
             <SidebarMenuButton
-              onClick={() => handleDomainChange(domain)}
+              asChild
               data-active={selectedDomain === domain}
               tooltip={domain}
             >
-              <Globe className="h-4 w-4" />
-              <span>{domain}</span>
-              {selectedDomain === domain && (
-                <Check className="ml-auto h-4 w-4" />
-              )}
+              <Link href="/dashboard" onClick={() => handleDomainChange(domain)}>
+                <Globe className="h-4 w-4" />
+                <span>{domain}</span>
+                {selectedDomain === domain && (
+                  <Check className="ml-auto h-4 w-4" />
+                )}
+              </Link>
             </SidebarMenuButton>
+            {selectedDomain === domain && (
+              <SidebarMenuSub>
+                <SidebarMenuSubItem>
+                  <SidebarMenuSubButton asChild>
+                    <Link href={`/dashboard/content-checks?domain=${encodeURIComponent(domain)}`}>
+                      <span>Content Checks</span>
+                    </Link>
+                  </SidebarMenuSubButton>
+                </SidebarMenuSubItem>
+                <SidebarMenuSubItem>
+                  <SidebarMenuSubButton asChild>
+                    <Link href={`/dashboard/brand-voice?domain=${encodeURIComponent(domain)}`}>
+                      <span>Brand Voice</span>
+                    </Link>
+                  </SidebarMenuSubButton>
+                </SidebarMenuSubItem>
+                <SidebarMenuSubItem>
+                  <SidebarMenuSubButton asChild>
+                    <Link href={`/dashboard/audit-options?domain=${encodeURIComponent(domain)}`}>
+                      <span>Audit Options</span>
+                    </Link>
+                  </SidebarMenuSubButton>
+                </SidebarMenuSubItem>
+              </SidebarMenuSub>
+            )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <SidebarMenuAction
