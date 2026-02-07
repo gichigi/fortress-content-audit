@@ -86,12 +86,6 @@ export default function GuidelinesPage() {
 
     setSaving(true)
     try {
-      // Get current profile to preserve other fields
-      const getRes = await fetch(`/api/brand-voice?domain=${encodeURIComponent(domain)}`, {
-        headers: { Authorization: `Bearer ${authToken}` },
-      })
-      const currentData = getRes.ok ? await getRes.json() : {}
-
       const res = await fetch("/api/brand-voice", {
         method: "PUT",
         headers: {
@@ -102,15 +96,7 @@ export default function GuidelinesPage() {
           domain,
           enabled,
           voice_summary: voiceSummary || null,
-          // Preserve other fields
-          readability_level: currentData.readability_level ?? null,
-          formality: currentData.formality ?? null,
-          locale: currentData.locale ?? null,
-          flag_keywords: currentData.flag_keywords ?? [],
-          ignore_keywords: currentData.ignore_keywords ?? [],
-          flag_ai_writing: currentData.flag_ai_writing ?? false,
-          include_longform_full_audit: currentData.include_longform_full_audit ?? false,
-          source: currentData.source ?? "manual",
+          source: "manual",
         }),
       })
       if (!res.ok) {
@@ -162,9 +148,9 @@ export default function GuidelinesPage() {
   return (
     <div className="container mx-auto max-w-4xl px-6 py-8">
       <div className="mb-8">
-        <h1 className="font-serif text-4xl font-semibold tracking-tight">Guidelines</h1>
-        <p className="text-muted-foreground mt-2">{domain}</p>
-        <p className="text-sm text-muted-foreground mt-1">Define and manage brand voice guidelines</p>
+        <p className="text-muted-foreground mb-1">{domain}</p>
+        <h1 className="font-serif text-4xl font-semibold tracking-tight">Brand Voice</h1>
+        <p className="text-sm text-muted-foreground mt-2">Flag content that doesn’t match the brand voice guidelines below.</p>
       </div>
 
       <div className="space-y-8">
@@ -173,10 +159,10 @@ export default function GuidelinesPage() {
           <div className="flex items-center justify-between gap-4">
             <div>
               <Label htmlFor="guidelines_enabled" className="cursor-pointer font-medium">
-                Enable brand voice checks
+                Brand voice guidelines
               </Label>
               <p className="text-sm text-muted-foreground mt-0.5">
-                Check content against your brand voice guidelines during audits
+                Add your brand voice guidelines. Generate from your site or enter manually.
               </p>
             </div>
             <Switch id="guidelines_enabled" checked={enabled} onCheckedChange={setEnabled} />
@@ -192,14 +178,10 @@ export default function GuidelinesPage() {
           }}
         >
           <section>
-            <h2 className="font-serif text-2xl font-semibold mb-4">Brand Voice Document</h2>
-            <p className="text-sm text-muted-foreground mb-6">
-              Write or generate guidelines for voice characteristics, tone preferences, do's and don'ts, and example phrases.
-            </p>
 
             {!voiceSummary.trim() && (
               <div className="mb-4 rounded-md border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-                No guidelines set. Use "Generate from site" to infer guidelines from your pages, or write your own.
+                No guidelines yet. Use Generate from site or write them below.
               </div>
             )}
 
@@ -207,7 +189,7 @@ export default function GuidelinesPage() {
               id="voice_summary"
               value={voiceSummary}
               onChange={setVoiceSummary}
-              placeholder="Write your brand voice guidelines here, or use Generate from site to infer them automatically."
+              placeholder="Describe how your brand should sound. Or use Generate from site to infer from your pages."
             />
 
             {sourceSummary && (
@@ -217,7 +199,7 @@ export default function GuidelinesPage() {
             )}
 
             <p className="mt-2 text-sm text-muted-foreground">
-              These guidelines will be checked against your content during audits when enabled.
+              Save to use in audits.
             </p>
           </section>
 
@@ -230,7 +212,7 @@ export default function GuidelinesPage() {
               variant="secondary"
               onClick={handleGenerate}
               disabled={generating}
-              title="Infer brand voice from your site content (headings, copy)"
+              title="Scans your site and fills the guidelines from headings and copy"
             >
               {generating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
               Generate from site

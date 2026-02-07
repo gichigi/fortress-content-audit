@@ -3,6 +3,7 @@ import { z } from "zod"
 import Logger from "./logger"
 import { extractElementManifest, formatManifestForPrompt, countInternalPages, extractDiscoveredPagesList } from "./manifest-extractor"
 import { buildMiniAuditPrompt, buildFullAuditPrompt, buildCategoryAuditPrompt } from "./audit-prompts"
+import { runBrandVoiceAuditPass, type BrandVoiceProfileForAudit } from "./brand-voice-audit"
 
 // ============================================================================
 // Content Audit
@@ -29,9 +30,14 @@ export type AuditTier = keyof typeof AUDIT_TIERS
 // See lib/audit-prompts.ts for prompt definitions
 
 // Zod schemas for structured audit output (new prompt format)
+const AUDIT_CATEGORIES = ["Language", "Facts & Consistency", "Links & Formatting", "Brand voice"] as const
+export type AuditCategory = (typeof AUDIT_CATEGORIES)[number]
+/** Categories run by category audit prompts (excludes Brand voice, which has its own pass) */
+export type ContentAuditCategory = "Language" | "Facts & Consistency" | "Links & Formatting"
+
 const NewPromptIssueSchema = z.object({
   page_url: z.string(),
-  category: z.enum(["Language", "Facts & Consistency", "Links & Formatting"]),
+  category: z.enum(AUDIT_CATEGORIES),
   issue_description: z.string(),
   severity: z.enum(["low", "medium", "critical"]),
   suggested_fix: z.string(),
@@ -58,7 +64,7 @@ const AuditResultSchema = z.object({
 export type AuditResult = {
   issues: Array<{
     page_url: string
-    category: 'Language' | 'Facts & Consistency' | 'Links & Formatting'
+    category: AuditCategory
     issue_description: string
     severity: 'low' | 'medium' | 'critical'
     suggested_fix: string
@@ -74,6 +80,8 @@ export type AuditResult = {
   tier?: AuditTier
   modelDurationMs?: number // Time taken for model to respond (in milliseconds)
   rawStatus?: string // Raw status from OpenAI API
+  /** Manifest text used for audit; set by parallel audit for brand voice pass */
+  manifestText?: string
 }
 
 // Legacy JSON schema removed - using new prompt format with Zod validation
@@ -474,10 +482,10 @@ export async function miniAudit(
 
 // Internal type for category audit results
 interface CategoryAuditResult {
-  category: "Language" | "Facts & Consistency" | "Links & Formatting"
+  category: AuditCategory
   issues: Array<{
     page_url: string
-    category: 'Language' | 'Facts & Consistency' | 'Links & Formatting'
+    category: AuditCategory
     issue_description: string
     severity: 'low' | 'medium' | 'critical'
     suggested_fix: string
@@ -489,14 +497,15 @@ interface CategoryAuditResult {
   error?: string
 }
 
-// Run a single category audit
+// Run a single category audit (Language, Facts & Consistency, Links & Formatting only)
 async function runCategoryAudit(
-  category: "Language" | "Facts & Consistency" | "Links & Formatting",
+  category: ContentAuditCategory,
   urlsToAudit: string[],
   domainHostname: string,
   manifestText: string,
   issueContext?: AuditIssueContext,
-  openai?: OpenAI
+  openai?: OpenAI,
+  keywords?: { ignore?: string[]; flag?: string[] }
 ): Promise<CategoryAuditResult> {
   const startTime = Date.now()
 
@@ -518,7 +527,9 @@ async function runCategoryAudit(
     urlsToAudit,
     manifestText,
     excludedIssuesJson,
-    activeIssuesJson
+    activeIssuesJson,
+    keywords?.ignore,
+    keywords?.flag
   )
 
   // Calculate tool calls: need at least 1 per page to open + buffer for retries
@@ -583,8 +594,9 @@ async function runCategoryAudit(
   const openedPages: string[] = []
   if (Array.isArray(finalResponse.output)) {
     for (const item of finalResponse.output) {
-      if (item.type === 'web_search_call' && item.action?.type === 'open_page' && item.action.url) {
-        openedPages.push(item.action.url)
+      const action = (item as { type?: string; action?: { type?: string; url?: string } }).action
+      if (item.type === 'web_search_call' && action?.type === 'open_page' && action.url) {
+        openedPages.push(action.url)
       }
     }
   }
@@ -637,21 +649,22 @@ async function runCategoryAudit(
 
 // Retry wrapper for category audits
 async function runCategoryAuditWithRetry(
-  category: "Language" | "Facts & Consistency" | "Links & Formatting",
+  category: ContentAuditCategory,
   urlsToAudit: string[],
   domainHostname: string,
   manifestText: string,
   issueContext?: AuditIssueContext,
-  openai?: OpenAI
+  openai?: OpenAI,
+  keywords?: { ignore?: string[]; flag?: string[] }
 ): Promise<CategoryAuditResult> {
   try {
-    return await runCategoryAudit(category, urlsToAudit, domainHostname, manifestText, issueContext, openai)
+    return await runCategoryAudit(category, urlsToAudit, domainHostname, manifestText, issueContext, openai, keywords)
   } catch (error) {
     Logger.warn(`[ParallelAudit] [${category}] Failed, retrying once...`)
     // Wait 2s before retry
     await new Promise(resolve => setTimeout(resolve, 2000))
     try {
-      return await runCategoryAudit(category, urlsToAudit, domainHostname, manifestText, issueContext, openai)
+      return await runCategoryAudit(category, urlsToAudit, domainHostname, manifestText, issueContext, openai, keywords)
     } catch (retryError) {
       Logger.error(`[ParallelAudit] [${category}] Retry failed`, retryError instanceof Error ? retryError : undefined)
       return {
@@ -700,7 +713,8 @@ function mergeParallelResults(
 export async function parallelMiniAudit(
   domain: string,
   issueContext?: AuditIssueContext,
-  runId?: string
+  runId?: string,
+  options?: { includeLongformFullAudit?: boolean; brandVoice?: { profile: BrandVoiceProfileForAudit } }
 ): Promise<AuditResult> {
   // Normalize domain URL
   const normalizedDomain = normalizeDomain(domain)
@@ -737,47 +751,86 @@ export async function parallelMiniAudit(
     }
 
     // Select pages to audit (intelligent selection for FREE tier: up to 5 pages)
-    const pagesToAudit = await selectPagesToAudit(discoveredPagesList, domainHostname, 'FREE')
+    const pagesToAudit = await selectPagesToAudit(
+      discoveredPagesList,
+      domainHostname,
+      'FREE',
+      options?.includeLongformFullAudit ?? false
+    )
     Logger.info(`[ParallelAudit] Selected ${pagesToAudit.length} pages to audit: ${pagesToAudit.slice(0, 3).join(', ')}${pagesToAudit.length > 3 ? '...' : ''}`)
 
-    // Run all 3 category audits in parallel with SAME URL list
-    Logger.info(`[ParallelAudit] Running 3 parallel category audits on ${pagesToAudit.length} pages...`)
-    const results = await Promise.allSettled([
-      runCategoryAuditWithRetry("Language", pagesToAudit, domainHostname, manifestText, issueContext, openai),
-      runCategoryAuditWithRetry("Facts & Consistency", pagesToAudit, domainHostname, manifestText, issueContext, openai),
-      runCategoryAuditWithRetry("Links & Formatting", pagesToAudit, domainHostname, manifestText, issueContext, openai),
-    ])
+    // Keywords from brand voice profile (shared by category models and brand voice)
+    const ignoreKeywords = options?.brandVoice?.profile?.ignore_keywords ?? []
+    const flagKeywords = options?.brandVoice?.profile?.flag_keywords ?? []
+    const keywords =
+      (Array.isArray(ignoreKeywords) && ignoreKeywords.length > 0) || (Array.isArray(flagKeywords) && flagKeywords.length > 0)
+        ? { ignore: Array.isArray(ignoreKeywords) ? ignoreKeywords : [], flag: Array.isArray(flagKeywords) ? flagKeywords : [] }
+        : undefined
 
-    // Collect successful results
+    // Run category audits (and optionally brand voice) in parallel
+    const categoryPromises = [
+      runCategoryAuditWithRetry("Language", pagesToAudit, domainHostname, manifestText, issueContext, openai, keywords),
+      runCategoryAuditWithRetry("Facts & Consistency", pagesToAudit, domainHostname, manifestText, issueContext, openai, keywords),
+      runCategoryAuditWithRetry("Links & Formatting", pagesToAudit, domainHostname, manifestText, issueContext, openai, keywords),
+    ]
+    const brandVoicePromise = options?.brandVoice
+      ? runBrandVoiceAuditPass(normalizedDomain, manifestText, pagesToAudit, options.brandVoice.profile, { tier: "FREE", openai, issueContext })
+      : null
+    const allPromises = brandVoicePromise
+      ? [...categoryPromises, brandVoicePromise]
+      : categoryPromises
+    Logger.info(`[ParallelAudit] Running ${allPromises.length} parallel audits on ${pagesToAudit.length} pages...`)
+    const results = await Promise.allSettled(allPromises)
+
+    // Collect successful category results (first 3)
     const successfulResults: CategoryAuditResult[] = []
     const failedCategories: string[] = []
+    const categoryResultCount = categoryPromises.length
 
-    for (const result of results) {
-      if (result.status === "fulfilled" && result.value.status === "success") {
-        successfulResults.push(result.value)
-        Logger.debug(`[ParallelAudit] ${result.value.category}: ${result.value.issues.length} issues in ${(result.value.durationMs / 1000).toFixed(1)}s`)
-      } else if (result.status === "fulfilled") {
-        failedCategories.push(`${result.value.category} (${result.value.error || 'unknown'})`)
-        Logger.warn(`[ParallelAudit] ${result.value.category} failed: ${result.value.error}`)
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i]
+      if (i < categoryResultCount) {
+        if (result.status === "fulfilled" && (result as PromiseFulfilledResult<CategoryAuditResult>).value.status === "success") {
+          const value = (result as PromiseFulfilledResult<CategoryAuditResult>).value
+          successfulResults.push(value)
+          Logger.debug(`[ParallelAudit] ${value.category}: ${value.issues.length} issues in ${(value.durationMs / 1000).toFixed(1)}s`)
+        } else if (result.status === "fulfilled") {
+          const value = (result as PromiseFulfilledResult<CategoryAuditResult>).value
+          failedCategories.push(`${value.category} (${value.error || "unknown"})`)
+          Logger.warn(`[ParallelAudit] ${value.category} failed: ${value.error}`)
+        } else {
+          failedCategories.push(`unknown (${(result as PromiseRejectedResult).reason})`)
+          Logger.error(`[ParallelAudit] Category audit rejected`, (result as PromiseRejectedResult).reason instanceof Error ? (result as PromiseRejectedResult).reason : undefined)
+        }
       } else {
-        failedCategories.push(`unknown (${result.reason})`)
-        Logger.error(`[ParallelAudit] Category audit rejected`, result.reason instanceof Error ? result.reason : undefined)
+        // Brand voice result
+        if (result.status === "fulfilled") {
+          const bvIssues = (result as PromiseFulfilledResult<AuditResult["issues"]>).value
+          Logger.debug(`[ParallelAudit] Brand voice: ${bvIssues.length} issues`)
+        } else {
+          Logger.warn(`[ParallelAudit] Brand voice failed:`, (result as PromiseRejectedResult).reason)
+        }
       }
     }
 
-    // Check if all audits failed
+    // Check if all category audits failed (brand voice is optional)
     if (successfulResults.length === 0) {
-      throw new Error(`All parallel audits failed: ${failedCategories.join(', ')}`)
+      throw new Error(`All parallel audits failed: ${failedCategories.join(", ")}`)
     }
 
-    // Merge results - issues combined from all category audits
-    const { issues } = mergeParallelResults(successfulResults, discoveredPagesList)
+    // Merge category results
+    const { issues: categoryIssues } = mergeParallelResults(successfulResults, discoveredPagesList)
+    const brandVoiceIssues =
+      brandVoicePromise && results.length > categoryResultCount && results[categoryResultCount].status === "fulfilled"
+        ? (results[categoryResultCount] as PromiseFulfilledResult<AuditResult["issues"]>).value
+        : []
+    const issues = [...categoryIssues, ...brandVoiceIssues]
     const totalDurationMs = Date.now() - startTime
 
-    Logger.info(`[ParallelAudit] Completed: ${issues.length} issues from ${successfulResults.length}/3 categories in ${(totalDurationMs / 1000).toFixed(1)}s`)
+    Logger.info(`[ParallelAudit] Completed: ${issues.length} issues from ${successfulResults.length}/${categoryResultCount} categories${brandVoicePromise ? " + brand voice" : ""} in ${(totalDurationMs / 1000).toFixed(1)}s`)
     Logger.info(`[ParallelAudit] Pages audited: ${pagesToAudit.length} (exact)`)
     if (failedCategories.length > 0) {
-      Logger.warn(`[ParallelAudit] Partial results - failed categories: ${failedCategories.join(', ')}`)
+      Logger.warn(`[ParallelAudit] Partial results - failed categories: ${failedCategories.join(", ")}`)
     }
 
     return {
@@ -788,6 +841,7 @@ export async function parallelMiniAudit(
       status: "completed",
       tier: "FREE",
       modelDurationMs: totalDurationMs,
+      manifestText,
     }
   } catch (error) {
     if (error instanceof Error) {
@@ -814,7 +868,8 @@ export async function parallelMiniAudit(
 export async function parallelProAudit(
   domain: string,
   issueContext?: AuditIssueContext,
-  runId?: string
+  runId?: string,
+  options?: { includeLongformFullAudit?: boolean; brandVoice?: { profile: BrandVoiceProfileForAudit } }
 ): Promise<AuditResult> {
   // Normalize domain URL
   const normalizedDomain = normalizeDomain(domain)
@@ -851,48 +906,83 @@ export async function parallelProAudit(
     }
 
     // Select pages to audit (intelligent selection for PAID tier: up to 20 pages)
-    const pagesToAudit = await selectPagesToAudit(discoveredPagesList, domainHostname, 'PAID')
+    const pagesToAudit = await selectPagesToAudit(
+      discoveredPagesList,
+      domainHostname,
+      'PAID',
+      options?.includeLongformFullAudit ?? false
+    )
     Logger.info(`[ParallelProAudit] Selected ${pagesToAudit.length} pages to audit: ${pagesToAudit.slice(0, 5).join(', ')}${pagesToAudit.length > 5 ? '...' : ''}`)
 
-    // Run all 3 category audits in parallel with SAME URL list
-    // Pro tier uses more tool calls (15 per model vs 4 for Free)
-    Logger.info(`[ParallelProAudit] Running 3 parallel category audits on ${pagesToAudit.length} pages...`)
-    const results = await Promise.allSettled([
-      runCategoryAuditWithRetryPro("Language", pagesToAudit, domainHostname, manifestText, issueContext, openai),
-      runCategoryAuditWithRetryPro("Facts & Consistency", pagesToAudit, domainHostname, manifestText, issueContext, openai),
-      runCategoryAuditWithRetryPro("Links & Formatting", pagesToAudit, domainHostname, manifestText, issueContext, openai),
-    ])
+    // Keywords from brand voice profile (shared by category models and brand voice)
+    const ignoreKeywordsPro = options?.brandVoice?.profile?.ignore_keywords ?? []
+    const flagKeywordsPro = options?.brandVoice?.profile?.flag_keywords ?? []
+    const keywordsPro =
+      (Array.isArray(ignoreKeywordsPro) && ignoreKeywordsPro.length > 0) || (Array.isArray(flagKeywordsPro) && flagKeywordsPro.length > 0)
+        ? { ignore: Array.isArray(ignoreKeywordsPro) ? ignoreKeywordsPro : [], flag: Array.isArray(flagKeywordsPro) ? flagKeywordsPro : [] }
+        : undefined
 
-    // Collect successful results
-    const successfulResults: CategoryAuditResult[] = []
-    const failedCategories: string[] = []
+    // Run category audits (and optionally brand voice) in parallel
+    const categoryPromisesPro = [
+      runCategoryAuditWithRetryPro("Language", pagesToAudit, domainHostname, manifestText, issueContext, openai, keywordsPro),
+      runCategoryAuditWithRetryPro("Facts & Consistency", pagesToAudit, domainHostname, manifestText, issueContext, openai, keywordsPro),
+      runCategoryAuditWithRetryPro("Links & Formatting", pagesToAudit, domainHostname, manifestText, issueContext, openai, keywordsPro),
+    ]
+    const brandVoicePromisePro = options?.brandVoice
+      ? runBrandVoiceAuditPass(normalizedDomain, manifestText, pagesToAudit, options.brandVoice.profile, { tier: "PAID", openai, issueContext })
+      : null
+    const allPromisesPro = brandVoicePromisePro
+      ? [...categoryPromisesPro, brandVoicePromisePro]
+      : categoryPromisesPro
+    Logger.info(`[ParallelProAudit] Running ${allPromisesPro.length} parallel audits on ${pagesToAudit.length} pages...`)
+    const resultsPro = await Promise.allSettled(allPromisesPro)
 
-    for (const result of results) {
-      if (result.status === "fulfilled" && result.value.status === "success") {
-        successfulResults.push(result.value)
-        Logger.debug(`[ParallelProAudit] ${result.value.category}: ${result.value.issues.length} issues in ${(result.value.durationMs / 1000).toFixed(1)}s`)
-      } else if (result.status === "fulfilled") {
-        failedCategories.push(`${result.value.category} (${result.value.error || 'unknown'})`)
-        Logger.warn(`[ParallelProAudit] ${result.value.category} failed: ${result.value.error}`)
+    // Collect successful category results (first 3)
+    const successfulResultsPro: CategoryAuditResult[] = []
+    const failedCategoriesPro: string[] = []
+    const categoryResultCountPro = categoryPromisesPro.length
+
+    for (let i = 0; i < resultsPro.length; i++) {
+      const result = resultsPro[i]
+      if (i < categoryResultCountPro) {
+        if (result.status === "fulfilled" && (result as PromiseFulfilledResult<CategoryAuditResult>).value.status === "success") {
+          const value = (result as PromiseFulfilledResult<CategoryAuditResult>).value
+          successfulResultsPro.push(value)
+          Logger.debug(`[ParallelProAudit] ${value.category}: ${value.issues.length} issues in ${(value.durationMs / 1000).toFixed(1)}s`)
+        } else if (result.status === "fulfilled") {
+          const value = (result as PromiseFulfilledResult<CategoryAuditResult>).value
+          failedCategoriesPro.push(`${value.category} (${value.error || "unknown"})`)
+          Logger.warn(`[ParallelProAudit] ${value.category} failed: ${value.error}`)
+        } else {
+          failedCategoriesPro.push(`unknown (${(result as PromiseRejectedResult).reason})`)
+          Logger.error(`[ParallelProAudit] Category audit rejected`, (result as PromiseRejectedResult).reason instanceof Error ? (result as PromiseRejectedResult).reason : undefined)
+        }
       } else {
-        failedCategories.push(`unknown (${result.reason})`)
-        Logger.error(`[ParallelProAudit] Category audit rejected`, result.reason instanceof Error ? result.reason : undefined)
+        if (result.status === "fulfilled") {
+          const bvIssues = (result as PromiseFulfilledResult<AuditResult["issues"]>).value
+          Logger.debug(`[ParallelProAudit] Brand voice: ${bvIssues.length} issues`)
+        } else {
+          Logger.warn(`[ParallelProAudit] Brand voice failed:`, (result as PromiseRejectedResult).reason)
+        }
       }
     }
 
-    // Check if all audits failed
-    if (successfulResults.length === 0) {
-      throw new Error(`All parallel audits failed: ${failedCategories.join(', ')}`)
+    if (successfulResultsPro.length === 0) {
+      throw new Error(`All parallel audits failed: ${failedCategoriesPro.join(", ")}`)
     }
 
-    // Merge results - issues combined from all category audits
-    const { issues } = mergeParallelResults(successfulResults, discoveredPagesList)
+    const { issues: categoryIssuesPro } = mergeParallelResults(successfulResultsPro, discoveredPagesList)
+    const brandVoiceIssuesPro =
+      brandVoicePromisePro && resultsPro.length > categoryResultCountPro && resultsPro[categoryResultCountPro].status === "fulfilled"
+        ? (resultsPro[categoryResultCountPro] as PromiseFulfilledResult<AuditResult["issues"]>).value
+        : []
+    const issues = [...categoryIssuesPro, ...brandVoiceIssuesPro]
     const totalDurationMs = Date.now() - startTime
 
-    Logger.info(`[ParallelProAudit] Completed: ${issues.length} issues from ${successfulResults.length}/3 categories in ${(totalDurationMs / 1000).toFixed(1)}s`)
+    Logger.info(`[ParallelProAudit] Completed: ${issues.length} issues from ${successfulResultsPro.length}/${categoryResultCountPro} categories${brandVoicePromisePro ? " + brand voice" : ""} in ${(totalDurationMs / 1000).toFixed(1)}s`)
     Logger.info(`[ParallelProAudit] Pages audited: ${pagesToAudit.length} (exact)`)
-    if (failedCategories.length > 0) {
-      Logger.warn(`[ParallelProAudit] Partial results - failed categories: ${failedCategories.join(', ')}`)
+    if (failedCategoriesPro.length > 0) {
+      Logger.warn(`[ParallelProAudit] Partial results - failed categories: ${failedCategoriesPro.join(", ")}`)
     }
 
     return {
@@ -903,6 +993,7 @@ export async function parallelProAudit(
       status: "completed",
       tier: "PAID",
       modelDurationMs: totalDurationMs,
+      manifestText,
     }
   } catch (error) {
     if (error instanceof Error) {
@@ -918,12 +1009,13 @@ export async function parallelProAudit(
 
 // Run a single category audit for Pro tier (more tool calls)
 async function runCategoryAuditPro(
-  category: "Language" | "Facts & Consistency" | "Links & Formatting",
+  category: ContentAuditCategory,
   urlsToAudit: string[],
   domainHostname: string,
   manifestText: string,
   issueContext?: AuditIssueContext,
-  openai?: OpenAI
+  openai?: OpenAI,
+  keywords?: { ignore?: string[]; flag?: string[] }
 ): Promise<CategoryAuditResult> {
   const startTime = Date.now()
 
@@ -945,7 +1037,9 @@ async function runCategoryAuditPro(
     urlsToAudit,
     manifestText,
     excludedIssuesJson,
-    activeIssuesJson
+    activeIssuesJson,
+    keywords?.ignore,
+    keywords?.flag
   )
 
   const params: any = {
@@ -1007,8 +1101,9 @@ async function runCategoryAuditPro(
   const openedPages: string[] = []
   if (Array.isArray(finalResponse.output)) {
     for (const item of finalResponse.output) {
-      if (item.type === 'web_search_call' && item.action?.type === 'open_page' && item.action.url) {
-        openedPages.push(item.action.url)
+      const action = (item as { type?: string; action?: { type?: string; url?: string } }).action
+      if (item.type === 'web_search_call' && action?.type === 'open_page' && action.url) {
+        openedPages.push(action.url)
       }
     }
   }
@@ -1061,21 +1156,22 @@ async function runCategoryAuditPro(
 
 // Retry wrapper for Pro category audits
 async function runCategoryAuditWithRetryPro(
-  category: "Language" | "Facts & Consistency" | "Links & Formatting",
+  category: ContentAuditCategory,
   urlsToAudit: string[],
   domainHostname: string,
   manifestText: string,
   issueContext?: AuditIssueContext,
-  openai?: OpenAI
+  openai?: OpenAI,
+  keywords?: { ignore?: string[]; flag?: string[] }
 ): Promise<CategoryAuditResult> {
   try {
-    return await runCategoryAuditPro(category, urlsToAudit, domainHostname, manifestText, issueContext, openai)
+    return await runCategoryAuditPro(category, urlsToAudit, domainHostname, manifestText, issueContext, openai, keywords)
   } catch (error) {
     Logger.warn(`[ParallelProAudit] [${category}] Failed, retrying once...`)
     // Wait 2s before retry
     await new Promise(resolve => setTimeout(resolve, 2000))
     try {
-      return await runCategoryAuditPro(category, urlsToAudit, domainHostname, manifestText, issueContext, openai)
+      return await runCategoryAuditPro(category, urlsToAudit, domainHostname, manifestText, issueContext, openai, keywords)
     } catch (retryError) {
       Logger.error(`[ParallelProAudit] [${category}] Retry failed`, retryError instanceof Error ? retryError : undefined)
       return {
@@ -1098,7 +1194,8 @@ export async function auditSite(
   domain: string,
   tier: AuditTier = "PAID",
   issueContext?: AuditIssueContext,
-  runId?: string
+  runId?: string,
+  options?: { includeLongformFullAudit?: boolean }
 ): Promise<AuditResult> {
   // Type guard: FREE tier should use miniAudit() instead
   if (tier === 'FREE') {
@@ -1156,7 +1253,8 @@ export async function auditSite(
       normalizedDomain,
       manifestText,
       excludedIssuesJson,
-      activeIssuesJson
+      activeIssuesJson,
+      options?.includeLongformFullAudit ?? false
     )
 
     const params: any = {
@@ -1431,6 +1529,7 @@ export async function pollAuditStatus(responseId: string, tier?: AuditTier): Pro
       return {
         issues,
         pagesAudited,
+        discoveredPages: [],
         auditedUrls,
         responseId,
         status: status === "queued" ? "queued" : "in_progress",
@@ -1589,7 +1688,8 @@ CRITICAL RULES:
 async function selectPagesToAudit(
   discoveredUrls: string[],
   domain: string,
-  tier: 'FREE' | 'PAID'
+  tier: 'FREE' | 'PAID',
+  includeLongformFullAudit: boolean
 ): Promise<string[]> {
   const targetCount = tier === 'FREE' ? 5 : 20
 
@@ -1602,10 +1702,15 @@ async function selectPagesToAudit(
     }
   }) || `https://${domain}`
 
+  const candidateUrls = includeLongformFullAudit
+    ? discoveredUrls
+    : discoveredUrls.filter((u) => !isLongformUrl(u))
+  const urlsForSelection = candidateUrls.length > 0 ? candidateUrls : discoveredUrls
+
   // If we have fewer URLs than target, use all of them
-  if (discoveredUrls.length <= targetCount) {
-    Logger.info(`[PageSelection] Using all ${discoveredUrls.length} discovered URLs (≤${targetCount} target)`)
-    return discoveredUrls.length > 0 ? discoveredUrls : [homepage]
+  if (urlsForSelection.length <= targetCount) {
+    Logger.info(`[PageSelection] Using all ${urlsForSelection.length} discovered URLs (≤${targetCount} target)`)
+    return urlsForSelection.length > 0 ? urlsForSelection : [homepage]
   }
 
   const openai = new OpenAI({
@@ -1614,7 +1719,7 @@ async function selectPagesToAudit(
   })
 
   try {
-    Logger.debug(`[PageSelection] Selecting ${targetCount} pages from ${discoveredUrls.length} discovered URLs`)
+    Logger.debug(`[PageSelection] Selecting ${targetCount} pages from ${urlsForSelection.length} discovered URLs`)
 
     const response = await openai.chat.completions.create({
       model: "gpt-4.1-mini",
@@ -1630,7 +1735,7 @@ Prioritize in order:
 3. About/company page (if one exists in the list)
 4. Key product/feature pages
 5. Contact/support page (if one exists in the list)
-6. Blog posts (1-2 max)
+6. ${includeLongformFullAudit ? "Blog posts (1-2 max)" : "Avoid blog/article/resource pages unless no other pages are available"}
 7. Other high-value marketing pages
 
 Return ONLY a JSON object with this exact format: {"urls": ["url1", "url2", ...]}
@@ -1638,7 +1743,7 @@ Do not include any explanation or other text.
 Only include URLs that appear in the list below.
 
 Available URLs:
-${discoveredUrls.join('\n')}`
+${urlsForSelection.join('\n')}`
       }],
       response_format: { type: "json_object" },
       temperature: 0.1,
@@ -1648,7 +1753,7 @@ ${discoveredUrls.join('\n')}`
     const content = response.choices[0]?.message?.content
     if (!content) {
       Logger.warn('[PageSelection] Empty response from model, falling back to first N URLs')
-      return [homepage, ...discoveredUrls.filter(u => u !== homepage).slice(0, targetCount - 1)]
+      return [homepage, ...urlsForSelection.filter(u => u !== homepage).slice(0, targetCount - 1)]
     }
 
     const result = JSON.parse(content)
@@ -1670,7 +1775,7 @@ ${discoveredUrls.join('\n')}`
       }
     }
 
-    const normalizedDiscoveredUrls = discoveredUrls.map(normalizeForComparison)
+    const normalizedDiscoveredUrls = urlsForSelection.map(normalizeForComparison)
     const validUrls: string[] = []
     const hallucinatedUrls: string[] = []
 
@@ -1691,7 +1796,7 @@ ${discoveredUrls.join('\n')}`
     // If all URLs were hallucinated, fall back to default selection
     if (validUrls.length === 0) {
       Logger.warn('[PageSelection] All selected URLs were hallucinated, falling back to first N URLs')
-      return [homepage, ...discoveredUrls.filter(u => u !== homepage).slice(0, targetCount - 1)]
+      return [homepage, ...urlsForSelection.filter(u => u !== homepage).slice(0, targetCount - 1)]
     }
 
     // Ensure homepage is included
@@ -1707,13 +1812,34 @@ ${discoveredUrls.join('\n')}`
   } catch (error) {
     Logger.warn('[PageSelection] Error selecting pages, falling back to first N URLs', error instanceof Error ? error : undefined)
     // Fallback: homepage + first N-1 other URLs
-    return [homepage, ...discoveredUrls.filter(u => u !== homepage).slice(0, targetCount - 1)]
+    return [homepage, ...urlsForSelection.filter(u => u !== homepage).slice(0, targetCount - 1)]
   }
 }
 
 // ============================================================================
 // Helper functions
 // ============================================================================
+
+const LONGFORM_PATH_PATTERNS = [
+  /\/blog(\/|$)/i,
+  /\/articles?(\/|$)/i,
+  /\/news(\/|$)/i,
+  /\/insights(\/|$)/i,
+  /\/resources(\/|$)/i,
+  /\/guides?(\/|$)/i,
+  /\/case-studies?(\/|$)/i,
+  /\/posts?(\/|$)/i,
+]
+
+export function isLongformUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url.startsWith("http") ? url : `https://${url}`)
+    const path = parsed.pathname || "/"
+    return LONGFORM_PATH_PATTERNS.some((pattern) => pattern.test(path))
+  } catch {
+    return false
+  }
+}
 
 // Normalize domain to proper URL format
 function normalizeDomain(domain: string): string {
@@ -1936,6 +2062,7 @@ function parseAuditResponse(response: any, tier: AuditTier): AuditResult {
   return {
     issues: validated.issues,
     pagesAudited,
+    discoveredPages: actualCrawledUrls.length > 0 ? actualCrawledUrls : auditedUrls,
     auditedUrls,
     responseId: response.id,
     status: "completed",

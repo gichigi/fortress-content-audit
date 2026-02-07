@@ -19,6 +19,7 @@ import { useHealthScoreMetrics } from "@/hooks/use-health-score-metrics"
 import { transformIssuesToTableRows } from "@/lib/audit-table-adapter"
 import { EmptyAuditState } from "@/components/empty-audit-state"
 import { PageDiscoveryInline } from "@/components/PageDiscoveryInline"
+import { SiteFooter } from "@/components/SiteFooter"
 
 // Client-side URL validation (simplified version of validateUrl)
 function validateUrlClient(input: string): { isValid: boolean; error?: string; normalizedUrl?: string } {
@@ -772,20 +773,7 @@ export default function Home() {
       </section>
       )}
 
-      {/* Footer */}
-      <footer className="border-t border-border py-12">
-        <div className="container mx-auto px-6">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-            <div className="font-serif text-xl font-semibold">Fortress</div>
-            <div className="flex items-center gap-8">
-              <Link href="/pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                Pricing
-              </Link>
-            </div>
-            <p className="text-sm text-muted-foreground">© 2026 Fortress. All rights reserved.</p>
-          </div>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   )
 }

@@ -42,7 +42,7 @@ import { AuditStartedModal } from "@/components/audit-started-modal"
 import { AuditSuccessModal } from "@/components/audit-success-modal"
 import { AuditFailureModal } from "@/components/audit-failure-modal"
 import { DomainLimitReachedModal } from "@/components/domain-limit-reached-modal"
-import { PageDiscoveryInline } from "@/components/PageDiscoveryInline"
+import { PageDiscoveryInline, PageDiscoveryList } from "@/components/PageDiscoveryInline"
 import { PagesSummaryModal } from "@/components/pages-summary-modal"
 import { classifyError } from "@/lib/error-classifier"
 import type { ClassifiedError } from "@/lib/error-classifier"
@@ -77,14 +77,13 @@ export default function DashboardPage() {
   const [domainToDelete, setDomainToDelete] = useState<string | null>(null)
   const [authToken, setAuthToken] = useState<string | null>(null)
   const [exportLoading, setExportLoading] = useState<string | null>(null) // Track which format is loading
-  const [scheduledAudits, setScheduledAudits] = useState<any[]>([])
-  const [scheduledAuditsLoading, setScheduledAuditsLoading] = useState(false)
   const [startingAudit, setStartingAudit] = useState(false)
   const [rerunningAuditId, setRerunningAuditId] = useState<string | null>(null)
   const [pendingAuditId, setPendingAuditId] = useState<string | null>(null)
   const [auditProgress, setAuditProgress] = useState(0)
   const [severityFilter, setSeverityFilter] = useState<'all' | 'critical'>('all')
   const [newAuditDialogOpen, setNewAuditDialogOpen] = useState(false)
+  const [pageListExpanded, setPageListExpanded] = useState(false)
 
   // Modal states for audit notifications
   const [auditStartedModal, setAuditStartedModal] = useState<{
@@ -713,12 +712,6 @@ export default function DashboardPage() {
         loadUsageInfo(session.access_token, initialDomain)
       ])
       
-      // Load scheduled audits for paid users
-      const userPlan = profile?.plan || 'free'
-      if (userPlan === 'pro' || userPlan === 'enterprise') {
-        await loadScheduledAudits(session.access_token)
-      }
-      
       // Issues are now loaded via useAuditIssues hook
     } catch (error) {
       console.error("Error loading dashboard:", error)
@@ -770,163 +763,6 @@ export default function DashboardPage() {
       })
     } finally {
       setRerunningAuditId(null) // Clear loading state
-    }
-  }
-
-  const loadScheduledAudits = async (token: string) => {
-    // Only load for paid users
-    if (plan !== 'pro' && plan !== 'enterprise') {
-      return
-    }
-
-    setScheduledAuditsLoading(true)
-    try {
-      const response = await fetch('/api/audit/scheduled/settings', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      if (response.ok) {
-        const data = await response.json()
-        setScheduledAudits(data.scheduledAudits || [])
-      }
-    } catch (error) {
-      console.error("Error loading scheduled audits:", error)
-    } finally {
-      setScheduledAuditsLoading(false)
-    }
-  }
-
-  const toggleAutoAudit = async (domain: string, enabled: boolean) => {
-    if (!authToken) return
-
-    // Optimistic update - update UI immediately for instant feedback
-    setScheduledAudits((prev) => {
-      const existing = prev.find(sa => sa.domain === domain)
-      if (existing) {
-        return prev.map(sa => sa.domain === domain ? { ...existing, enabled } : sa)
-      } else {
-        return [...prev, { domain, enabled, next_run: null }]
-      }
-    })
-
-    try {
-      const response = await fetch('/api/audit/scheduled/settings', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`
-        },
-        body: JSON.stringify({ domain, enabled })
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        // Update with server response (includes next_run date)
-        setScheduledAudits((prev) => {
-          const existing = prev.find(sa => sa.domain === domain)
-          if (existing) {
-            return prev.map(sa => sa.domain === domain ? data.scheduledAudit : sa)
-          } else {
-            return [...prev, data.scheduledAudit]
-          }
-        })
-        const nextRunDate = data.scheduledAudit?.next_run 
-          ? new Date(data.scheduledAudit.next_run).toLocaleDateString('en-US', {
-              month: 'short',
-              day: 'numeric',
-              year: 'numeric'
-            })
-          : null
-        
-        toast({
-          title: enabled 
-            ? `Auto weekly audits enabled for ${domain}`
-            : `Auto weekly audits disabled for ${domain}`,
-          description: enabled 
-            ? nextRunDate 
-              ? `Next audit scheduled for ${nextRunDate}.`
-              : "Your domain will be audited automatically every week."
-            : "Auto weekly audits have been disabled.",
-        })
-      } else {
-        let errorMessage = 'Failed to save scheduled audit settings'
-        let errorData: any = null
-        
-        // Check content type before parsing
-        const contentType = response.headers.get('content-type')
-        const isJson = contentType?.includes('application/json')
-        
-        try {
-          if (isJson) {
-            // Clone response to avoid consuming the body
-            const clonedResponse = response.clone()
-            errorData = await clonedResponse.json()
-            // Extract error message - prioritize details (often more user-friendly), then error, then message
-            if (errorData && typeof errorData === 'object') {
-              const extractedMessage = errorData.details || errorData.error || errorData.message
-              if (extractedMessage && typeof extractedMessage === 'string') {
-                errorMessage = extractedMessage
-              }
-            }
-          } else {
-            // Try to read as text for non-JSON responses
-            const clonedResponse = response.clone()
-            const text = await clonedResponse.text()
-            if (text && text.trim()) {
-              errorMessage = text.substring(0, 200) // Limit length
-            }
-          }
-        } catch (parseError) {
-          // If parsing fails, use status text
-          console.error('[ToggleAutoAudit] Failed to parse error response:', parseError)
-        }
-        
-        // Map technical errors to user-friendly messages
-        if (errorMessage.includes('PGRST205') || errorMessage.includes('schema cache') || errorMessage.includes('Could not find the table')) {
-          errorMessage = 'The service is temporarily unavailable. Please try again in a moment.'
-        } else if (errorMessage.includes('PGRST') || errorMessage.includes('PostgREST')) {
-          errorMessage = 'A database error occurred. Please try again or contact support if the issue persists.'
-        } else if (errorMessage.includes('Unauthorized') || errorMessage.includes('401')) {
-          errorMessage = 'Your session has expired. Please sign in again.'
-        } else if (errorMessage.includes('Forbidden') || errorMessage.includes('403')) {
-          errorMessage = 'You don\'t have permission to perform this action.'
-        } else if (errorMessage.includes('rate limit') || errorMessage.includes('429')) {
-          errorMessage = 'Too many requests. Please try again in a moment.'
-        }
-        
-        // Log the full error for debugging (but never show raw JSON to users)
-        console.error('[ToggleAutoAudit] API Error:', {
-          status: response.status,
-          statusText: response.statusText,
-          contentType,
-          error: errorData || 'No error data available'
-        })
-        
-        // Use status text as fallback if no error message found
-        if (errorMessage === 'Failed to save scheduled audit settings' && response.statusText) {
-          errorMessage = 'Unable to save settings. Please try again.'
-        }
-        
-        throw new Error(errorMessage)
-      }
-    } catch (error) {
-      console.error("Error toggling auto audit:", error)
-      
-      // Revert optimistic update on error
-      setScheduledAudits((prev) => {
-        const existing = prev.find(sa => sa.domain === domain)
-        if (existing) {
-          return prev.map(sa => sa.domain === domain ? { ...existing, enabled: !enabled } : sa)
-        }
-        return prev
-      })
-      
-      toast({
-        title: "Unable to update auto audit settings",
-        description: error instanceof Error ? error.message : "Please try again or contact support if the issue persists.",
-        variant: "error",
-      })
     }
   }
 
@@ -1529,10 +1365,10 @@ export default function DashboardPage() {
                   </div>
                 )}
 
-                <div className="flex flex-col gap-3 px-4 lg:px-6 sm:flex-row sm:items-center sm:justify-between">
-                  {/* Domain name + pages found/audited toggle */}
-                  <div className="flex flex-col gap-1 min-w-0">
-                    <h2 className="font-serif text-2xl font-semibold">
+                {/* Header row: domain + pages summary (flush) | action buttons */}
+                <div className="flex items-start justify-between gap-4 px-4 lg:px-6">
+                  <div className="flex flex-col gap-0 min-w-0">
+                    <h2 className="font-serif text-2xl font-semibold truncate">
                       {selectedDomain || 'Content Audits'}
                     </h2>
                     {mostRecentAudit &&
@@ -1544,36 +1380,15 @@ export default function DashboardPage() {
                         auditedUrls={mostRecentAudit.issues_json?.auditedUrls || []}
                         pagesFound={mostRecentAudit.pages_found ?? mostRecentAudit.issues_json?.pagesFound ?? null}
                         isAuthenticated={true}
+                        fullWidthExpanded
+                        expanded={pageListExpanded}
+                        onExpandChange={setPageListExpanded}
                       />
                     )}
                   </div>
 
-                  {/* Toggle, Export, and Run New Audit buttons */}
-                  <div className="flex items-center gap-3 sm:gap-4">
-                    {/* Auto Audit Status for Paid Users */}
-                    {(plan === 'pro' || plan === 'enterprise') && selectedDomain && (
-                      <div className="flex items-center gap-2 text-sm">
-                        {scheduledAuditsLoading ? (
-                          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                        ) : (() => {
-                          const scheduled = scheduledAudits.find(sa => sa.domain === selectedDomain)
-                          const isEnabled = scheduled?.enabled || false
-
-                          return (
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs sm:text-sm text-muted-foreground">
-                                Auto weekly
-                              </span>
-                              <Switch
-                                checked={isEnabled}
-                                onCheckedChange={(checked) => toggleAutoAudit(selectedDomain, checked)}
-                                disabled={scheduledAuditsLoading}
-                              />
-                            </div>
-                          )
-                        })()}
-                      </div>
-                    )}
+                  {/* Export, Rerun audit - beside domain */}
+                  <div className="flex items-center gap-3 sm:gap-4 shrink-0">
                     {mostRecentAudit && (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -1640,6 +1455,18 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
+                {/* URL list: full-width row when expanded */}
+                {pageListExpanded &&
+                  mostRecentAudit &&
+                  !pendingAuditId &&
+                  (mostRecentAudit.issues_json?.discoveredPages?.length ?? 0) > 0 && (
+                  <div className="w-full px-4 lg:px-6">
+                    <PageDiscoveryList
+                      discoveredPages={mostRecentAudit.issues_json?.discoveredPages || []}
+                      auditedUrls={mostRecentAudit.issues_json?.auditedUrls || []}
+                    />
+                  </div>
+                )}
 
                 {/* Workflow Progress - Only show for new users */}
                 {(() => {

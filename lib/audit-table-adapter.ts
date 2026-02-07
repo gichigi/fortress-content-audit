@@ -1,5 +1,5 @@
 // Transform audit issues to table row format
-import { Issue, IssueStatus } from "@/types/fortress"
+import { Issue, IssueStatus, type IssueCategory } from "@/types/fortress"
 
 /**
  * @deprecated Legacy interface - no longer used after issue model simplification
@@ -21,7 +21,7 @@ export interface AuditIssueGroup {
 export interface AuditTableRow {
   id: string
   page_url: string
-  category: 'Language' | 'Facts & Consistency' | 'Links & Formatting'
+  category: IssueCategory
   issue_description: string
   severity: 'low' | 'medium' | 'critical'
   suggested_fix: string

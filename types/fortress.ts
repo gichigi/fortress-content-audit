@@ -19,11 +19,13 @@ export interface AuditIssue {
 // New simplified Issue matching issues table
 export type IssueStatus = 'active' | 'ignored' | 'resolved'
 
+export type IssueCategory = 'Language' | 'Facts & Consistency' | 'Links & Formatting' | 'Brand voice'
+
 export interface Issue {
   id: string
   audit_id: string
   page_url: string
-  category: 'Language' | 'Facts & Consistency' | 'Links & Formatting'
+  category: IssueCategory
   issue_description: string
   severity: 'low' | 'medium' | 'critical'
   suggested_fix: string
@@ -51,7 +53,7 @@ export type IssueState = 'active' | 'ignored' | 'resolved' // Deprecated, use Is
 export interface AuditIssuesJson {
   issues?: Array<{
     page_url: string
-    category: 'Language' | 'Facts & Consistency' | 'Links & Formatting'
+    category: IssueCategory
     issue_description: string
     severity: 'low' | 'medium' | 'critical'
     suggested_fix: string

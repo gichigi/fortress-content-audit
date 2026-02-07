@@ -7,7 +7,6 @@ import { createClient } from "@/lib/supabase-browser"
 
 import { NavUser } from "@/components/nav-user"
 import { DomainSwitcher } from "@/components/domain-switcher"
-import { BrandVoiceSidebar } from "@/components/brand-voice-sidebar"
 import { FeedbackBanner } from "@/components/feedback-banner"
 import {
   Sidebar,
@@ -111,7 +110,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarMenuItem>
         </SidebarMenu>
         <DomainSwitcher />
-        <BrandVoiceSidebar />
         <FeedbackBanner />
       </SidebarContent>
       <SidebarFooter>

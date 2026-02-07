@@ -10,7 +10,7 @@ import { z } from "zod"
 // ============================================================================
 
 export const VALID_READABILITY = ["grade_6_8", "grade_10_12", "grade_13_plus"] as const
-export const VALID_FORMALITY = ["very_casual", "casual", "neutral", "formal", "very_formal"] as const
+export const VALID_FORMALITY = ["formal", "neutral", "casual"] as const
 export const VALID_LOCALE = ["en-US", "en-GB"] as const
 
 export type ReadabilityLevel = (typeof VALID_READABILITY)[number]

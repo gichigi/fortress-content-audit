@@ -19,6 +19,9 @@ yarn-error.log*
 # env files
 .env*
 
+# local test auth (scripts read AUTH_TOKEN from here)
+.auth-token
+
 # vercel
 .vercel
 

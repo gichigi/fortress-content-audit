@@ -24,6 +24,7 @@ const PUBLIC_ROUTES = [
   '/api/voice-profile',
   '/api/onboarding',
   '/api/webhook',
+  '/api/brand-voice', // Bearer token validated in route
   '/api/checkout',
   '/api/email-capture',
   '/api/process-abandoned-emails',

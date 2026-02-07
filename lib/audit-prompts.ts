@@ -147,7 +147,8 @@ export function buildFullAuditPrompt(
   url: string,
   manifestText: string,
   excludedIssues: string,
-  activeIssues: string
+  activeIssues: string,
+  includeLongformFullAudit: boolean = false
 ): string {
   return `You are auditing ${url}. Below is an ELEMENT MANIFEST extracted from the actual HTML source code, showing all interactive elements (links, buttons, forms, headings) that exist on the page.
 
@@ -159,6 +160,8 @@ Audit up to 20 public-facing, top-of-funnel pages of a website for:
 - Language (typos, grammar, spelling, punctuation)
 - Facts & Consistency (factual errors, inconsistencies, incorrect stats)
 - Links & Formatting (broken links, wrong destinations, confusing link text, formatting/layout problems)
+
+${includeLongformFullAudit ? "" : "Avoid long-form blog/article/resource pages unless no other pages are available."}
 
 **HOW TO USE THE MANIFEST:**
 
@@ -288,13 +291,17 @@ ${activeIssues && activeIssues !== '[]' ? `\n# Active Issues from Previous Audit
  * @param manifestText - Element manifest for false positive prevention
  * @param excludedIssues - Issues to skip (already resolved/ignored)
  * @param activeIssues - Issues to verify still exist
+ * @param ignoreKeywords - Terms to never flag (e.g. from brand voice ignore list)
+ * @param flagKeywords - Terms to always flag when present
  */
 export function buildCategoryAuditPrompt(
   category: "Language" | "Facts & Consistency" | "Links & Formatting",
   urlsToAudit: string[],
   manifestText: string,
   excludedIssues: string,
-  activeIssues: string
+  activeIssues: string,
+  ignoreKeywords?: string[],
+  flagKeywords?: string[]
 ): string {
   const categoryInstructions = {
     "Language": `Focus ONLY on Language issues:
@@ -327,6 +334,13 @@ DO NOT report Language or Facts/Consistency issues.`
 
   // Format URL list for prompt
   const urlListText = urlsToAudit.map((u, i) => `${i + 1}. ${u}`).join('\n')
+
+  const ignoreBlock = ignoreKeywords?.length
+    ? `\n# Allowed Terms\nDO NOT flag or suggest changing:\n${ignoreKeywords.map(k => `- ${k}`).join('\n')}\n`
+    : ''
+  const flagBlock = flagKeywords?.length
+    ? `\n# Flag Keywords\nALWAYS flag when present:\n${flagKeywords.map(k => `- ${k}`).join('\n')}\n`
+    : ''
 
   return `You are auditing for ${category} issues ONLY.
 
@@ -362,6 +376,8 @@ Output format:
 }
 
 If no ${category} issues found, return: null
+${ignoreBlock}
+${flagBlock}
 ${excludedIssues && excludedIssues !== '[]' ? `\n# Previously Resolved/Ignored Issues\n\nDO NOT report these again:\n${excludedIssues}\n` : ''}
 ${activeIssues && activeIssues !== '[]' ? `\n# Active Issues\n\nVerify if these still exist:\n${activeIssues}\n` : ''}`
 }

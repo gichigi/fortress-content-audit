@@ -56,6 +56,10 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Invalid domain format" }, { status: 400 })
     }
 
+    if (enabled !== undefined && typeof enabled !== "boolean") {
+      return NextResponse.json({ error: "enabled must be a boolean" }, { status: 400 })
+    }
+
     const { data: profile, error } = await supabaseAdmin
       .from("brand_voice_profiles")
       .select("*")

@@ -351,8 +351,8 @@ export function DomainSwitcher() {
               <SidebarMenuSub>
                 <SidebarMenuSubItem>
                   <SidebarMenuSubButton asChild>
-                    <Link href={`/dashboard/content-checks?domain=${encodeURIComponent(domain)}`}>
-                      <span>Content Checks</span>
+                    <Link href={`/dashboard/audit-options?domain=${encodeURIComponent(domain)}`}>
+                      <span>Audit options</span>
                     </Link>
                   </SidebarMenuSubButton>
                 </SidebarMenuSubItem>
@@ -360,13 +360,6 @@ export function DomainSwitcher() {
                   <SidebarMenuSubButton asChild>
                     <Link href={`/dashboard/brand-voice?domain=${encodeURIComponent(domain)}`}>
                       <span>Brand Voice</span>
-                    </Link>
-                  </SidebarMenuSubButton>
-                </SidebarMenuSubItem>
-                <SidebarMenuSubItem>
-                  <SidebarMenuSubButton asChild>
-                    <Link href={`/dashboard/audit-options?domain=${encodeURIComponent(domain)}`}>
-                      <span>Audit Options</span>
                     </Link>
                   </SidebarMenuSubButton>
                 </SidebarMenuSubItem>

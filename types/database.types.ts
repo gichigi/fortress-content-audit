@@ -87,6 +87,7 @@ export type Database = {
       brand_audit_runs: {
         Row: {
           brand_name: string | null
+          brand_voice_config_snapshot: Json | null
           created_at: string | null
           domain: string | null
           guideline_id: string | null
@@ -94,6 +95,7 @@ export type Database = {
           is_preview: boolean | null
           issues_json: Json | null
           pages_audited: number | null
+          pages_found: number | null
           scheduled_audit_id: string | null
           session_token: string | null
           title: string | null
@@ -101,6 +103,7 @@ export type Database = {
         }
         Insert: {
           brand_name?: string | null
+          brand_voice_config_snapshot?: Json | null
           created_at?: string | null
           domain?: string | null
           guideline_id?: string | null
@@ -108,6 +111,7 @@ export type Database = {
           is_preview?: boolean | null
           issues_json?: Json | null
           pages_audited?: number | null
+          pages_found?: number | null
           scheduled_audit_id?: string | null
           session_token?: string | null
           title?: string | null
@@ -115,6 +119,7 @@ export type Database = {
         }
         Update: {
           brand_name?: string | null
+          brand_voice_config_snapshot?: Json | null
           created_at?: string | null
           domain?: string | null
           guideline_id?: string | null
@@ -122,6 +127,7 @@ export type Database = {
           is_preview?: boolean | null
           issues_json?: Json | null
           pages_audited?: number | null
+          pages_found?: number | null
           scheduled_audit_id?: string | null
           session_token?: string | null
           title?: string | null
@@ -143,6 +149,72 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      brand_voice_profiles: {
+        Row: {
+          id: string
+          user_id: string
+          domain: string
+          enabled: boolean
+          readability_level: string | null
+          formality: string | null
+          locale: string | null
+          flag_keywords: Json | null
+          ignore_keywords: Json | null
+          source: string
+          voice_summary: string | null
+          source_domain: string | null
+          source_pages: Json | null
+          source_summary: string | null
+          generated_at: string | null
+          flag_ai_writing: boolean
+          include_longform_full_audit: boolean
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          domain: string
+          enabled?: boolean
+          readability_level?: string | null
+          formality?: string | null
+          locale?: string | null
+          flag_keywords?: Json | null
+          ignore_keywords?: Json | null
+          source?: string
+          voice_summary?: string | null
+          source_domain?: string | null
+          source_pages?: Json | null
+          source_summary?: string | null
+          generated_at?: string | null
+          flag_ai_writing?: boolean
+          include_longform_full_audit?: boolean
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          domain?: string
+          enabled?: boolean
+          readability_level?: string | null
+          formality?: string | null
+          locale?: string | null
+          flag_keywords?: Json | null
+          ignore_keywords?: Json | null
+          source?: string
+          voice_summary?: string | null
+          source_domain?: string | null
+          source_pages?: Json | null
+          source_summary?: string | null
+          generated_at?: string | null
+          flag_ai_writing?: boolean
+          include_longform_full_audit?: boolean
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       brand_onboarding: {
         Row: {
@@ -257,6 +329,7 @@ export type Database = {
           last_modified: string | null
           title: string | null
           user_id: string
+          brand_voice_profile_id: string | null
         }
         Insert: {
           content_md?: string | null
@@ -266,6 +339,7 @@ export type Database = {
           last_modified?: string | null
           title?: string | null
           user_id: string
+          brand_voice_profile_id?: string | null
         }
         Update: {
           content_md?: string | null
@@ -275,8 +349,17 @@ export type Database = {
           last_modified?: string | null
           title?: string | null
           user_id?: string
+          brand_voice_profile_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "guidelines_brand_voice_profile_id_fkey"
+            columns: ["brand_voice_profile_id"]
+            isOneToOne: false
+            referencedRelation: "brand_voice_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       issues: {
         Row: {

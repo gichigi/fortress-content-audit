@@ -104,7 +104,7 @@ export function GuidelinesEditor({
   if (!editor) return null
 
   return (
-    <div className={cn("rounded-md border border-input overflow-hidden min-h-[50rem] flex flex-col", className)}>
+    <div className={cn("rounded-md border border-input overflow-hidden min-h-[25rem] flex flex-col", className)}>
       <FixedToolbar>
         <ToolbarBtn onClick={() => editor.tf.h1?.toggle?.()} title="Heading 1">
           <Heading1 className="h-4 w-4" />
@@ -134,7 +134,7 @@ export function GuidelinesEditor({
         <PlateContent
           id={id}
           placeholder={placeholder}
-          className="prose prose-sm dark:prose-invert max-w-none min-h-[48rem] flex-1 px-4 py-3 focus:outline-none"
+          className="prose prose-sm dark:prose-invert max-w-none min-h-[24rem] flex-1 px-4 py-3 focus:outline-none"
           spellCheck={false}
         />
       </Plate>

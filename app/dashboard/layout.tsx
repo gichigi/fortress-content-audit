@@ -1,6 +1,7 @@
 import { cookies } from "next/headers"
 import { AppSidebar } from "@/components/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
+import { SiteFooter } from "@/components/SiteFooter"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 
 export default async function DashboardLayout({
@@ -25,9 +26,10 @@ export default async function DashboardLayout({
       <AppSidebar variant="inset" />
       <SidebarInset>
         <SiteHeader />
-        <div className="flex flex-1 flex-col">
+        <div className="flex flex-1 flex-col min-h-0">
           {children}
         </div>
+        <SiteFooter />
       </SidebarInset>
     </SidebarProvider>
   )

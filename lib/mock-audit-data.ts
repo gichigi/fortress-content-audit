@@ -201,10 +201,12 @@ export function createMockAuditData(origin: string = 'https://example.com', issu
     new Set(issues.map(issue => issue.page_url))
   )
 
+  const discoveredPages = auditedUrls.length > 0 ? auditedUrls : [baseUrl]
   return {
     issues,
     pagesAudited: auditedUrls.length > 0 ? auditedUrls.length : 1,
     auditedUrls,
+    discoveredPages,
   }
 }
 

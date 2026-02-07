@@ -4,6 +4,7 @@ import { after } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { validateUrl } from '@/lib/url-validation'
 import { auditSite, miniAudit, parallelMiniAudit, parallelProAudit, AuditTier, AuditResult, getExcludedIssues, getActiveIssues, AuditIssueContext } from '@/lib/audit'
+import { runBrandVoiceAuditPass } from '@/lib/brand-voice-audit'
 import PostHogClient from '@/lib/posthog'
 import Logger from '@/lib/logger'
 import { checkDailyLimit, checkDomainLimit, isNewDomain, incrementAuditUsage, getAuditUsage } from '@/lib/audit-rate-limit'
@@ -226,6 +227,8 @@ export async function POST(request: Request) {
     // Helper to run audit and save results
     const runAuditAndSave = async (): Promise<{ result: AuditResult; filteredIssues: any[] } | null> => {
       let result: AuditResult
+      let brandVoiceProfile: any = null
+      let includeLongformFullAudit = false
 
       // Query issue context for authenticated users (for deduplication)
       let issueContext: AuditIssueContext = { excluded: [], active: [] }
@@ -239,11 +242,55 @@ export async function POST(request: Request) {
           if (excluded.length > 0 || active.length > 0) {
             console.log(`[API] Loaded issue context: ${excluded.length} excluded, ${active.length} active`)
           }
+
+          // Load brand voice profile once (for audit scope + brand voice pass)
+          const { data: profile } = await supabaseAdmin
+            .from('brand_voice_profiles')
+            .select('enabled, voice_summary, readability_level, formality, locale, flag_keywords, ignore_keywords, flag_ai_writing, include_longform_full_audit')
+            .eq('user_id', userId)
+            .eq('domain', storageDomain)
+            .maybeSingle()
+          if (profile) {
+            brandVoiceProfile = profile
+            includeLongformFullAudit = !!profile.include_longform_full_audit
+          }
         } catch (error) {
           console.warn('[API] Failed to load issue context:', error instanceof Error ? error.message : error)
           // Continue without context if query fails
         }
       }
+
+      // Build brand voice config (computed once, used for audit + snapshot)
+      const flagKeywords = Array.isArray(brandVoiceProfile?.flag_keywords)
+        ? (brandVoiceProfile.flag_keywords as string[])
+        : []
+      const ignoreKeywords = Array.isArray(brandVoiceProfile?.ignore_keywords)
+        ? (brandVoiceProfile.ignore_keywords as string[])
+        : []
+      const hasContentChecks = Boolean(
+        brandVoiceProfile?.readability_level ||
+          brandVoiceProfile?.formality ||
+          brandVoiceProfile?.locale ||
+          flagKeywords.length > 0 ||
+          ignoreKeywords.length > 0 ||
+          brandVoiceProfile?.flag_ai_writing === true
+      )
+      const useGuidelines = brandVoiceProfile?.enabled === true
+      const shouldRunBrandVoice = userId && brandVoiceProfile && (hasContentChecks || useGuidelines)
+      const brandVoiceOption = shouldRunBrandVoice
+        ? {
+            profile: {
+              voice_summary: useGuidelines ? brandVoiceProfile.voice_summary : null,
+              readability_level: brandVoiceProfile.readability_level,
+              formality: brandVoiceProfile.formality,
+              locale: brandVoiceProfile.locale,
+              flag_keywords: flagKeywords,
+              ignore_keywords: ignoreKeywords,
+              flag_ai_writing: brandVoiceProfile.flag_ai_writing ?? false,
+              use_guidelines: useGuidelines,
+            },
+          }
+        : undefined
 
       if (useMockData) {
         console.log(`[API] Mock data mode enabled - generating mock audit for ${normalized}`)
@@ -254,6 +301,7 @@ export async function POST(request: Request) {
         result = {
           issues: mockData.issues,
           pagesAudited: mockData.pagesAudited,
+          discoveredPages: mockData.discoveredPages ?? mockData.auditedUrls ?? [],
           auditedUrls: mockData.auditedUrls,
           status: 'completed',
           tier: auditTier,
@@ -261,10 +309,10 @@ export async function POST(request: Request) {
       } else {
         console.log(`[API] Running ${auditTier} audit for ${normalized}`)
         result = auditTier === 'FREE'
-          ? await parallelMiniAudit(normalized, issueContext, runId)
+          ? await parallelMiniAudit(normalized, issueContext, runId, { includeLongformFullAudit, brandVoice: brandVoiceOption })
           : auditTier === 'PAID'
-            ? await parallelProAudit(normalized, issueContext, runId)
-            : await auditSite(normalized, 'ENTERPRISE', issueContext, runId)
+            ? await parallelProAudit(normalized, issueContext, runId, { includeLongformFullAudit, brandVoice: brandVoiceOption })
+            : await auditSite(normalized, 'ENTERPRISE', issueContext, runId, { includeLongformFullAudit })
       }
       
       if (result.status !== 'completed') {
@@ -277,13 +325,41 @@ export async function POST(request: Request) {
           .eq('id', runId)
         return null
       }
-      
-      // Get all issues from audit result
-      // Note: Previously filtered to homepage-only for FREE tier, but parallel audit
-      // intentionally audits multiple pages (homepage + 1 per category model)
-      const filteredIssues = result.issues || []
-      
-      // Update audit record with results
+
+      // Enterprise tier: run brand voice sequentially (not in parallel audit)
+      let filteredIssues = result.issues || []
+      if (!useMockData && auditTier === 'ENTERPRISE' && shouldRunBrandVoice && brandVoiceOption && result.manifestText) {
+        try {
+          const bvIssues = await runBrandVoiceAuditPass(
+            storageDomain,
+            result.manifestText,
+            result.auditedUrls || [],
+            brandVoiceOption.profile,
+            { tier: 'ENTERPRISE' }
+          )
+          if (bvIssues.length > 0) {
+            filteredIssues = [...filteredIssues, ...bvIssues]
+            console.log(`[Audit] Enterprise brand voice: ${bvIssues.length} issues`)
+          }
+        } catch (err) {
+          console.warn('[Audit] Enterprise brand voice failed:', err instanceof Error ? err.message : err)
+        }
+      }
+
+      // Store brand voice config snapshot (only for real audits with brand voice)
+      const brandVoiceConfigSnapshot: Record<string, unknown> | null =
+        !useMockData && shouldRunBrandVoice
+          ? {
+              enabled: useGuidelines,
+              voice_summary: useGuidelines ? brandVoiceProfile!.voice_summary : null,
+              readability_level: brandVoiceProfile!.readability_level,
+              formality: brandVoiceProfile!.formality,
+              locale: brandVoiceProfile!.locale,
+              flag_keywords: flagKeywords,
+              ignore_keywords: ignoreKeywords,
+              flag_ai_writing: brandVoiceProfile!.flag_ai_writing,
+            }
+          : null
       const issuesJson = {
         issues: filteredIssues,
         auditedUrls: result.auditedUrls || [],
@@ -291,13 +367,18 @@ export async function POST(request: Request) {
         status: 'completed',
         tier: auditTier,
       }
-      
+
+      const updatePayload: Record<string, unknown> = {
+        pages_audited: result.pagesAudited,
+        issues_json: issuesJson,
+      }
+      if (brandVoiceConfigSnapshot !== null) {
+        updatePayload.brand_voice_config_snapshot = brandVoiceConfigSnapshot
+      }
+
       const { error: updateErr } = await supabaseAdmin
         .from('brand_audit_runs')
-        .update({
-          pages_audited: result.pagesAudited,
-          issues_json: issuesJson,
-        })
+        .update(updatePayload)
         .eq('id', runId)
       
       if (updateErr) {
