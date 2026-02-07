@@ -37,9 +37,40 @@ export interface ElementManifest {
 }
 
 /**
+ * Detect if HTML contains common error patterns from CSR/SPA pages
+ * Returns true if page appears to be in an error state
+ */
+function isErrorPage(htmlContent: string): boolean {
+  const errorPatterns = [
+    /internal error/i,
+    /failed to fetch/i,
+    /unexpectedstatuscode/i,
+    /application error/i,
+    /something went wrong/i,
+    /page not found/i,
+    /404.*not found/i,
+    /500.*internal server/i,
+    /503.*service unavailable/i,
+    /this page (isn't|is not) working/i,
+    /cannot get \//i,
+    /error: /i,
+    /uncaught exception/i
+  ]
+
+  const bodyText = htmlContent.substring(0, 5000) // Check first 5KB only (performance)
+  return errorPatterns.some(pattern => pattern.test(bodyText))
+}
+
+/**
  * Extract element manifest from HTML content
  */
-function extractPageManifestFromHtml(htmlContent: string, url: string, baseUrl: string): ElementManifest {
+function extractPageManifestFromHtml(htmlContent: string, url: string, baseUrl: string): ElementManifest | null {
+  // Skip pages that appear to be in error states (common with CSR/SPA pages)
+  if (isErrorPage(htmlContent)) {
+    Logger.debug(`[Manifest] Skipping ${url} - detected error page content`)
+    return null
+  }
+
   const $ = cheerio.load(htmlContent)
 
   const manifest: ElementManifest = {
@@ -194,8 +225,13 @@ export async function extractElementManifest(url: string): Promise<ElementManife
 
     if (homepageHtml) {
       const homepageManifest = extractPageManifestFromHtml(homepageHtml, url, url)
-      manifests.push(homepageManifest)
-      Logger.debug(`[Manifest] Homepage: ${homepageManifest.links.length} links, ${homepageManifest.headings.length} headings`)
+      if (homepageManifest) {
+        manifests.push(homepageManifest)
+        Logger.debug(`[Manifest] Homepage: ${homepageManifest.links.length} links, ${homepageManifest.headings.length} headings`)
+      } else {
+        Logger.warn(`[Manifest] Homepage contains error content, skipping`)
+        return []
+      }
     } else {
       Logger.warn(`[Manifest] Could not fetch homepage ${url}`)
       return []
@@ -208,8 +244,12 @@ export async function extractElementManifest(url: string): Promise<ElementManife
 
     if (faqHtml) {
       const faqManifest = extractPageManifestFromHtml(faqHtml, faqUrl, url)
-      manifests.push(faqManifest)
-      Logger.debug(`[Manifest] FAQ page: ${faqManifest.links.length} links, ${faqManifest.headings.length} headings`)
+      if (faqManifest) {
+        manifests.push(faqManifest)
+        Logger.debug(`[Manifest] FAQ page: ${faqManifest.links.length} links, ${faqManifest.headings.length} headings`)
+      } else {
+        Logger.debug(`[Manifest] FAQ page contains error content, skipping`)
+      }
     } else {
       Logger.debug(`[Manifest] Could not load FAQ page, skipping`)
     }
