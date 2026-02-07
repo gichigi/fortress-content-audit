@@ -63,15 +63,17 @@ function isErrorPage(htmlContent: string): boolean {
 
 /**
  * Extract element manifest from HTML content
+ * For error pages: extracts links only (for page discovery) but skips content
  */
-function extractPageManifestFromHtml(htmlContent: string, url: string, baseUrl: string): ElementManifest | null {
-  // Skip pages that appear to be in error states (common with CSR/SPA pages)
-  if (isErrorPage(htmlContent)) {
-    Logger.debug(`[Manifest] Skipping ${url} - detected error page content`)
-    return null
-  }
-
+function extractPageManifestFromHtml(htmlContent: string, url: string, baseUrl: string): ElementManifest {
   const $ = cheerio.load(htmlContent)
+  const isError = isErrorPage(htmlContent)
+
+  // For error pages: extract links only (for page discovery) but skip content
+  // This ensures page discovery works even if homepage has CSR error states
+  if (isError) {
+    Logger.debug(`[Manifest] Detected error page content at ${url} - extracting links only`)
+  }
 
   const manifest: ElementManifest = {
     page_url: url,
@@ -116,58 +118,60 @@ function extractPageManifestFromHtml(htmlContent: string, url: string, baseUrl: 
     manifest.links.push({ text, href: fullHref, location, type })
   })
 
-  // Extract headings
-  $('h1, h2, h3, h4, h5, h6').each((_i, el) => {
-    const $el = $(el)
-    manifest.headings.push({
-      tag: el.tagName.toLowerCase(),
-      text: $el.text().trim(),
-      visible: true // Cheerio can't detect visibility, assume visible
+  // Skip content extraction for error pages (only extract links for page discovery)
+  if (!isError) {
+    // Extract headings
+    $('h1, h2, h3, h4, h5, h6').each((_i, el) => {
+      const $el = $(el)
+      manifest.headings.push({
+        tag: el.tagName.toLowerCase(),
+        text: $el.text().trim(),
+        visible: true // Cheerio can't detect visibility, assume visible
+      })
     })
-  })
 
-  // Extract forms
-  $('form').each((_i, el) => {
-    const $el = $(el)
-    manifest.forms.push({
-      action: $el.attr('action') || '[no action]',
-      method: $el.attr('method') || 'get',
-      inputs: $el.find('input, textarea, select').length
+    // Extract forms
+    $('form').each((_i, el) => {
+      const $el = $(el)
+      manifest.forms.push({
+        action: $el.attr('action') || '[no action]',
+        method: $el.attr('method') || 'get',
+        inputs: $el.find('input, textarea, select').length
+      })
     })
-  })
 
-  // Extract buttons
-  $('button').each((_i, el) => {
-    const $el = $(el)
-    manifest.buttons.push({
-      text: $el.text().trim() || $el.attr('aria-label') || '[no text]',
-      type: $el.attr('type') || 'button'
+    // Extract buttons
+    $('button').each((_i, el) => {
+      const $el = $(el)
+      manifest.buttons.push({
+        text: $el.text().trim() || $el.attr('aria-label') || '[no text]',
+        type: $el.attr('type') || 'button'
+      })
     })
-  })
 
-  // Extract key copy for brand voice (limited to avoid bloat)
-  // 1. Meta description - often carefully crafted brand copy
-  const metaDesc = $('meta[name="description"]').attr('content')?.trim()
-  if (metaDesc && metaDesc.length > 20) {
-    manifest.descriptions.push({ text: metaDesc, source: 'meta' })
-  }
+    // Extract key copy for brand voice (limited to avoid bloat)
+    // 1. Meta description - often carefully crafted brand copy
+    const metaDesc = $('meta[name="description"]').attr('content')?.trim()
+    if (metaDesc && metaDesc.length > 20) {
+      manifest.descriptions.push({ text: metaDesc, source: 'meta' })
+    }
 
-  // 2. Hero section copy (first substantial paragraph in main/header area)
-  const heroSelectors = ['[class*="hero"] p', 'header p', 'main > section:first-child p', '[class*="banner"] p']
-  for (const selector of heroSelectors) {
-    $(selector).slice(0, 2).each((_i, el) => {
+    // 2. Hero section copy (first substantial paragraph in main/header area)
+    const heroSelectors = ['[class*="hero"] p', 'header p', 'main > section:first-child p', '[class*="banner"] p']
+    for (const selector of heroSelectors) {
+      $(selector).slice(0, 2).each((_i, el) => {
+        const text = $(el).text().trim()
+        if (text.length > 40 && text.length < 500 && manifest.descriptions.length < 5) {
+          manifest.descriptions.push({ text, source: 'hero' })
+        }
+      })
+    }
+
+    // 3. Key paragraphs from main content (limited to 3, substantial text only)
+    $('main p, article p, [class*="feature"] p, [class*="content"] p').slice(0, 10).each((_i, el) => {
       const text = $(el).text().trim()
-      if (text.length > 40 && text.length < 500 && manifest.descriptions.length < 5) {
-        manifest.descriptions.push({ text, source: 'hero' })
-      }
-    })
-  }
-
-  // 3. Key paragraphs from main content (limited to 3, substantial text only)
-  $('main p, article p, [class*="feature"] p, [class*="content"] p').slice(0, 10).each((_i, el) => {
-    const text = $(el).text().trim()
-    // Only include meaningful paragraphs (40-400 chars), skip tiny or huge blocks
-    if (text.length > 40 && text.length < 400 && manifest.descriptions.length < 6) {
+      // Only include meaningful paragraphs (40-400 chars), skip tiny or huge blocks
+      if (text.length > 40 && text.length < 400 && manifest.descriptions.length < 6) {
       // Avoid duplicates
       const isDuplicate = manifest.descriptions.some(d => d.text === text)
       if (!isDuplicate) {
@@ -175,6 +179,7 @@ function extractPageManifestFromHtml(htmlContent: string, url: string, baseUrl: 
       }
     }
   })
+  } // End of !isError block
 
   return manifest
 }
@@ -225,12 +230,11 @@ export async function extractElementManifest(url: string): Promise<ElementManife
 
     if (homepageHtml) {
       const homepageManifest = extractPageManifestFromHtml(homepageHtml, url, url)
-      if (homepageManifest) {
-        manifests.push(homepageManifest)
-        Logger.debug(`[Manifest] Homepage: ${homepageManifest.links.length} links, ${homepageManifest.headings.length} headings`)
+      manifests.push(homepageManifest)
+      if (homepageManifest.descriptions.length === 0) {
+        Logger.debug(`[Manifest] Homepage: ${homepageManifest.links.length} links only (error page detected)`)
       } else {
-        Logger.warn(`[Manifest] Homepage contains error content, skipping`)
-        return []
+        Logger.debug(`[Manifest] Homepage: ${homepageManifest.links.length} links, ${homepageManifest.headings.length} headings`)
       }
     } else {
       Logger.warn(`[Manifest] Could not fetch homepage ${url}`)
@@ -244,11 +248,11 @@ export async function extractElementManifest(url: string): Promise<ElementManife
 
     if (faqHtml) {
       const faqManifest = extractPageManifestFromHtml(faqHtml, faqUrl, url)
-      if (faqManifest) {
-        manifests.push(faqManifest)
-        Logger.debug(`[Manifest] FAQ page: ${faqManifest.links.length} links, ${faqManifest.headings.length} headings`)
+      manifests.push(faqManifest)
+      if (faqManifest.descriptions.length === 0 && faqManifest.headings.length === 0) {
+        Logger.debug(`[Manifest] FAQ page: ${faqManifest.links.length} links only (error page detected)`)
       } else {
-        Logger.debug(`[Manifest] FAQ page contains error content, skipping`)
+        Logger.debug(`[Manifest] FAQ page: ${faqManifest.links.length} links, ${faqManifest.headings.length} headings`)
       }
     } else {
       Logger.debug(`[Manifest] Could not load FAQ page, skipping`)
