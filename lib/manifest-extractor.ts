@@ -1,15 +1,11 @@
 /**
  * Element Manifest Extractor
  * Extracts HTML element structure from pages to prevent false positives
+ * Uses fetch + cheerio (no browser required)
  */
 
-import puppeteer from 'puppeteer-core'
-import chromium from '@sparticuz/chromium'
 import * as cheerio from 'cheerio'
 import Logger from './logger'
-
-// Detect serverless environment (Vercel, AWS Lambda, etc.)
-const isServerless = !!process.env.AWS_LAMBDA_FUNCTION_NAME || !!process.env.VERCEL
 
 export interface ElementManifest {
   page_url: string
@@ -41,10 +37,9 @@ export interface ElementManifest {
 }
 
 /**
- * Extract element manifest from a single page
+ * Extract element manifest from HTML content
  */
-async function extractPageManifest(page: any, url: string, baseUrl: string): Promise<ElementManifest> {
-  const htmlContent = await page.content()
+function extractPageManifestFromHtml(htmlContent: string, url: string, baseUrl: string): ElementManifest {
   const $ = cheerio.load(htmlContent)
 
   const manifest: ElementManifest = {
@@ -154,56 +149,68 @@ async function extractPageManifest(page: any, url: string, baseUrl: string): Pro
 }
 
 /**
+ * Fetch HTML from a URL with proper headers
+ */
+async function fetchHtml(url: string): Promise<string | null> {
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; FortressBot/1.0; +https://aistyleguide.com)',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+      },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(15000), // 15s timeout
+    })
+
+    if (!response.ok) {
+      Logger.debug(`[Manifest] HTTP ${response.status} for ${url}`)
+      return null
+    }
+
+    const contentType = response.headers.get('content-type') || ''
+    if (!contentType.includes('text/html')) {
+      Logger.debug(`[Manifest] Non-HTML content type for ${url}: ${contentType}`)
+      return null
+    }
+
+    return await response.text()
+  } catch (error) {
+    Logger.debug(`[Manifest] Failed to fetch ${url}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    return null
+  }
+}
+
+/**
  * Extract element manifests from homepage and one additional page
  */
 export async function extractElementManifest(url: string): Promise<ElementManifest[]> {
   const manifests: ElementManifest[] = []
 
-  let browser
   try {
-    // Use @sparticuz/chromium for serverless, local Chrome otherwise
-    let launchOptions
-    if (isServerless) {
-      // Disable GPU mode to avoid requiring system graphics libraries (libnss3.so etc)
-      chromium.setGraphicsMode = false
-      launchOptions = {
-        args: chromium.args,
-        defaultViewport: chromium.defaultViewport,
-        executablePath: await chromium.executablePath(),
-        headless: chromium.headless,
-      }
-    } else {
-      launchOptions = {
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-        // Use local Chrome - puppeteer-core needs explicit path or channel
-        channel: 'chrome',
-      }
-    }
-
-    browser = await puppeteer.launch(launchOptions)
-
-    const page = await browser.newPage()
-    await page.setViewport({ width: 1920, height: 1080 })
-
     // Extract homepage manifest
-    Logger.debug(`[Manifest] Loading ${url}`)
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 })
+    Logger.debug(`[Manifest] Fetching ${url}`)
+    const homepageHtml = await fetchHtml(url)
 
-    const homepageManifest = await extractPageManifest(page, url, url)
-    manifests.push(homepageManifest)
-    Logger.debug(`[Manifest] Homepage: ${homepageManifest.links.length} links, ${homepageManifest.headings.length} headings`)
+    if (homepageHtml) {
+      const homepageManifest = extractPageManifestFromHtml(homepageHtml, url, url)
+      manifests.push(homepageManifest)
+      Logger.debug(`[Manifest] Homepage: ${homepageManifest.links.length} links, ${homepageManifest.headings.length} headings`)
+    } else {
+      Logger.warn(`[Manifest] Could not fetch homepage ${url}`)
+      return []
+    }
 
     // Try to extract manifest from FAQ or About page
     const faqUrl = `${url}/faq`
-    try {
-      Logger.debug(`[Manifest] Loading ${faqUrl}`)
-      await page.goto(faqUrl, { waitUntil: 'networkidle2', timeout: 15000 })
+    Logger.debug(`[Manifest] Fetching ${faqUrl}`)
+    const faqHtml = await fetchHtml(faqUrl)
 
-      const faqManifest = await extractPageManifest(page, faqUrl, url)
+    if (faqHtml) {
+      const faqManifest = extractPageManifestFromHtml(faqHtml, faqUrl, url)
       manifests.push(faqManifest)
       Logger.debug(`[Manifest] FAQ page: ${faqManifest.links.length} links, ${faqManifest.headings.length} headings`)
-    } catch (err) {
+    } else {
       Logger.debug(`[Manifest] Could not load FAQ page, skipping`)
     }
 
@@ -213,10 +220,6 @@ export async function extractElementManifest(url: string): Promise<ElementManife
     Logger.error('[Manifest] Error extracting manifest', error instanceof Error ? error : undefined)
     // Return empty array on error - audit can still proceed without manifest
     return []
-  } finally {
-    if (browser) {
-      await browser.close()
-    }
   }
 }
 
