@@ -1,4 +1,4 @@
-import { ElementManifest } from './types'
+import { ElementManifest } from './manifest-extractor'
 
 export interface LinkCheckResult {
   url: string
@@ -73,27 +73,25 @@ function extractLinks(manifests: ElementManifest[], baseUrl: string, checkExtern
   for (const manifest of manifests) {
     const sourceUrl = manifest.page_url
 
-    // Extract from navigation
-    if (manifest.navigation?.header_links) {
-      for (const link of manifest.navigation.header_links) {
-        if (link.url && link.text) {
-          addLink(linkMap, link.url, sourceUrl, link.text, baseUrl, checkExternal)
+    // Extract from links array (manifest-extractor structure)
+    if (manifest.links) {
+      for (const link of manifest.links) {
+        // Skip non-link types (mailto, tel)
+        if (link.type === 'mailto' || link.type === 'tel') {
+          continue
         }
-      }
-    }
-    if (manifest.navigation?.footer_links) {
-      for (const link of manifest.navigation.footer_links) {
-        if (link.url && link.text) {
-          addLink(linkMap, link.url, sourceUrl, link.text, baseUrl, checkExternal)
-        }
-      }
-    }
 
-    // Extract from content links
-    if (manifest.content_links) {
-      for (const link of manifest.content_links) {
-        if (link.url && link.text) {
-          addLink(linkMap, link.url, sourceUrl, link.text, baseUrl, checkExternal)
+        // Skip external links if not checking them
+        if (!checkExternal && link.type === 'external') {
+          continue
+        }
+
+        if (link.href && link.text) {
+          const normalized = normalizeUrl(link.href)
+          if (!linkMap.has(normalized)) {
+            linkMap.set(normalized, [])
+          }
+          linkMap.get(normalized)!.push({ sourceUrl, linkText: link.text })
         }
       }
     }
