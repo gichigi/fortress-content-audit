@@ -162,19 +162,24 @@ export async function extractElementManifest(url: string): Promise<ElementManife
   let browser
   try {
     // Use @sparticuz/chromium for serverless, local Chrome otherwise
-    const launchOptions = isServerless
-      ? {
-          args: chromium.args,
-          defaultViewport: chromium.defaultViewport,
-          executablePath: await chromium.executablePath(),
-          headless: chromium.headless,
-        }
-      : {
-          headless: true,
-          args: ['--no-sandbox', '--disable-setuid-sandbox'],
-          // Use local Chrome - puppeteer-core needs explicit path or channel
-          channel: 'chrome',
-        }
+    let launchOptions
+    if (isServerless) {
+      // Disable GPU mode to avoid requiring system graphics libraries (libnss3.so etc)
+      chromium.setGraphicsMode = false
+      launchOptions = {
+        args: chromium.args,
+        defaultViewport: chromium.defaultViewport,
+        executablePath: await chromium.executablePath(),
+        headless: chromium.headless,
+      }
+    } else {
+      launchOptions = {
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        // Use local Chrome - puppeteer-core needs explicit path or channel
+        channel: 'chrome',
+      }
+    }
 
     browser = await puppeteer.launch(launchOptions)
 
