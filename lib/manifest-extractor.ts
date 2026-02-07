@@ -3,9 +3,13 @@
  * Extracts HTML element structure from pages to prevent false positives
  */
 
-import puppeteer from 'puppeteer'
+import puppeteer from 'puppeteer-core'
+import chromium from '@sparticuz/chromium'
 import * as cheerio from 'cheerio'
 import Logger from './logger'
+
+// Detect serverless environment (Vercel, AWS Lambda, etc.)
+const isServerless = !!process.env.AWS_LAMBDA_FUNCTION_NAME || !!process.env.VERCEL
 
 export interface ElementManifest {
   page_url: string
@@ -29,6 +33,11 @@ export interface ElementManifest {
     text: string
     type: string
   }>
+  // Key copy samples for brand voice understanding
+  descriptions: Array<{
+    text: string
+    source: 'meta' | 'hero' | 'paragraph'
+  }>
 }
 
 /**
@@ -43,7 +52,8 @@ async function extractPageManifest(page: any, url: string, baseUrl: string): Pro
     links: [],
     headings: [],
     forms: [],
-    buttons: []
+    buttons: [],
+    descriptions: []
   }
 
   // Extract links
@@ -109,6 +119,37 @@ async function extractPageManifest(page: any, url: string, baseUrl: string): Pro
     })
   })
 
+  // Extract key copy for brand voice (limited to avoid bloat)
+  // 1. Meta description - often carefully crafted brand copy
+  const metaDesc = $('meta[name="description"]').attr('content')?.trim()
+  if (metaDesc && metaDesc.length > 20) {
+    manifest.descriptions.push({ text: metaDesc, source: 'meta' })
+  }
+
+  // 2. Hero section copy (first substantial paragraph in main/header area)
+  const heroSelectors = ['[class*="hero"] p', 'header p', 'main > section:first-child p', '[class*="banner"] p']
+  for (const selector of heroSelectors) {
+    $(selector).slice(0, 2).each((_i, el) => {
+      const text = $(el).text().trim()
+      if (text.length > 40 && text.length < 500 && manifest.descriptions.length < 5) {
+        manifest.descriptions.push({ text, source: 'hero' })
+      }
+    })
+  }
+
+  // 3. Key paragraphs from main content (limited to 3, substantial text only)
+  $('main p, article p, [class*="feature"] p, [class*="content"] p').slice(0, 10).each((_i, el) => {
+    const text = $(el).text().trim()
+    // Only include meaningful paragraphs (40-400 chars), skip tiny or huge blocks
+    if (text.length > 40 && text.length < 400 && manifest.descriptions.length < 6) {
+      // Avoid duplicates
+      const isDuplicate = manifest.descriptions.some(d => d.text === text)
+      if (!isDuplicate) {
+        manifest.descriptions.push({ text, source: 'paragraph' })
+      }
+    }
+  })
+
   return manifest
 }
 
@@ -120,10 +161,22 @@ export async function extractElementManifest(url: string): Promise<ElementManife
 
   let browser
   try {
-    browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    })
+    // Use @sparticuz/chromium for serverless, local Chrome otherwise
+    const launchOptions = isServerless
+      ? {
+          args: chromium.args,
+          defaultViewport: chromium.defaultViewport,
+          executablePath: await chromium.executablePath(),
+          headless: chromium.headless,
+        }
+      : {
+          headless: true,
+          args: ['--no-sandbox', '--disable-setuid-sandbox'],
+          // Use local Chrome - puppeteer-core needs explicit path or channel
+          channel: 'chrome',
+        }
+
+    browser = await puppeteer.launch(launchOptions)
 
     const page = await browser.newPage()
     await page.setViewport({ width: 1920, height: 1080 })
