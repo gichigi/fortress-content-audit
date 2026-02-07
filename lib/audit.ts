@@ -767,18 +767,28 @@ export async function parallelMiniAudit(
         ? { ignore: Array.isArray(ignoreKeywords) ? ignoreKeywords : [], flag: Array.isArray(flagKeywords) ? flagKeywords : [] }
         : undefined
 
-    // Run category audits (and optionally brand voice) in parallel
+    // Run category audits, link crawler, and optionally brand voice in parallel
     const categoryPromises = [
       runCategoryAuditWithRetry("Language", pagesToAudit, domainHostname, manifestText, issueContext, openai, keywords),
       runCategoryAuditWithRetry("Facts & Consistency", pagesToAudit, domainHostname, manifestText, issueContext, openai, keywords),
       runCategoryAuditWithRetry("Links & Formatting", pagesToAudit, domainHostname, manifestText, issueContext, openai, keywords),
     ]
+
+    // Add link crawler
+    const { crawlLinks } = await import('./link-crawler')
+    const linkCrawlerPromise = crawlLinks(manifests, normalizedDomain, {
+      concurrency: 3,
+      checkExternal: false,
+      maxLinks: 50,
+      timeoutMs: 8000
+    })
+
     const brandVoicePromise = options?.brandVoice
       ? runBrandVoiceAuditPass(normalizedDomain, manifestText, pagesToAudit, options.brandVoice.profile, { tier: "FREE", openai, issueContext })
       : null
     const allPromises = brandVoicePromise
-      ? [...categoryPromises, brandVoicePromise]
-      : categoryPromises
+      ? [...categoryPromises, linkCrawlerPromise, brandVoicePromise]
+      : [...categoryPromises, linkCrawlerPromise]
     Logger.info(`[ParallelAudit] Running ${allPromises.length} parallel audits on ${pagesToAudit.length} pages...`)
     const results = await Promise.allSettled(allPromises)
 
@@ -786,10 +796,13 @@ export async function parallelMiniAudit(
     const successfulResults: CategoryAuditResult[] = []
     const failedCategories: string[] = []
     const categoryResultCount = categoryPromises.length
+    const linkCrawlerIndex = categoryResultCount
+    const brandVoiceIndex = linkCrawlerIndex + 1
 
     for (let i = 0; i < results.length; i++) {
       const result = results[i]
       if (i < categoryResultCount) {
+        // Category audit results
         if (result.status === "fulfilled" && (result as PromiseFulfilledResult<CategoryAuditResult>).value.status === "success") {
           const value = (result as PromiseFulfilledResult<CategoryAuditResult>).value
           successfulResults.push(value)
@@ -802,7 +815,15 @@ export async function parallelMiniAudit(
           failedCategories.push(`unknown (${(result as PromiseRejectedResult).reason})`)
           Logger.error(`[ParallelAudit] Category audit rejected`, (result as PromiseRejectedResult).reason instanceof Error ? (result as PromiseRejectedResult).reason : undefined)
         }
-      } else {
+      } else if (i === linkCrawlerIndex) {
+        // Link crawler result
+        if (result.status === "fulfilled") {
+          const crawlerIssues = (result as PromiseFulfilledResult<import('./link-crawler').CrawlerIssue[]>).value
+          Logger.debug(`[ParallelAudit] Link crawler: ${crawlerIssues.length} issues`)
+        } else {
+          Logger.warn(`[ParallelAudit] Link crawler failed (graceful):`, (result as PromiseRejectedResult).reason)
+        }
+      } else if (i === brandVoiceIndex) {
         // Brand voice result
         if (result.status === "fulfilled") {
           const bvIssues = (result as PromiseFulfilledResult<AuditResult["issues"]>).value
@@ -820,11 +841,20 @@ export async function parallelMiniAudit(
 
     // Merge category results
     const { issues: categoryIssues } = mergeParallelResults(successfulResults, discoveredPagesList)
-    const brandVoiceIssues =
-      brandVoicePromise && results.length > categoryResultCount && results[categoryResultCount].status === "fulfilled"
-        ? (results[categoryResultCount] as PromiseFulfilledResult<AuditResult["issues"]>).value
+
+    // Extract link crawler issues
+    const linkCrawlerIssues =
+      results[linkCrawlerIndex]?.status === "fulfilled"
+        ? (results[linkCrawlerIndex] as PromiseFulfilledResult<import('./link-crawler').CrawlerIssue[]>).value
         : []
-    const issues = [...categoryIssues, ...brandVoiceIssues]
+
+    // Extract brand voice issues
+    const brandVoiceIssues =
+      brandVoicePromise && results[brandVoiceIndex]?.status === "fulfilled"
+        ? (results[brandVoiceIndex] as PromiseFulfilledResult<AuditResult["issues"]>).value
+        : []
+
+    const issues = [...categoryIssues, ...linkCrawlerIssues, ...brandVoiceIssues]
     const totalDurationMs = Date.now() - startTime
 
     Logger.info(`[ParallelAudit] Completed: ${issues.length} issues from ${successfulResults.length}/${categoryResultCount} categories${brandVoicePromise ? " + brand voice" : ""} in ${(totalDurationMs / 1000).toFixed(1)}s`)
@@ -922,18 +952,28 @@ export async function parallelProAudit(
         ? { ignore: Array.isArray(ignoreKeywordsPro) ? ignoreKeywordsPro : [], flag: Array.isArray(flagKeywordsPro) ? flagKeywordsPro : [] }
         : undefined
 
-    // Run category audits (and optionally brand voice) in parallel
+    // Run category audits, link crawler, and optionally brand voice in parallel
     const categoryPromisesPro = [
       runCategoryAuditWithRetryPro("Language", pagesToAudit, domainHostname, manifestText, issueContext, openai, keywordsPro),
       runCategoryAuditWithRetryPro("Facts & Consistency", pagesToAudit, domainHostname, manifestText, issueContext, openai, keywordsPro),
       runCategoryAuditWithRetryPro("Links & Formatting", pagesToAudit, domainHostname, manifestText, issueContext, openai, keywordsPro),
     ]
+
+    // Add link crawler
+    const { crawlLinks } = await import('./link-crawler')
+    const linkCrawlerPromisePro = crawlLinks(manifests, normalizedDomain, {
+      concurrency: 5,
+      checkExternal: true,
+      maxLinks: 200,
+      timeoutMs: 10000
+    })
+
     const brandVoicePromisePro = options?.brandVoice
       ? runBrandVoiceAuditPass(normalizedDomain, manifestText, pagesToAudit, options.brandVoice.profile, { tier: "PAID", openai, issueContext })
       : null
     const allPromisesPro = brandVoicePromisePro
-      ? [...categoryPromisesPro, brandVoicePromisePro]
-      : categoryPromisesPro
+      ? [...categoryPromisesPro, linkCrawlerPromisePro, brandVoicePromisePro]
+      : [...categoryPromisesPro, linkCrawlerPromisePro]
     Logger.info(`[ParallelProAudit] Running ${allPromisesPro.length} parallel audits on ${pagesToAudit.length} pages...`)
     const resultsPro = await Promise.allSettled(allPromisesPro)
 
@@ -941,10 +981,13 @@ export async function parallelProAudit(
     const successfulResultsPro: CategoryAuditResult[] = []
     const failedCategoriesPro: string[] = []
     const categoryResultCountPro = categoryPromisesPro.length
+    const linkCrawlerIndexPro = categoryResultCountPro
+    const brandVoiceIndexPro = linkCrawlerIndexPro + 1
 
     for (let i = 0; i < resultsPro.length; i++) {
       const result = resultsPro[i]
       if (i < categoryResultCountPro) {
+        // Category audit results
         if (result.status === "fulfilled" && (result as PromiseFulfilledResult<CategoryAuditResult>).value.status === "success") {
           const value = (result as PromiseFulfilledResult<CategoryAuditResult>).value
           successfulResultsPro.push(value)
@@ -957,7 +1000,16 @@ export async function parallelProAudit(
           failedCategoriesPro.push(`unknown (${(result as PromiseRejectedResult).reason})`)
           Logger.error(`[ParallelProAudit] Category audit rejected`, (result as PromiseRejectedResult).reason instanceof Error ? (result as PromiseRejectedResult).reason : undefined)
         }
-      } else {
+      } else if (i === linkCrawlerIndexPro) {
+        // Link crawler result
+        if (result.status === "fulfilled") {
+          const crawlerIssues = (result as PromiseFulfilledResult<import('./link-crawler').CrawlerIssue[]>).value
+          Logger.debug(`[ParallelProAudit] Link crawler: ${crawlerIssues.length} issues`)
+        } else {
+          Logger.warn(`[ParallelProAudit] Link crawler failed (graceful):`, (result as PromiseRejectedResult).reason)
+        }
+      } else if (i === brandVoiceIndexPro) {
+        // Brand voice result
         if (result.status === "fulfilled") {
           const bvIssues = (result as PromiseFulfilledResult<AuditResult["issues"]>).value
           Logger.debug(`[ParallelProAudit] Brand voice: ${bvIssues.length} issues`)
@@ -972,11 +1024,20 @@ export async function parallelProAudit(
     }
 
     const { issues: categoryIssuesPro } = mergeParallelResults(successfulResultsPro, discoveredPagesList)
-    const brandVoiceIssuesPro =
-      brandVoicePromisePro && resultsPro.length > categoryResultCountPro && resultsPro[categoryResultCountPro].status === "fulfilled"
-        ? (resultsPro[categoryResultCountPro] as PromiseFulfilledResult<AuditResult["issues"]>).value
+
+    // Extract link crawler issues
+    const linkCrawlerIssuesPro =
+      resultsPro[linkCrawlerIndexPro]?.status === "fulfilled"
+        ? (resultsPro[linkCrawlerIndexPro] as PromiseFulfilledResult<import('./link-crawler').CrawlerIssue[]>).value
         : []
-    const issues = [...categoryIssuesPro, ...brandVoiceIssuesPro]
+
+    // Extract brand voice issues
+    const brandVoiceIssuesPro =
+      brandVoicePromisePro && resultsPro[brandVoiceIndexPro]?.status === "fulfilled"
+        ? (resultsPro[brandVoiceIndexPro] as PromiseFulfilledResult<AuditResult["issues"]>).value
+        : []
+
+    const issues = [...categoryIssuesPro, ...linkCrawlerIssuesPro, ...brandVoiceIssuesPro]
     const totalDurationMs = Date.now() - startTime
 
     Logger.info(`[ParallelProAudit] Completed: ${issues.length} issues from ${successfulResultsPro.length}/${categoryResultCountPro} categories${brandVoicePromisePro ? " + brand voice" : ""} in ${(totalDurationMs / 1000).toFixed(1)}s`)

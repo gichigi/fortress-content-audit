@@ -322,13 +322,15 @@ DO NOT report Facts/Consistency or Links/Formatting issues.`,
 
 DO NOT report Language or Links/Formatting issues.`,
 
-    "Links & Formatting": `Focus ONLY on Links & Formatting issues:
-- Broken links (404s, 500s)
-- Links pointing to wrong destinations
-- Confusing or unclear link text
-- Formatting problems
+    "Links & Formatting": `Focus ONLY on Formatting & UX issues:
+- Confusing or misleading link text (e.g., "click here" with no context)
+- Formatting problems (inconsistent styles, broken layouts)
 - Layout issues affecting readability
+- Visual hierarchy problems
+- Navigation UX issues
 
+NOTE: Broken links, redirects, and HTTP errors are checked automatically.
+DO NOT report 404s, timeouts, or SSL errors - focus on UX only.
 DO NOT report Language or Facts/Consistency issues.`
   }
 
