@@ -1,0 +1,129 @@
+/**
+ * Firecrawl API Client
+ * Handles web crawling with bot protection and JS rendering
+ */
+
+import FirecrawlApp from '@mendable/firecrawl-js'
+import Logger from './logger'
+
+// Initialize Firecrawl client
+const getFirecrawlClient = () => {
+  const apiKey = process.env.FIRECRAWL_API_KEY
+  if (!apiKey) {
+    throw new Error('FIRECRAWL_API_KEY not found in environment variables')
+  }
+  return new FirecrawlApp({ apiKey })
+}
+
+export interface FirecrawlPage {
+  url: string
+  markdown?: string
+  html?: string
+  links?: string[]
+  metadata?: {
+    title?: string
+    description?: string
+    statusCode?: number
+  }
+}
+
+export interface CrawlOptions {
+  limit?: number
+  maxDepth?: number
+  includePaths?: string[]
+  excludePaths?: string[]
+  onlyMainContent?: boolean
+}
+
+/**
+ * Crawl a website and return pages with markdown content
+ */
+export async function crawlWebsite(
+  url: string,
+  options: CrawlOptions = {}
+): Promise<FirecrawlPage[]> {
+  const {
+    limit = 20,
+    maxDepth = 3,
+    includePaths,
+    excludePaths,
+    onlyMainContent = true
+  } = options
+
+  const firecrawl = getFirecrawlClient()
+
+  try {
+    Logger.info(`[Firecrawl] Starting crawl of ${url} (limit: ${limit})`)
+    const startTime = Date.now()
+
+    const result = await firecrawl.crawl(url, {
+      limit,
+      maxDepth,
+      includePaths,
+      excludePaths,
+      scrapeOptions: {
+        formats: ['markdown', 'links'],
+        onlyMainContent
+      }
+    })
+
+    const duration = Date.now() - startTime
+    Logger.info(`[Firecrawl] Crawl completed in ${(duration / 1000).toFixed(1)}s: ${result.data?.length || 0} pages`)
+
+    return result.data || []
+  } catch (error) {
+    Logger.error('[Firecrawl] Crawl failed', error instanceof Error ? error : undefined)
+    throw error
+  }
+}
+
+/**
+ * Map a website to discover all URLs
+ */
+export async function mapWebsite(url: string): Promise<string[]> {
+  const firecrawl = getFirecrawlClient()
+
+  try {
+    Logger.info(`[Firecrawl] Mapping ${url}`)
+    const startTime = Date.now()
+
+    const result = await firecrawl.map(url, {
+      includeSubdomains: false,
+      limit: 1000
+    })
+
+    const duration = Date.now() - startTime
+    const urls = result.links || []
+    Logger.info(`[Firecrawl] Map completed in ${(duration / 1000).toFixed(1)}s: ${urls.length} URLs found`)
+
+    return urls
+  } catch (error) {
+    Logger.error('[Firecrawl] Map failed', error instanceof Error ? error : undefined)
+    throw error
+  }
+}
+
+/**
+ * Scrape a single page
+ */
+export async function scrapePage(url: string): Promise<FirecrawlPage> {
+  const firecrawl = getFirecrawlClient()
+
+  try {
+    const result = await firecrawl.scrape(url, {
+      formats: ['markdown', 'links'],
+      onlyMainContent: true
+    })
+
+    return {
+      url,
+      markdown: result.markdown,
+      html: result.html,
+      links: result.links,
+      metadata: result.metadata
+    }
+  } catch (error) {
+    Logger.error(`[Firecrawl] Scrape failed for ${url}`, error instanceof Error ? error : undefined)
+    throw error
+  }
+}
