@@ -1,57 +1,175 @@
 /**
  * Adapter to make Firecrawl output compatible with existing audit system
- * Bridges Firecrawl pages to manifest format for minimal audit.ts changes
+ * Implements Map → selectPagesToAudit → Scrape architecture for intelligent page selection
  */
 
-import { crawlWebsite, mapWebsite, FirecrawlPage } from './firecrawl-client'
+import { mapWebsite, scrapePage, isFirecrawlAvailable, FirecrawlPage } from './firecrawl-client'
+import { selectPagesToAudit } from './page-selector'
+import { crawlLinks, type CrawlerIssue } from './link-crawler'
 import Logger from './logger'
+
+// Fallback to old method when Firecrawl unavailable
+import {
+  extractElementManifest,
+  formatManifestForPrompt as formatManifestLegacy,
+  countInternalPages,
+  extractDiscoveredPagesList
+} from './manifest-extractor'
 
 export interface AuditManifest {
   pages: FirecrawlPage[]
   discoveredUrls: string[]
   pagesFound: number
+  linkValidationIssues?: CrawlerIssue[]
 }
 
 /**
- * Extract content using Firecrawl (replaces extractElementManifest)
+ * Extract hostname from domain string
+ */
+function extractDomainHostname(domain: string): string {
+  try {
+    const url = new URL(domain.startsWith('http') ? domain : `https://${domain}`)
+    return url.hostname
+  } catch {
+    return domain.replace(/^https?:\/\//, '').replace(/\/$/, '')
+  }
+}
+
+/**
+ * Fallback: Use legacy manifest extractor when Firecrawl unavailable
+ */
+async function extractWithLegacyManifest(
+  domain: string,
+  tier: 'FREE' | 'PAID',
+  includeLongform: boolean
+): Promise<AuditManifest> {
+  Logger.info('[Fallback] Using legacy manifest-extractor')
+
+  // Ensure domain has protocol
+  const normalizedDomain = domain.startsWith('http') ? domain : `https://${domain}`
+  const manifests = await extractElementManifest(normalizedDomain)
+  const discoveredUrls = extractDiscoveredPagesList(manifests)
+  const domainHostname = extractDomainHostname(domain)
+
+  // Apply same intelligent selection
+  const selectedUrls = await selectPagesToAudit(
+    discoveredUrls,
+    domainHostname,
+    tier,
+    includeLongform
+  )
+
+  // Convert legacy manifests to Firecrawl-style pages
+  const pages: FirecrawlPage[] = manifests
+    .filter(m => selectedUrls.includes(m.page_url))
+    .map(m => {
+      // Convert links to markdown format for link crawler
+      const markdownLinks = m.links
+        .map(link => `[${link.text}](${link.href})`)
+        .join('\n')
+
+      return {
+        url: m.page_url,
+        markdown: formatManifestLegacy([m]) + '\n\n' + markdownLinks,
+        metadata: {
+          title: m.headings[0]?.text || undefined
+        }
+      }
+    })
+
+  // Run link crawler even in fallback mode (uses hybrid approach)
+  Logger.debug(`[Fallback] Running link crawler on ${pages.length} pages...`)
+  const linkValidationIssues = await crawlLinks(pages, domain, {
+    concurrency: tier === 'FREE' ? 3 : 5,
+    checkExternal: tier === 'PAID', // Only check external links on paid tier
+    maxLinks: tier === 'FREE' ? 50 : 200,
+    timeoutMs: 8000
+  })
+  Logger.info(`[LinkCrawler] Found ${linkValidationIssues.length} link issues`)
+
+  return {
+    pages,
+    discoveredUrls,
+    pagesFound: countInternalPages(manifests),
+    linkValidationIssues
+  }
+}
+
+/**
+ * Extract content using Firecrawl with intelligent page selection
+ * Architecture: Map (discover) → selectPagesToAudit (intelligence) → Scrape (parallel)
+ * Falls back to manifest-extractor if Firecrawl API key not configured
  */
 export async function extractWithFirecrawl(
   domain: string,
-  tier: 'FREE' | 'PAID' = 'FREE'
+  tier: 'FREE' | 'PAID' = 'FREE',
+  includeLongform: boolean = false
 ): Promise<AuditManifest> {
+  // Fallback to legacy method if Firecrawl not available
+  if (!isFirecrawlAvailable()) {
+    Logger.warn('[Firecrawl] API key not configured, falling back to manifest-extractor')
+    return extractWithLegacyManifest(domain, tier, includeLongform)
+  }
+
   const limit = tier === 'FREE' ? 6 : 20
 
   try {
-    // Option 1: Simple crawl (let Firecrawl decide which pages)
-    const pages = await crawlWebsite(domain, {
-      limit,
-      maxDepth: 3,
-      onlyMainContent: true,
-      excludePaths: [
-        '^/admin',
-        '^/login',
-        '^/signup',
-        '^/api',
-        '\\.(pdf|zip|exe|dmg)$'
-      ]
-    })
+    // Phase 1: Map - Discover all URLs on the site
+    Logger.debug(`[Firecrawl] Phase 1: Mapping URLs from ${domain}...`)
+    const mapResults = await mapWebsite(domain)
+    // Extract URL strings from map results (Firecrawl returns {url, title, description})
+    const allUrls = mapResults.map(r => typeof r === 'string' ? r : r.url || r)
+    Logger.debug(`[Firecrawl] Discovered ${allUrls.length} URLs`)
 
-    // Extract all discovered URLs from crawled pages
-    const discoveredUrls = new Set<string>()
-    pages.forEach(page => {
-      discoveredUrls.add(page.url)
-      page.links?.forEach(link => discoveredUrls.add(link))
-    })
+    // Phase 2: Smart Selection - Use our intelligent page selector
+    const domainHostname = extractDomainHostname(domain)
+    const selectedUrls = await selectPagesToAudit(
+      allUrls,
+      domainHostname,
+      tier,
+      includeLongform
+    )
+    Logger.debug(`[Firecrawl] Selected ${selectedUrls.length}/${allUrls.length} pages for audit`)
 
-    Logger.info(`[Firecrawl] Crawled ${pages.length} pages, discovered ${discoveredUrls.size} total URLs`)
+    // Phase 3: Parallel Scrape - Fetch content for selected pages
+    Logger.debug(`[Firecrawl] Phase 3: Scraping ${selectedUrls.length} selected pages...`)
+    const scrapePromises = selectedUrls.map(url =>
+      scrapePage(url).catch(err => {
+        Logger.warn(`[Firecrawl] Failed to scrape ${url}:`, err)
+        return null
+      })
+    )
+    const scrapeResults = await Promise.all(scrapePromises)
+    const pages = scrapeResults.filter((p): p is FirecrawlPage => p !== null)
+
+    Logger.info(`[Firecrawl] Successfully scraped ${pages.length}/${selectedUrls.length} pages (discovered ${allUrls.length} total URLs)`)
+
+    // Phase 4: HTTP Link Crawler - Check links via actual HTTP requests
+    Logger.debug(`[Firecrawl] Phase 4: Crawling links from scraped pages...`)
+    const linkValidationIssues = await crawlLinks(pages, domain, {
+      concurrency: tier === 'FREE' ? 3 : 5,
+      checkExternal: tier === 'PAID', // Only check external links on paid tier
+      maxLinks: tier === 'FREE' ? 50 : 200,
+      timeoutMs: 8000
+    })
+    Logger.info(`[LinkCrawler] Found ${linkValidationIssues.length} link issues`)
 
     return {
       pages,
-      discoveredUrls: Array.from(discoveredUrls),
-      pagesFound: discoveredUrls.size
+      discoveredUrls: allUrls, // Already extracted as strings above
+      pagesFound: allUrls.length,
+      linkValidationIssues
     }
   } catch (error) {
     Logger.error('[Firecrawl] Extraction failed', error instanceof Error ? error : undefined)
+
+    // Fallback to legacy if Firecrawl fails (e.g., out of credits, network error)
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    if (errorMessage.includes('Insufficient credits') || errorMessage.includes('credit')) {
+      Logger.warn('[Firecrawl] Out of credits, falling back to manifest-extractor')
+      return extractWithLegacyManifest(domain, tier, includeLongform)
+    }
+
     throw error
   }
 }

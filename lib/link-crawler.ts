@@ -1,10 +1,30 @@
-import { ElementManifest } from './manifest-extractor'
+/**
+ * HTTP-based link crawler
+ * Actually fetches URLs to check if they're broken (vs Map-based inference)
+ *
+ * Architecture:
+ * 1. Extract links from scraped pages
+ * 2. HTTP check each link (with concurrency control)
+ * 3. Report broken links, redirects, timeouts, etc.
+ */
 
-export interface LinkCheckResult {
+import type { FirecrawlPage } from './firecrawl-client'
+import { scrapePage } from './firecrawl-client'
+import Logger from './logger'
+
+export interface CrawlerIssue {
+  page_url: string // Source page where link appears
+  category: 'Links & Formatting'
+  issue_description: string
+  severity: 'low' | 'medium' | 'critical'
+  suggested_fix: string
+}
+
+interface LinkCheckResult {
   url: string
   sourceUrl: string
   linkText: string
-  status: 'ok' | 'broken' | 'redirect_chain' | 'redirect_loop' | 'slow' | 'ssl_error' | 'timeout' | 'mixed_content'
+  status: 'ok' | 'broken' | 'redirect_chain' | 'slow' | 'timeout' | 'error'
   httpStatus?: number
   redirectCount?: number
   responseTimeMs?: number
@@ -12,419 +32,484 @@ export interface LinkCheckResult {
   error?: string
 }
 
-export interface CrawlerIssue {
-  page_url: string
-  category: 'Links & Formatting'
-  issue_description: string
-  severity: 'low' | 'medium' | 'critical'
-  suggested_fix: string
+interface ExtractedLink {
+  text: string
+  href: string
+  sourceUrl: string
 }
 
-interface CrawlerConfig {
-  concurrency?: number
-  timeoutMs?: number
-  checkExternal?: boolean
-  maxLinks?: number
-}
-
-// Simple semaphore for concurrency control
+/**
+ * Simple semaphore for concurrency control
+ */
 class Semaphore {
-  private permits: number
+  private current = 0
   private queue: (() => void)[] = []
 
-  constructor(permits: number) {
-    this.permits = permits
-  }
+  constructor(private max: number) {}
 
   async acquire(): Promise<void> {
-    if (this.permits > 0) {
-      this.permits--
-      return Promise.resolve()
+    if (this.current < this.max) {
+      this.current++
+      return
     }
-    return new Promise((resolve) => this.queue.push(resolve))
+
+    return new Promise(resolve => {
+      this.queue.push(resolve)
+    })
   }
 
   release(): void {
-    this.permits++
+    this.current--
     const next = this.queue.shift()
     if (next) {
-      this.permits--
+      this.current++
       next()
     }
   }
 }
 
-// Normalize URLs for deduplication
-function normalizeUrl(url: string): string {
+/**
+ * Extract links from markdown content
+ */
+function extractLinksFromMarkdown(
+  markdown: string,
+  sourceUrl: string
+): ExtractedLink[] {
+  const links: ExtractedLink[] = []
+
+  // Match markdown links: [text](url)
+  const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g
+  let match
+
+  while ((match = linkRegex.exec(markdown)) !== null) {
+    const text = match[1]
+    const href = match[2]
+
+    // Skip anchors, mailto, tel, javascript
+    if (
+      href.startsWith('#') ||
+      href.startsWith('mailto:') ||
+      href.startsWith('tel:') ||
+      href.startsWith('javascript:')
+    ) {
+      continue
+    }
+
+    links.push({ text, href, sourceUrl })
+  }
+
+  return links
+}
+
+/**
+ * Normalize URL for absolute path
+ */
+function normalizeUrl(url: string, baseUrl: string): string {
   try {
-    const parsed = new URL(url)
-    // Remove trailing slash, fragment
-    let normalized = parsed.origin + parsed.pathname.replace(/\/$/, '') + parsed.search
-    return normalized
+    // Handle relative URLs
+    if (url.startsWith('/') && !url.startsWith('//')) {
+      const base = new URL(baseUrl)
+      return `${base.origin}${url}`
+    }
+
+    // Handle protocol-relative URLs
+    if (url.startsWith('//')) {
+      const base = new URL(baseUrl)
+      return `${base.protocol}${url}`
+    }
+
+    // Handle absolute URLs
+    if (url.startsWith('http')) {
+      return url
+    }
+
+    // Relative path
+    const base = new URL(baseUrl)
+    return new URL(url, base.href).href
   } catch {
     return url
   }
 }
 
-// Extract all links from manifests
-function extractLinks(manifests: ElementManifest[], baseUrl: string, checkExternal: boolean): Map<string, { sourceUrl: string; linkText: string }[]> {
-  const linkMap = new Map<string, { sourceUrl: string; linkText: string }[]>()
+/**
+ * Check if URL is internal (same domain)
+ */
+function isInternalUrl(url: string, domain: string): boolean {
+  try {
+    const parsed = new URL(url)
+    const domainParsed = new URL(domain.startsWith('http') ? domain : `https://${domain}`)
 
-  for (const manifest of manifests) {
-    const sourceUrl = manifest.page_url
-
-    // Extract from links array (manifest-extractor structure)
-    if (manifest.links) {
-      for (const link of manifest.links) {
-        // Skip non-link types (mailto, tel)
-        if (link.type === 'mailto' || link.type === 'tel') {
-          continue
-        }
-
-        // Skip external links if not checking them
-        if (!checkExternal && link.type === 'external') {
-          continue
-        }
-
-        if (link.href && link.text) {
-          const normalized = normalizeUrl(link.href)
-          if (!linkMap.has(normalized)) {
-            linkMap.set(normalized, [])
-          }
-          linkMap.get(normalized)!.push({ sourceUrl, linkText: link.text })
-        }
-      }
-    }
+    return parsed.hostname === domainParsed.hostname
+  } catch {
+    return false
   }
-
-  return linkMap
 }
 
-function addLink(
-  linkMap: Map<string, { sourceUrl: string; linkText: string }[]>,
+/**
+ * Check a single link using HEAD request (fast, free)
+ * For internal links without bot protection
+ */
+async function checkLinkWithFetch(
   url: string,
   sourceUrl: string,
   linkText: string,
-  baseUrl: string,
-  checkExternal: boolean
-) {
-  try {
-    // Skip non-http(s) protocols
-    if (url.startsWith('mailto:') || url.startsWith('tel:') || url.startsWith('javascript:')) {
-      return
-    }
-
-    // Resolve relative URLs
-    let absoluteUrl: string
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      absoluteUrl = url
-    } else if (url.startsWith('//')) {
-      absoluteUrl = 'https:' + url
-    } else {
-      absoluteUrl = new URL(url, baseUrl).href
-    }
-
-    // Skip external links if not checking them
-    if (!checkExternal) {
-      const urlHostname = new URL(absoluteUrl).hostname
-      const baseHostname = new URL(baseUrl).hostname
-      if (urlHostname !== baseHostname && !urlHostname.endsWith('.' + baseHostname)) {
-        return
-      }
-    }
-
-    const normalized = normalizeUrl(absoluteUrl)
-
-    if (!linkMap.has(normalized)) {
-      linkMap.set(normalized, [])
-    }
-    linkMap.get(normalized)!.push({ sourceUrl, linkText })
-  } catch (error) {
-    // Invalid URL, skip
-    console.warn('Invalid URL:', url, error)
-  }
-}
-
-// Check a single link
-async function checkLink(
-  url: string,
-  sources: { sourceUrl: string; linkText: string }[],
-  timeoutMs: number,
-  baseUrl: string
-): Promise<LinkCheckResult[]> {
+  timeoutMs: number = 10000
+): Promise<LinkCheckResult> {
   const startTime = Date.now()
-  const results: LinkCheckResult[] = []
-  const isHttps = baseUrl.startsWith('https://')
 
   try {
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+    const timeout = setTimeout(() => controller.abort(), timeoutMs)
 
-    const redirectChain: string[] = [url]
-    let currentUrl = url
-    let redirectCount = 0
-    const maxRedirects = 10
+    const response = await fetch(url, {
+      method: 'HEAD',
+      redirect: 'follow',
+      signal: controller.signal
+    })
 
-    // Manual redirect following to track chain
-    while (redirectCount < maxRedirects) {
-      const response = await fetch(currentUrl, {
-        method: 'HEAD',
-        redirect: 'manual',
-        signal: controller.signal,
-        headers: {
-          'User-Agent': 'Fortress-Content-Audit-Bot/1.0'
-        }
-      })
+    clearTimeout(timeout)
+    const responseTimeMs = Date.now() - startTime
+    const statusCode = response.status
 
-      clearTimeout(timeoutId)
-      const responseTime = Date.now() - startTime
-
-      // Check for mixed content
-      const isMixedContent = isHttps && currentUrl.startsWith('http://')
-
-      // Success
-      if (response.status >= 200 && response.status < 300) {
-        const status = isMixedContent ? 'mixed_content' : (responseTime > 3000 ? 'slow' : 'ok')
-        const redirectChainIssue = redirectCount >= 3 ? 'redirect_chain' : null
-
-        for (const source of sources) {
-          // Report redirect chain issue if present
-          if (redirectChainIssue) {
-            results.push({
-              url,
-              sourceUrl: source.sourceUrl,
-              linkText: source.linkText,
-              status: 'redirect_chain',
-              httpStatus: response.status,
-              redirectCount,
-              responseTimeMs: responseTime,
-              finalUrl: currentUrl
-            })
-          } else if (status !== 'ok') {
-            // Report mixed content or slow response
-            results.push({
-              url,
-              sourceUrl: source.sourceUrl,
-              linkText: source.linkText,
-              status,
-              httpStatus: response.status,
-              redirectCount,
-              responseTimeMs: responseTime,
-              finalUrl: currentUrl
-            })
-          }
-          // If everything is OK, we don't create a result (no issue)
-        }
-
-        return results
-      }
-
-      // Redirect
-      if (response.status >= 300 && response.status < 400) {
-        const location = response.headers.get('location')
-        if (!location) {
-          throw new Error('Redirect without Location header')
-        }
-
-        // Resolve relative redirect URLs
-        const nextUrl = location.startsWith('http') ? location : new URL(location, currentUrl).href
-
-        // Check for redirect loop - use exact URL comparison (don't normalize)
-        if (redirectChain.includes(nextUrl)) {
-          for (const source of sources) {
-            results.push({
-              url,
-              sourceUrl: source.sourceUrl,
-              linkText: source.linkText,
-              status: 'redirect_loop',
-              httpStatus: response.status,
-              redirectCount,
-              responseTimeMs: responseTime,
-              error: `Redirect loop detected: ${redirectChain.join(' → ')} → ${nextUrl}`
-            })
-          }
-          return results
-        }
-
-        redirectChain.push(nextUrl)
-        currentUrl = nextUrl
-        redirectCount++
-        continue
-      }
-
-      // Error status
-      for (const source of sources) {
-        results.push({
-          url,
-          sourceUrl: source.sourceUrl,
-          linkText: source.linkText,
-          status: 'broken',
-          httpStatus: response.status,
-          redirectCount,
-          responseTimeMs: responseTime
-        })
-      }
-      return results
-    }
-
-    // Max redirects exceeded
-    for (const source of sources) {
-      results.push({
+    // 404 = Broken
+    if (statusCode === 404) {
+      return {
         url,
-        sourceUrl: source.sourceUrl,
-        linkText: source.linkText,
-        status: 'redirect_loop',
-        redirectCount,
-        responseTimeMs: Date.now() - startTime,
-        error: 'Too many redirects'
-      })
-    }
-    return results
-
-  } catch (error: any) {
-    const responseTime = Date.now() - startTime
-
-    // Determine error type
-    let status: LinkCheckResult['status'] = 'broken'
-    let errorMsg = error.message || 'Unknown error'
-
-    if (error.name === 'AbortError') {
-      status = 'timeout'
-      errorMsg = 'Request timeout'
-    } else if (errorMsg.includes('SSL') || errorMsg.includes('certificate') || errorMsg.includes('TLS')) {
-      status = 'ssl_error'
+        sourceUrl,
+        linkText,
+        status: 'broken',
+        httpStatus: 404,
+        responseTimeMs
+      }
     }
 
-    for (const source of sources) {
-      results.push({
+    // 5xx = Server error (broken)
+    if (statusCode >= 500) {
+      return {
         url,
-        sourceUrl: source.sourceUrl,
-        linkText: source.linkText,
-        status,
-        responseTimeMs: responseTime,
-        error: errorMsg
-      })
+        sourceUrl,
+        linkText,
+        status: 'broken',
+        httpStatus: statusCode,
+        responseTimeMs
+      }
     }
-    return results
+
+    // 4xx (other than 404) = Client error
+    if (statusCode >= 400) {
+      return {
+        url,
+        sourceUrl,
+        linkText,
+        status: 'error',
+        httpStatus: statusCode,
+        responseTimeMs
+      }
+    }
+
+    // 2xx/3xx = Success (fetch follows redirects automatically)
+    // Check if slow (>3 seconds)
+    if (responseTimeMs > 3000) {
+      return {
+        url,
+        sourceUrl,
+        linkText,
+        status: 'slow',
+        httpStatus: statusCode,
+        responseTimeMs
+      }
+    }
+
+    return {
+      url,
+      sourceUrl,
+      linkText,
+      status: 'ok',
+      httpStatus: statusCode,
+      responseTimeMs
+    }
+
+  } catch (error) {
+    const responseTimeMs = Date.now() - startTime
+
+    return {
+      url,
+      sourceUrl,
+      linkText,
+      status: 'error',
+      responseTimeMs,
+      error: error instanceof Error ? error.message : String(error)
+    }
   }
 }
 
-// Convert check results to issues
-function resultToIssue(result: LinkCheckResult): CrawlerIssue | null {
-  // No issue for OK links
-  if (result.status === 'ok') {
-    return null
+/**
+ * Check a single link using Firecrawl (bypasses bot protection)
+ * For external links that may have bot protection
+ */
+async function checkLinkWithFirecrawl(
+  url: string,
+  sourceUrl: string,
+  linkText: string,
+  timeoutMs: number = 10000
+): Promise<LinkCheckResult> {
+  const startTime = Date.now()
+
+  try {
+    // Use Firecrawl to check the URL (handles redirects, bot protection, JS rendering)
+    const result = await scrapePage(url)
+    const responseTimeMs = Date.now() - startTime
+
+    const statusCode = result.metadata?.statusCode
+
+    // No status code means Firecrawl couldn't access it
+    if (!statusCode) {
+      return {
+        url,
+        sourceUrl,
+        linkText,
+        status: 'error',
+        responseTimeMs,
+        error: 'Could not determine status code'
+      }
+    }
+
+    // 404 = Broken
+    if (statusCode === 404) {
+      return {
+        url,
+        sourceUrl,
+        linkText,
+        status: 'broken',
+        httpStatus: 404,
+        responseTimeMs
+      }
+    }
+
+    // 5xx = Server error (broken)
+    if (statusCode >= 500) {
+      return {
+        url,
+        sourceUrl,
+        linkText,
+        status: 'broken',
+        httpStatus: statusCode,
+        responseTimeMs
+      }
+    }
+
+    // 4xx (other than 404) = Client error
+    if (statusCode >= 400) {
+      return {
+        url,
+        sourceUrl,
+        linkText,
+        status: 'error',
+        httpStatus: statusCode,
+        responseTimeMs
+      }
+    }
+
+    // 3xx = Redirects (Firecrawl follows them automatically, so if we got here, it worked)
+    // 2xx = Success
+    // Both are OK!
+
+    // Check if slow (>3 seconds)
+    if (responseTimeMs > 3000) {
+      return {
+        url,
+        sourceUrl,
+        linkText,
+        status: 'slow',
+        httpStatus: statusCode,
+        responseTimeMs
+      }
+    }
+
+    return {
+      url,
+      sourceUrl,
+      linkText,
+      status: 'ok',
+      httpStatus: statusCode,
+      responseTimeMs
+    }
+
+  } catch (error) {
+    const responseTimeMs = Date.now() - startTime
+
+    return {
+      url,
+      sourceUrl,
+      linkText,
+      status: 'error',
+      responseTimeMs,
+      error: error instanceof Error ? error.message : String(error)
+    }
   }
+}
 
-  let severity: 'low' | 'medium' | 'critical' = 'low'
-  let issueDescription = ''
-  let suggestedFix = ''
+/**
+ * Convert check results to issues
+ */
+function resultToIssue(result: LinkCheckResult): CrawlerIssue | null {
+  const { status, url, sourceUrl, linkText, httpStatus, responseTimeMs } = result
 
-  switch (result.status) {
+  switch (status) {
+    case 'ok':
+      return null // No issue
+
     case 'broken':
-      severity = 'critical'
-      issueDescription = `frustration: Link "${result.linkText}" returns ${result.httpStatus || 'error'}.`
-      suggestedFix = result.httpStatus === 404
-        ? `Fix or remove the broken link to ${result.url}.`
-        : `Check and fix the broken link to ${result.url}.`
-      break
-
-    case 'timeout':
-      severity = 'critical'
-      issueDescription = `frustration: Link "${result.linkText}" times out or is unreachable.`
-      suggestedFix = `Check if the URL is correct: ${result.url}`
-      break
-
-    case 'redirect_loop':
-      severity = 'critical'
-      issueDescription = `frustration: Link "${result.linkText}" has a redirect loop.`
-      suggestedFix = `Fix the redirect configuration for ${result.url}.`
-      break
-
-    case 'ssl_error':
-      severity = 'medium'
-      issueDescription = `trust: Link "${result.linkText}" has SSL certificate errors.`
-      suggestedFix = `Fix the SSL certificate for ${result.url}.`
-      break
-
-    case 'redirect_chain':
-      severity = 'low'
-      issueDescription = `performance: Link "${result.linkText}" has ${result.redirectCount} redirects before reaching destination.`
-      suggestedFix = `Update link directly to final URL: ${result.finalUrl || result.url}.`
-      break
+      return {
+        page_url: sourceUrl,
+        category: 'Links & Formatting',
+        severity: httpStatus === 404 ? 'critical' : 'medium',
+        issue_description: `broken link: Link "${linkText}" points to ${url}, which returned HTTP ${httpStatus}.`,
+        suggested_fix: httpStatus === 404
+          ? 'Remove the broken link or update it to point to a valid page. The target page does not exist.'
+          : `Server error (${httpStatus}). Check the target server or remove the link.`
+      }
 
     case 'slow':
-      severity = 'low'
-      issueDescription = `performance: Link "${result.linkText}" takes ${Math.round(result.responseTimeMs! / 1000)}s to respond.`
-      suggestedFix = `Check server performance for ${result.url}.`
-      break
+      return {
+        page_url: sourceUrl,
+        category: 'Links & Formatting',
+        severity: 'low',
+        issue_description: `performance: Link "${linkText}" to ${url} took ${responseTimeMs}ms to respond (>3 seconds).`,
+        suggested_fix: 'Check if the target server is slow or consider removing the link if it consistently times out.'
+      }
 
-    case 'mixed_content':
-      severity = 'low'
-      issueDescription = `security: Link "${result.linkText}" uses HTTP on an HTTPS page.`
-      suggestedFix = `Update link to HTTPS: ${result.url.replace('http://', 'https://')}.`
-      break
-  }
+    case 'error':
+      return {
+        page_url: sourceUrl,
+        category: 'Links & Formatting',
+        severity: 'medium',
+        issue_description: `error: Link "${linkText}" to ${url} returned error${httpStatus ? ` (HTTP ${httpStatus})` : ''}.`,
+        suggested_fix: result.error || 'Check the link and verify it is accessible.'
+      }
 
-  return {
-    page_url: result.sourceUrl,
-    category: 'Links & Formatting',
-    issue_description: issueDescription,
-    severity,
-    suggested_fix: suggestedFix
+    default:
+      return null
   }
 }
 
-// Main crawler function
+/**
+ * Crawl and validate links from scraped pages
+ */
 export async function crawlLinks(
-  manifests: ElementManifest[],
-  baseUrl: string,
-  config: CrawlerConfig = {}
+  scrapedPages: FirecrawlPage[],
+  domain: string,
+  config?: {
+    concurrency?: number
+    timeoutMs?: number
+    checkExternal?: boolean
+    maxLinks?: number
+  }
 ): Promise<CrawlerIssue[]> {
   const {
     concurrency = 5,
     timeoutMs = 10000,
-    checkExternal = true,
+    checkExternal = false,
     maxLinks = 200
-  } = config
+  } = config || {}
 
-  try {
-    console.log(`[Link Crawler] Starting with concurrency=${concurrency}, timeout=${timeoutMs}ms, maxLinks=${maxLinks}`)
+  Logger.debug(`[LinkCrawler] Starting link validation for ${scrapedPages.length} pages`)
+  Logger.debug(`[LinkCrawler] Config: concurrency=${concurrency}, timeout=${timeoutMs}ms, checkExternal=${checkExternal}, maxLinks=${maxLinks}`)
 
-    // Extract all unique links
-    const linkMap = extractLinks(manifests, baseUrl, checkExternal)
-    console.log(`[Link Crawler] Found ${linkMap.size} unique links to check`)
+  // Extract all links from pages
+  const allLinks: ExtractedLink[] = []
+  for (const page of scrapedPages) {
+    if (!page.markdown) continue
+    const links = extractLinksFromMarkdown(page.markdown, page.url)
+    allLinks.push(...links)
+  }
 
-    // Limit number of links if needed
-    const linksToCheck = Array.from(linkMap.entries()).slice(0, maxLinks)
-
-    // Check links with concurrency control
-    const semaphore = new Semaphore(concurrency)
-    const allResults: LinkCheckResult[] = []
-
-    const checkPromises = linksToCheck.map(async ([url, sources]) => {
-      await semaphore.acquire()
-      try {
-        const results = await checkLink(url, sources, timeoutMs, baseUrl)
-        allResults.push(...results)
-      } finally {
-        semaphore.release()
+  // Normalize and filter links
+  const linksToCheck = allLinks
+    .map(link => ({
+      ...link,
+      href: normalizeUrl(link.href, link.sourceUrl)
+    }))
+    .filter(link => {
+      // Skip external links unless configured
+      if (!checkExternal && !isInternalUrl(link.href, domain)) {
+        return false
       }
+
+      // Skip non-HTML files (images, videos, PDFs, etc.)
+      // Firecrawl can't scrape these and they should be validated differently
+      const assetExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp', '.ico', '.pdf', '.zip', '.mp4', '.mp3', '.css', '.js', '.woff', '.woff2', '.ttf', '.eot']
+      const url = link.href.toLowerCase()
+      if (assetExtensions.some(ext => url.includes(ext))) {
+        return false
+      }
+
+      return true
     })
 
-    await Promise.all(checkPromises)
+  // Deduplicate by URL+source (same link on same page)
+  const uniqueLinks = Array.from(
+    new Map(
+      linksToCheck.map(link => [`${link.href}||${link.sourceUrl}`, link])
+    ).values()
+  )
 
-    // Convert results to issues
-    const issues = allResults
-      .map(resultToIssue)
-      .filter((issue): issue is CrawlerIssue => issue !== null)
+  // Limit total links to check
+  const limitedLinks = uniqueLinks.slice(0, maxLinks)
 
-    console.log(`[Link Crawler] Completed: ${issues.length} issues found from ${linksToCheck.length} links`)
-    return issues
-
-  } catch (error) {
-    console.error('[Link Crawler] Failed:', error)
-    // Graceful degradation - return empty array if crawler fails
-    return []
+  if (uniqueLinks.length > maxLinks) {
+    Logger.info(`[LinkCrawler] Limited to ${maxLinks} links (${uniqueLinks.length} total found)`)
   }
+
+  // Count internal vs external for logging
+  const internalCount = limitedLinks.filter(link => isInternalUrl(link.href, domain)).length
+  const externalCount = limitedLinks.length - internalCount
+
+  Logger.info(`[LinkCrawler] Checking ${limitedLinks.length} links (${internalCount} internal via fetch, ${externalCount} external via Firecrawl)...`)
+
+  // Check links with concurrency control
+  // Use hybrid approach: Fetch for internal, Firecrawl for external (bypasses bot protection)
+  const semaphore = new Semaphore(concurrency)
+  const results: LinkCheckResult[] = []
+
+  const checkPromises = limitedLinks.map(async (link) => {
+    await semaphore.acquire()
+    try {
+      const isInternal = isInternalUrl(link.href, domain)
+
+      // Internal links: use fast HEAD request
+      // External links: use Firecrawl (bypasses LinkedIn, Capterra, etc. bot protection)
+      const result = isInternal
+        ? await checkLinkWithFetch(link.href, link.sourceUrl, link.text, timeoutMs)
+        : await checkLinkWithFirecrawl(link.href, link.sourceUrl, link.text, timeoutMs)
+
+      results.push(result)
+    } catch (error) {
+      Logger.warn(`[LinkCrawler] Unexpected error checking ${link.href}:`, error)
+    } finally {
+      semaphore.release()
+    }
+  })
+
+  await Promise.all(checkPromises)
+
+  // Convert results to issues
+  const issues = results
+    .map(result => resultToIssue(result))
+    .filter((issue): issue is CrawlerIssue => issue !== null)
+
+  // Log summary
+  const statusCounts = results.reduce((acc, r) => {
+    acc[r.status] = (acc[r.status] || 0) + 1
+    return acc
+  }, {} as Record<string, number>)
+
+  Logger.info(
+    `[LinkCrawler] Complete: ${results.length} links checked. ` +
+    `${statusCounts.ok || 0} OK, ${statusCounts.broken || 0} broken, ` +
+    `${statusCounts.timeout || 0} timeout, ${statusCounts.error || 0} errors. ` +
+    `Found ${issues.length} issues.`
+  )
+
+  return issues
 }
