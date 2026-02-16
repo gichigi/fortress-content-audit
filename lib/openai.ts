@@ -1,6 +1,7 @@
 import { OpenAI } from "openai"
 import Logger from "./logger"
 import { TRAITS, type MixedTrait, type TraitName, isPredefinedTrait, isCustomTrait } from "./traits"
+import { createTracedOpenAIClient } from "./langsmith-openai"
 
 interface GenerationResult {
   success: boolean
@@ -115,8 +116,8 @@ export async function generateWithOpenAI(
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       Logger.debug(`OpenAI attempt ${attempt}/${maxAttempts}`)
-      
-      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+
+      const openai = createTracedOpenAIClient()
       const response = await openai.chat.completions.create({
         model: model,
         messages: [

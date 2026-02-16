@@ -29,6 +29,61 @@
 
 ## Recent Updates (February 2026)
 
+### LangSmith Integration for AI Tracing ✅ COMPLETED (Feb 16, 2026)
+
+**Problem:** No visibility into OpenAI API calls for debugging, cost tracking, and performance optimization
+- No way to track token usage across different audit types
+- Difficult to debug failed or slow API calls
+- No cost analysis or optimization insights
+- Manual tracking required for performance metrics
+
+**Solution implemented:**
+1. ✅ Installed LangSmith SDK (`langsmith` package)
+2. ✅ Created centralized traced OpenAI client wrapper (`lib/langsmith-openai.ts`)
+3. ✅ Updated all OpenAI instantiations to use traced client (10+ files)
+4. ✅ Configured environment variables for LangSmith API
+5. ✅ Tested integration with full mini audit (stripe.com)
+
+**Integration results:**
+- ✅ Zero duplicate API calls detected
+- ✅ Complete trace coverage for all OpenAI operations
+- ✅ Token usage and cost tracking automated
+- ✅ Performance metrics captured (210s audit, 91.6% in AI reasoning)
+- ✅ Page selection cost: $0.002 per audit (gpt-4.1-mini)
+- ✅ Estimated total cost: ~$0.05-0.15 per mini audit
+- ⚠️ Minor tool call budget overrun (11/10 calls used, 10% over)
+- ⚠️ URL hallucination handled correctly by filtering logic
+
+**Files modified:**
+- `lib/langsmith-openai.ts` - New wrapper with wrapOpenAI integration
+- `lib/openai.ts` - Updated to use traced client
+- `lib/audit.ts` - Updated all OpenAI instantiations (10 instances)
+- `lib/page-selector.ts` - Updated to use traced client
+- `lib/brand-voice-audit.ts` - Updated to use traced client
+- `app/api/extract-website/route.ts` - Updated to use traced client
+- `.env.example` - Added LangSmith configuration variables
+- `.env.local` - Configured with production LangSmith credentials
+
+**Documentation:**
+- `LANGSMITH-SETUP.md` - Complete setup and usage guide
+- `LANGSMITH-INTEGRATION-SUMMARY.md` - Quick reference
+- `LANGSMITH-AUDIT-REPORT.md` - Full test audit analysis with findings
+- `test-langsmith-integration.ts` - Integration test script
+
+**Production status:**
+- ✅ Production-ready and enabled
+- ✅ Zero overhead on execution time
+- ✅ Complete observability for all AI operations
+- ✅ Dashboard: https://smith.langchain.com (project: aicontentaudit)
+
+**Recommendations:**
+- Monitor tool call budget over next 10 audits (current: 11/10)
+- Add custom metadata tags (audit_type, domain, user_id)
+- Set up LangSmith alerts for cost/error thresholds
+- Create LangSmith dashboard for trend analysis
+
+---
+
 ### Link Crawler Scope Fix ✅ COMPLETED (Feb 16, 2026)
 
 **Problem:** Link crawler was checking ALL discovered links, not just links on audited pages

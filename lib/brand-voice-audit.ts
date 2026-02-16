@@ -7,6 +7,7 @@ import OpenAI from "openai"
 import * as fs from "fs"
 import * as path from "path"
 import Logger from "./logger"
+import { createTracedOpenAIClient } from "./langsmith-openai"
 
 export interface BrandVoiceProfileForAudit {
   voice_summary: string | null
@@ -162,7 +163,7 @@ export async function runBrandVoiceAuditPass(
   options?: { tier?: 'FREE' | 'PAID' | 'ENTERPRISE'; openai?: OpenAI; issueContext?: BrandVoiceIssueContext }
 ): Promise<BrandVoiceIssue[]> {
   const { tier = 'FREE', openai: providedClient, issueContext } = options || {}
-  const client = providedClient || new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 300000 })
+  const client = providedClient || createTracedOpenAIClient({ apiKey: process.env.OPENAI_API_KEY, timeout: 300000 })
   // Page limits and tool calls matching main audit models
   const pageLimit = tier === 'FREE' ? 5 : tier === 'PAID' ? 20 : 50
   const maxToolCalls = tier === 'FREE' ? 10 : tier === 'PAID' ? 15 : 30

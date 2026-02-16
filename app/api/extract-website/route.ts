@@ -4,6 +4,7 @@ import Logger from "@/lib/logger"
 import { validateUrl } from "@/lib/url-validation"
 import * as cheerio from "cheerio"
 import OpenAI from "openai"
+import { createTracedOpenAIClient } from "@/lib/langsmith-openai"
 
 // Define interfaces for brand details
 interface TargetAudienceDetail {
@@ -70,7 +71,7 @@ async function testOpenAIConnection() {
       throw new Error("OpenAI API key not found")
     }
 
-    const openai = new OpenAI({ apiKey })
+    const openai = createTracedOpenAIClient({ apiKey })
     
     // Simple test call with faster model
     const response = await openai.chat.completions.create({

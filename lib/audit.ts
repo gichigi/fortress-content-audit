@@ -1,9 +1,11 @@
 import OpenAI from "openai"
 import { z } from "zod"
 import Logger from "./logger"
-import { extractElementManifest, formatManifestForPrompt, countInternalPages, extractDiscoveredPagesList } from "./manifest-extractor"
+// Removed: manifest-extractor (replaced with Firecrawl)
+import { extractWithFirecrawl, formatFirecrawlForPrompt, countPagesFound, getDiscoveredPages, getAuditedUrls } from "./firecrawl-adapter"
 import { buildMiniAuditPrompt, buildFullAuditPrompt, buildCategoryAuditPrompt } from "./audit-prompts"
 import { runBrandVoiceAuditPass, type BrandVoiceProfileForAudit } from "./brand-voice-audit"
+import { createTracedOpenAIClient } from "./langsmith-openai"
 
 // ============================================================================
 // Content Audit
@@ -232,7 +234,7 @@ export async function miniAudit(
   const normalizedDomain = normalizeDomain(domain)
   const domainHostname = extractDomainHostname(normalizedDomain)
 
-  const openai = new OpenAI({
+  const openai = createTracedOpenAIClient({
     apiKey: process.env.OPENAI_API_KEY,
     timeout: 300000, // 5min timeout
   })
@@ -251,13 +253,13 @@ export async function miniAudit(
       response = { id: existingResponseId } // Store id for return value
       // Note: discoveredPagesList stays empty for existing responses (legacy path)
     } else {
-      // Extract manifest for false positive prevention
-      Logger.debug(`[MiniAudit] Extracting element manifest...`)
-      const manifests = await extractElementManifest(normalizedDomain)
-      const manifestText = formatManifestForPrompt(manifests)
-      const pagesFound = countInternalPages(manifests)
-      discoveredPagesList = extractDiscoveredPagesList(manifests)
-      Logger.debug(`[MiniAudit] Manifest extraction complete (${manifests.length} pages extracted, ${pagesFound} unique pages found)`)
+      // Extract content using Firecrawl (bot-protected crawling)
+      Logger.debug(`[MiniAudit] Crawling website with Firecrawl...`)
+      const firecrawlManifest = await extractWithFirecrawl(normalizedDomain, 'FREE')
+      const manifestText = formatFirecrawlForPrompt(firecrawlManifest)
+      const pagesFound = countPagesFound(firecrawlManifest)
+      discoveredPagesList = getDiscoveredPages(firecrawlManifest)
+      Logger.debug(`[MiniAudit] Firecrawl extraction complete (${firecrawlManifest.pages.length} pages crawled, ${pagesFound} URLs discovered)`)
 
       // Store pages_found in database immediately
       if (runId && pagesFound > 0) {
@@ -509,7 +511,7 @@ async function runCategoryAudit(
 ): Promise<CategoryAuditResult> {
   const startTime = Date.now()
 
-  const client = openai || new OpenAI({
+  const client = openai || createTracedOpenAIClient({
     apiKey: process.env.OPENAI_API_KEY,
     timeout: 300000,
   })
@@ -720,7 +722,7 @@ export async function parallelMiniAudit(
   const normalizedDomain = normalizeDomain(domain)
   const domainHostname = extractDomainHostname(normalizedDomain)
 
-  const openai = new OpenAI({
+  const openai = createTracedOpenAIClient({
     apiKey: process.env.OPENAI_API_KEY,
     timeout: 300000, // 5min timeout
   })
@@ -729,13 +731,18 @@ export async function parallelMiniAudit(
     Logger.info(`[ParallelAudit] Starting parallel audit for ${normalizedDomain}`)
     const startTime = Date.now()
 
-    // Extract manifest once (shared by all 3 models)
-    Logger.debug(`[ParallelAudit] Extracting element manifest...`)
-    const manifests = await extractElementManifest(normalizedDomain)
-    const manifestText = formatManifestForPrompt(manifests)
-    const pagesFound = countInternalPages(manifests)
-    const discoveredPagesList = extractDiscoveredPagesList(manifests)
-    Logger.debug(`[ParallelAudit] Manifest extraction complete (${manifests.length} pages, ${pagesFound} unique pages found)`)
+    // Extract content using Firecrawl (bot-protected crawling)
+    Logger.debug(`[ParallelAudit] Crawling website with Firecrawl...`)
+    const firecrawlManifest = await extractWithFirecrawl(
+      normalizedDomain,
+      'FREE',
+      options?.includeLongformFullAudit ?? false
+    )
+    const manifestText = formatFirecrawlForPrompt(firecrawlManifest)
+    const pagesFound = countPagesFound(firecrawlManifest)
+    const discoveredPagesList = getDiscoveredPages(firecrawlManifest)
+    const pagesToAudit = getAuditedUrls(firecrawlManifest)
+    Logger.debug(`[ParallelAudit] Firecrawl extraction complete (${firecrawlManifest.pages.length} pages crawled, ${pagesFound} URLs discovered)`)
 
     // Store pages_found in database immediately
     if (runId && pagesFound > 0) {
@@ -750,14 +757,8 @@ export async function parallelMiniAudit(
       }
     }
 
-    // Select pages to audit (intelligent selection for FREE tier: up to 5 pages)
-    const pagesToAudit = await selectPagesToAudit(
-      discoveredPagesList,
-      domainHostname,
-      'FREE',
-      options?.includeLongformFullAudit ?? false
-    )
-    Logger.info(`[ParallelAudit] Selected ${pagesToAudit.length} pages to audit: ${pagesToAudit.slice(0, 3).join(', ')}${pagesToAudit.length > 3 ? '...' : ''}`)
+    // Firecrawl already selected pages during crawl (limit configured in extractWithFirecrawl)
+    Logger.info(`[ParallelAudit] Auditing ${pagesToAudit.length} pages: ${pagesToAudit.slice(0, 3).join(', ')}${pagesToAudit.length > 3 ? '...' : ''}`)
 
     // Keywords from brand voice profile (shared by category models and brand voice)
     const ignoreKeywords = options?.brandVoice?.profile?.ignore_keywords ?? []
@@ -767,37 +768,27 @@ export async function parallelMiniAudit(
         ? { ignore: Array.isArray(ignoreKeywords) ? ignoreKeywords : [], flag: Array.isArray(flagKeywords) ? flagKeywords : [] }
         : undefined
 
-    // Run category audits, link crawler, and optionally brand voice in parallel
+    // Run category audits and optionally brand voice in parallel
     const categoryPromises = [
       runCategoryAuditWithRetry("Language", pagesToAudit, domainHostname, manifestText, issueContext, openai, keywords),
       runCategoryAuditWithRetry("Facts & Consistency", pagesToAudit, domainHostname, manifestText, issueContext, openai, keywords),
       runCategoryAuditWithRetry("Links & Formatting", pagesToAudit, domainHostname, manifestText, issueContext, openai, keywords),
     ]
 
-    // Add link crawler
-    const { crawlLinks } = await import('./link-crawler')
-    const linkCrawlerPromise = crawlLinks(manifests, normalizedDomain, {
-      concurrency: 3,
-      checkExternal: false,
-      maxLinks: 50,
-      timeoutMs: 8000
-    })
-
     const brandVoicePromise = options?.brandVoice
       ? runBrandVoiceAuditPass(normalizedDomain, manifestText, pagesToAudit, options.brandVoice.profile, { tier: "FREE", openai, issueContext })
       : null
     const allPromises = brandVoicePromise
-      ? [...categoryPromises, linkCrawlerPromise, brandVoicePromise]
-      : [...categoryPromises, linkCrawlerPromise]
+      ? [...categoryPromises, brandVoicePromise]
+      : categoryPromises
     Logger.info(`[ParallelAudit] Running ${allPromises.length} parallel audits on ${pagesToAudit.length} pages...`)
     const results = await Promise.allSettled(allPromises)
 
-    // Collect successful category results (first 3)
+    // Collect successful category results
     const successfulResults: CategoryAuditResult[] = []
     const failedCategories: string[] = []
     const categoryResultCount = categoryPromises.length
-    const linkCrawlerIndex = categoryResultCount
-    const brandVoiceIndex = linkCrawlerIndex + 1
+    const brandVoiceIndex = categoryResultCount
 
     for (let i = 0; i < results.length; i++) {
       const result = results[i]
@@ -814,14 +805,6 @@ export async function parallelMiniAudit(
         } else {
           failedCategories.push(`unknown (${(result as PromiseRejectedResult).reason})`)
           Logger.error(`[ParallelAudit] Category audit rejected`, (result as PromiseRejectedResult).reason instanceof Error ? (result as PromiseRejectedResult).reason : undefined)
-        }
-      } else if (i === linkCrawlerIndex) {
-        // Link crawler result
-        if (result.status === "fulfilled") {
-          const crawlerIssues = (result as PromiseFulfilledResult<import('./link-crawler').CrawlerIssue[]>).value
-          Logger.debug(`[ParallelAudit] Link crawler: ${crawlerIssues.length} issues`)
-        } else {
-          Logger.warn(`[ParallelAudit] Link crawler failed (graceful):`, (result as PromiseRejectedResult).reason)
         }
       } else if (i === brandVoiceIndex) {
         // Brand voice result
@@ -842,19 +825,15 @@ export async function parallelMiniAudit(
     // Merge category results
     const { issues: categoryIssues } = mergeParallelResults(successfulResults, discoveredPagesList)
 
-    // Extract link crawler issues
-    const linkCrawlerIssues =
-      results[linkCrawlerIndex]?.status === "fulfilled"
-        ? (results[linkCrawlerIndex] as PromiseFulfilledResult<import('./link-crawler').CrawlerIssue[]>).value
-        : []
-
     // Extract brand voice issues
     const brandVoiceIssues =
       brandVoicePromise && results[brandVoiceIndex]?.status === "fulfilled"
         ? (results[brandVoiceIndex] as PromiseFulfilledResult<AuditResult["issues"]>).value
         : []
 
-    const issues = [...categoryIssues, ...linkCrawlerIssues, ...brandVoiceIssues]
+    // Merge all issues: category + brand voice + link validation
+    const linkValidationIssues = firecrawlManifest.linkValidationIssues || []
+    const issues = [...categoryIssues, ...brandVoiceIssues, ...linkValidationIssues]
     const totalDurationMs = Date.now() - startTime
 
     Logger.info(`[ParallelAudit] Completed: ${issues.length} issues from ${successfulResults.length}/${categoryResultCount} categories${brandVoicePromise ? " + brand voice" : ""} in ${(totalDurationMs / 1000).toFixed(1)}s`)
@@ -905,7 +884,7 @@ export async function parallelProAudit(
   const normalizedDomain = normalizeDomain(domain)
   const domainHostname = extractDomainHostname(normalizedDomain)
 
-  const openai = new OpenAI({
+  const openai = createTracedOpenAIClient({
     apiKey: process.env.OPENAI_API_KEY,
     timeout: 450000, // 7.5min timeout for Pro
   })
@@ -914,13 +893,18 @@ export async function parallelProAudit(
     Logger.info(`[ParallelProAudit] Starting parallel Pro audit for ${normalizedDomain}`)
     const startTime = Date.now()
 
-    // Extract manifest once (shared by all 3 models)
-    Logger.debug(`[ParallelProAudit] Extracting element manifest...`)
-    const manifests = await extractElementManifest(normalizedDomain)
-    const manifestText = formatManifestForPrompt(manifests)
-    const pagesFound = countInternalPages(manifests)
-    const discoveredPagesList = extractDiscoveredPagesList(manifests)
-    Logger.debug(`[ParallelProAudit] Manifest extraction complete (${manifests.length} pages, ${pagesFound} unique pages found)`)
+    // Extract content using Firecrawl (bot-protected crawling)
+    Logger.debug(`[ParallelProAudit] Crawling website with Firecrawl...`)
+    const firecrawlManifest = await extractWithFirecrawl(
+      normalizedDomain,
+      'PAID',
+      options?.includeLongformFullAudit ?? false
+    )
+    const manifestText = formatFirecrawlForPrompt(firecrawlManifest)
+    const pagesFound = countPagesFound(firecrawlManifest)
+    const discoveredPagesList = getDiscoveredPages(firecrawlManifest)
+    const pagesToAudit = getAuditedUrls(firecrawlManifest)
+    Logger.debug(`[ParallelProAudit] Firecrawl extraction complete (${firecrawlManifest.pages.length} pages crawled, ${pagesFound} URLs discovered)`)
 
     // Store pages_found in database immediately
     if (runId && pagesFound > 0) {
@@ -935,14 +919,8 @@ export async function parallelProAudit(
       }
     }
 
-    // Select pages to audit (intelligent selection for PAID tier: up to 20 pages)
-    const pagesToAudit = await selectPagesToAudit(
-      discoveredPagesList,
-      domainHostname,
-      'PAID',
-      options?.includeLongformFullAudit ?? false
-    )
-    Logger.info(`[ParallelProAudit] Selected ${pagesToAudit.length} pages to audit: ${pagesToAudit.slice(0, 5).join(', ')}${pagesToAudit.length > 5 ? '...' : ''}`)
+    // Firecrawl already selected pages during crawl (limit configured in extractWithFirecrawl)
+    Logger.info(`[ParallelProAudit] Auditing ${pagesToAudit.length} pages: ${pagesToAudit.slice(0, 5).join(', ')}${pagesToAudit.length > 5 ? '...' : ''}`)
 
     // Keywords from brand voice profile (shared by category models and brand voice)
     const ignoreKeywordsPro = options?.brandVoice?.profile?.ignore_keywords ?? []
@@ -952,37 +930,27 @@ export async function parallelProAudit(
         ? { ignore: Array.isArray(ignoreKeywordsPro) ? ignoreKeywordsPro : [], flag: Array.isArray(flagKeywordsPro) ? flagKeywordsPro : [] }
         : undefined
 
-    // Run category audits, link crawler, and optionally brand voice in parallel
+    // Run category audits and optionally brand voice in parallel
     const categoryPromisesPro = [
       runCategoryAuditWithRetryPro("Language", pagesToAudit, domainHostname, manifestText, issueContext, openai, keywordsPro),
       runCategoryAuditWithRetryPro("Facts & Consistency", pagesToAudit, domainHostname, manifestText, issueContext, openai, keywordsPro),
       runCategoryAuditWithRetryPro("Links & Formatting", pagesToAudit, domainHostname, manifestText, issueContext, openai, keywordsPro),
     ]
 
-    // Add link crawler
-    const { crawlLinks } = await import('./link-crawler')
-    const linkCrawlerPromisePro = crawlLinks(manifests, normalizedDomain, {
-      concurrency: 5,
-      checkExternal: true,
-      maxLinks: 200,
-      timeoutMs: 10000
-    })
-
     const brandVoicePromisePro = options?.brandVoice
       ? runBrandVoiceAuditPass(normalizedDomain, manifestText, pagesToAudit, options.brandVoice.profile, { tier: "PAID", openai, issueContext })
       : null
     const allPromisesPro = brandVoicePromisePro
-      ? [...categoryPromisesPro, linkCrawlerPromisePro, brandVoicePromisePro]
-      : [...categoryPromisesPro, linkCrawlerPromisePro]
+      ? [...categoryPromisesPro, brandVoicePromisePro]
+      : categoryPromisesPro
     Logger.info(`[ParallelProAudit] Running ${allPromisesPro.length} parallel audits on ${pagesToAudit.length} pages...`)
     const resultsPro = await Promise.allSettled(allPromisesPro)
 
-    // Collect successful category results (first 3)
+    // Collect successful category results
     const successfulResultsPro: CategoryAuditResult[] = []
     const failedCategoriesPro: string[] = []
     const categoryResultCountPro = categoryPromisesPro.length
-    const linkCrawlerIndexPro = categoryResultCountPro
-    const brandVoiceIndexPro = linkCrawlerIndexPro + 1
+    const brandVoiceIndexPro = categoryResultCountPro
 
     for (let i = 0; i < resultsPro.length; i++) {
       const result = resultsPro[i]
@@ -999,14 +967,6 @@ export async function parallelProAudit(
         } else {
           failedCategoriesPro.push(`unknown (${(result as PromiseRejectedResult).reason})`)
           Logger.error(`[ParallelProAudit] Category audit rejected`, (result as PromiseRejectedResult).reason instanceof Error ? (result as PromiseRejectedResult).reason : undefined)
-        }
-      } else if (i === linkCrawlerIndexPro) {
-        // Link crawler result
-        if (result.status === "fulfilled") {
-          const crawlerIssues = (result as PromiseFulfilledResult<import('./link-crawler').CrawlerIssue[]>).value
-          Logger.debug(`[ParallelProAudit] Link crawler: ${crawlerIssues.length} issues`)
-        } else {
-          Logger.warn(`[ParallelProAudit] Link crawler failed (graceful):`, (result as PromiseRejectedResult).reason)
         }
       } else if (i === brandVoiceIndexPro) {
         // Brand voice result
@@ -1025,19 +985,15 @@ export async function parallelProAudit(
 
     const { issues: categoryIssuesPro } = mergeParallelResults(successfulResultsPro, discoveredPagesList)
 
-    // Extract link crawler issues
-    const linkCrawlerIssuesPro =
-      resultsPro[linkCrawlerIndexPro]?.status === "fulfilled"
-        ? (resultsPro[linkCrawlerIndexPro] as PromiseFulfilledResult<import('./link-crawler').CrawlerIssue[]>).value
-        : []
-
     // Extract brand voice issues
     const brandVoiceIssuesPro =
       brandVoicePromisePro && resultsPro[brandVoiceIndexPro]?.status === "fulfilled"
         ? (resultsPro[brandVoiceIndexPro] as PromiseFulfilledResult<AuditResult["issues"]>).value
         : []
 
-    const issues = [...categoryIssuesPro, ...linkCrawlerIssuesPro, ...brandVoiceIssuesPro]
+    // Merge all issues: category + brand voice + link validation
+    const linkValidationIssuesPro = firecrawlManifest.linkValidationIssues || []
+    const issues = [...categoryIssuesPro, ...brandVoiceIssuesPro, ...linkValidationIssuesPro]
     const totalDurationMs = Date.now() - startTime
 
     Logger.info(`[ParallelProAudit] Completed: ${issues.length} issues from ${successfulResultsPro.length}/${categoryResultCountPro} categories${brandVoicePromisePro ? " + brand voice" : ""} in ${(totalDurationMs / 1000).toFixed(1)}s`)
@@ -1080,7 +1036,7 @@ async function runCategoryAuditPro(
 ): Promise<CategoryAuditResult> {
   const startTime = Date.now()
 
-  const client = openai || new OpenAI({
+  const client = openai || createTracedOpenAIClient({
     apiKey: process.env.OPENAI_API_KEY,
     timeout: 450000, // 7.5min for Pro
   })
@@ -1271,7 +1227,7 @@ export async function auditSite(
   const domainHostname = extractDomainHostname(normalizedDomain)
 
   // Timeout supports 7min pro audits with buffer
-  const openai = new OpenAI({
+  const openai = createTracedOpenAIClient({
     apiKey: process.env.OPENAI_API_KEY,
     timeout: 450000, // 7.5min
   })
@@ -1280,13 +1236,13 @@ export async function auditSite(
     Logger.info(`[AuditSite] Starting GPT-5.1 web_search audit for ${normalizedDomain} (tier: ${tier}, synchronous mode)`)
     const modelStartTime = Date.now()
 
-    // Extract manifest for false positive prevention
-    Logger.debug(`[AuditSite] Extracting element manifest...`)
-    const manifests = await extractElementManifest(normalizedDomain)
-    const manifestText = formatManifestForPrompt(manifests)
-    const pagesFound = countInternalPages(manifests)
-    const discoveredPagesList = extractDiscoveredPagesList(manifests)
-    Logger.debug(`[AuditSite] Manifest extraction complete (${manifests.length} pages extracted, ${pagesFound} unique pages found)`)
+    // Extract content using Firecrawl (bot-protected crawling)
+    Logger.debug(`[AuditSite] Crawling website with Firecrawl...`)
+    const firecrawlManifest = await extractWithFirecrawl(normalizedDomain, tier === 'PAID' || tier === 'PRO' ? 'PAID' : 'FREE')
+    const manifestText = formatFirecrawlForPrompt(firecrawlManifest)
+    const pagesFound = countPagesFound(firecrawlManifest)
+    const discoveredPagesList = getDiscoveredPages(firecrawlManifest)
+    Logger.debug(`[AuditSite] Firecrawl extraction complete (${firecrawlManifest.pages.length} pages crawled, ${pagesFound} URLs discovered)`)
 
     // Store pages_found in database immediately
     if (runId && pagesFound > 0) {
@@ -1389,7 +1345,7 @@ export async function auditSite(
       let retrieveDuration = 0
       try {
         // Use a separate client with longer timeout for retrieve calls to avoid timeout issues
-        const retrieveClient = new OpenAI({
+        const retrieveClient = createTracedOpenAIClient({
           apiKey: process.env.OPENAI_API_KEY,
           timeout: 30000, // 30s should be plenty for a simple status check
         })
@@ -1553,7 +1509,7 @@ export async function auditSite(
 // Poll audit status (legacy - kept for backward compatibility)
 // ============================================================================
 export async function pollAuditStatus(responseId: string, tier?: AuditTier): Promise<AuditResult> {
-  const openai = new OpenAI({
+  const openai = createTracedOpenAIClient({
     apiKey: process.env.OPENAI_API_KEY,
     timeout: 30000,
   })
@@ -1663,7 +1619,7 @@ async function transformToStructuredJSON(plainText: string, domain: string): Pro
     return JSON.stringify({ issues: [], auditedUrls: [] })
   }
   
-  const openai = new OpenAI({
+  const openai = createTracedOpenAIClient({
     apiKey: process.env.OPENAI_API_KEY,
     timeout: 30000, // 30s timeout for tight pipeline
   })
@@ -1774,7 +1730,7 @@ async function selectPagesToAudit(
     return urlsForSelection.length > 0 ? urlsForSelection : [homepage]
   }
 
-  const openai = new OpenAI({
+  const openai = createTracedOpenAIClient({
     apiKey: process.env.OPENAI_API_KEY,
     timeout: 30000, // 30s timeout for quick selection
   })
