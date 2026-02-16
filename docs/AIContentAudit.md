@@ -27,6 +27,44 @@
 
 ---
 
+## Recent Updates (February 2026)
+
+### Link Crawler Scope Fix ✅ COMPLETED (Feb 16, 2026)
+
+**Problem:** Link crawler was checking ALL discovered links, not just links on audited pages
+- Users saw "Links & Formatting" issues for pages they never audited (e.g., blog posts, docs)
+- External links returned bot protection errors (403) and were reported as broken links
+- Caused confusion: "Why am I seeing issues for pages I didn't audit?"
+
+**Root cause:**
+- Crawler extracted links from 4-20 audited pages (depending on tier)
+- Then checked ALL those links via HTTP (~50-200 links)
+- This included internal links to non-audited pages AND external links
+- Result: PRO tier showed 89+ link issues vs 7 on FREE (1,171% explosion)
+
+**Fix implemented:**
+1. ✅ Added `auditedUrls` parameter to `crawlLinks()` function
+2. ✅ Filter internal links to only check if they point to audited pages
+3. ✅ Disabled external link checking (bot protection causes false positives)
+4. ✅ Added debug logging showing filtered link counts
+
+**Impact:**
+- FREE tier: 0 HTTP link issues (only internal links between audited pages)
+- PRO tier: Reduced from 89+ to minimal issues (only internal links between audited pages)
+- All "Links & Formatting" issues now reference pages in audit results
+- No more bot protection false positives from external links
+
+**Files modified:**
+- `lib/link-crawler.ts` - Added filtering logic and `auditedUrls` parameter
+- `lib/firecrawl-adapter.ts` - Pass audited URLs to crawler, disable external checking
+
+**Future consideration:**
+- External link checking disabled until we have a reliable way to bypass bot protection
+- May re-enable with Firecrawl for external links (already bypasses LinkedIn, Twitter, etc.)
+- Or keep disabled permanently if internal link checks provide enough value
+
+---
+
 ## Recent Updates (January 2026)
 
 ### Page Discovery UI & Field Cleanup ✅ COMPLETED

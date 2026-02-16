@@ -146,6 +146,19 @@ function isInternalUrl(url: string, domain: string): boolean {
 }
 
 /**
+ * Normalize URL for comparison (remove trailing slash, hash, query params)
+ */
+function normalizeUrlForComparison(url: string): string {
+  try {
+    const parsed = new URL(url)
+    // Use origin + pathname only (no query, no hash)
+    return `${parsed.origin}${parsed.pathname}`.replace(/\/$/, '')
+  } catch {
+    return url.replace(/\/$/, '')
+  }
+}
+
+/**
  * Check a single link using HEAD request (fast, free)
  * For internal links without bot protection
  */
@@ -404,13 +417,15 @@ export async function crawlLinks(
     timeoutMs?: number
     checkExternal?: boolean
     maxLinks?: number
+    auditedUrls?: string[] // List of URLs being audited by AI models
   }
 ): Promise<CrawlerIssue[]> {
   const {
     concurrency = 5,
     timeoutMs = 10000,
     checkExternal = false,
-    maxLinks = 200
+    maxLinks = 200,
+    auditedUrls = []
   } = config || {}
 
   Logger.debug(`[LinkCrawler] Starting link validation for ${scrapedPages.length} pages`)
@@ -431,9 +446,30 @@ export async function crawlLinks(
       href: normalizeUrl(link.href, link.sourceUrl)
     }))
     .filter(link => {
-      // Skip external links unless configured
-      if (!checkExternal && !isInternalUrl(link.href, domain)) {
+      const isInternal = isInternalUrl(link.href, domain)
+      const isExternal = !isInternal
+
+      // Always check external links if tier allows
+      if (isExternal && checkExternal) {
+        return true
+      }
+
+      // Skip external links if tier doesn't allow
+      if (isExternal && !checkExternal) {
         return false
+      }
+
+      // For internal links: only check if they point to an audited page
+      if (isInternal && auditedUrls && auditedUrls.length > 0) {
+        // Normalize both URLs for comparison (remove trailing slash, query params, etc.)
+        const normalizedHref = normalizeUrlForComparison(link.href)
+        const isAuditedPage = auditedUrls.some(auditedUrl =>
+          normalizeUrlForComparison(auditedUrl) === normalizedHref
+        )
+
+        if (!isAuditedPage) {
+          return false // Skip internal links to non-audited pages
+        }
       }
 
       // Skip non-HTML files (images, videos, PDFs, etc.)
@@ -446,6 +482,18 @@ export async function crawlLinks(
 
       return true
     })
+
+  // Log how many links were filtered
+  const beforeFilterCount = allLinks.length
+  const afterFilterCount = linksToCheck.length
+  const filteredOutCount = beforeFilterCount - afterFilterCount
+
+  if (filteredOutCount > 0) {
+    Logger.debug(
+      `[LinkCrawler] Filtered ${filteredOutCount} links to non-audited pages ` +
+      `(${beforeFilterCount} total → ${afterFilterCount} checking)`
+    )
+  }
 
   // Deduplicate by URL+source (same link on same page)
   const uniqueLinks = Array.from(

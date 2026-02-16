@@ -81,9 +81,10 @@ async function extractWithLegacyManifest(
   Logger.debug(`[Fallback] Running link crawler on ${pages.length} pages...`)
   const linkValidationIssues = await crawlLinks(pages, domain, {
     concurrency: tier === 'FREE' ? 3 : 5,
-    checkExternal: tier === 'PAID', // Only check external links on paid tier
+    checkExternal: false, // Disabled: external sites use bot protection (403 errors)
     maxLinks: tier === 'FREE' ? 50 : 200,
-    timeoutMs: 8000
+    timeoutMs: 8000,
+    auditedUrls: pages.map(p => p.url) // Only check links to audited pages
   })
   Logger.info(`[LinkCrawler] Found ${linkValidationIssues.length} link issues`)
 
@@ -148,9 +149,10 @@ export async function extractWithFirecrawl(
     Logger.debug(`[Firecrawl] Phase 4: Crawling links from scraped pages...`)
     const linkValidationIssues = await crawlLinks(pages, domain, {
       concurrency: tier === 'FREE' ? 3 : 5,
-      checkExternal: tier === 'PAID', // Only check external links on paid tier
+      checkExternal: false, // Disabled: external sites use bot protection (403 errors)
       maxLinks: tier === 'FREE' ? 50 : 200,
-      timeoutMs: 8000
+      timeoutMs: 8000,
+      auditedUrls: pages.map(p => p.url) // Only check links to audited pages
     })
     Logger.info(`[LinkCrawler] Found ${linkValidationIssues.length} link issues`)
 
