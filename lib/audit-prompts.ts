@@ -21,6 +21,8 @@ Audit only the homepage and one additional key public-facing page of a website f
 - Facts & Consistency (factual errors, inconsistencies, incorrect stats)
 - Links & Formatting (broken links, wrong destinations, confusing link text, formatting or layout problems)
 
+**Language detection:** Detect the language of each page from its content. Write all issue descriptions and suggested fixes in that same language. Do not flag intentional foreign-language content — brand names, product terms, proper nouns, or content clearly written in a secondary language on purpose.
+
 **HOW TO USE THE MANIFEST:**
 
 Use the manifest ONLY to avoid false positives about missing links/elements. The manifest shows code structure, NOT functionality.
@@ -160,6 +162,8 @@ Audit up to 20 public-facing, top-of-funnel pages of a website for:
 - Language (typos, grammar, spelling, punctuation)
 - Facts & Consistency (factual errors, inconsistencies, incorrect stats)
 - Links & Formatting (broken links, wrong destinations, confusing link text, formatting/layout problems)
+
+**Language detection:** Detect the language of each page from its content. Write all issue descriptions and suggested fixes in that same language. Do not flag intentional foreign-language content — brand names, product terms, proper nouns, or content clearly written in a secondary language on purpose.
 
 ${includeLongformFullAudit ? "" : "Avoid long-form blog/article/resource pages unless no other pages are available."}
 
@@ -311,6 +315,8 @@ export function buildCategoryAuditPrompt(
 - Spelling inconsistencies
 - Awkward phrasing
 
+Do not flag intentional foreign-language content — brand names, technical terms, proper nouns, or sections clearly written in a secondary language on purpose. Only flag genuine errors within the page's own detected language.
+
 DO NOT report Facts/Consistency or Links/Formatting issues.`,
 
     "Facts & Consistency": `Focus ONLY on Facts & Consistency issues:
@@ -350,6 +356,8 @@ DO NOT report Language or Facts/Consistency issues.`
 ${urlListText}
 
 Do NOT audit any other pages. Focus only on these specific URLs.
+
+**Language detection:** Detect the language of each page from its content. Write all output (issue_description, suggested_fix) in that same language.
 
 ${manifestText ? `Below is an ELEMENT MANIFEST showing interactive elements on the page:\n${manifestText}\n\n---\n` : ''}
 
