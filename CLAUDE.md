@@ -47,6 +47,7 @@ This is a content audit SaaS platform built with Next.js, Supabase, and various 
   - API integrations (Supabase, PostHog, OpenAI)
   - Authentication flows
   - Database migrations
+- **For AI prompt or model/API changes: always run a real end-to-end audit test before pushing to prod** — prompt wording directly affects output quality and regressions are invisible without live testing
 - Run `pnpm build` after major changes to verify compilation
 - Check for TypeScript errors before committing
 
