@@ -1,18 +1,31 @@
 /**
  * Firecrawl API Client
  * Handles web crawling with bot protection and JS rendering
+ * Uses dynamic import for @mendable/firecrawl-js to prevent module-level failures
+ * from breaking all exports (e.g. isFirecrawlAvailable)
  */
 
-import FirecrawlApp from '@mendable/firecrawl-js'
 import Logger from './logger'
 
-// Initialize Firecrawl client
-const getFirecrawlClient = () => {
+// Dynamic import to avoid module-level failures poisoning all exports
+const getFirecrawlClient = async () => {
   const apiKey = process.env.FIRECRAWL_API_KEY
   if (!apiKey) {
-    throw new Error('FIRECRAWL_API_KEY not found in environment variables')
+    throw new Error(
+      'FIRECRAWL_API_KEY not found in environment variables. ' +
+      'Add FIRECRAWL_API_KEY=your_key to .env.local or .env file. ' +
+      'Get your API key from https://firecrawl.dev'
+    )
   }
+  const { default: FirecrawlApp } = await import('@mendable/firecrawl-js')
   return new FirecrawlApp({ apiKey })
+}
+
+/**
+ * Check if Firecrawl is available (API key configured)
+ */
+export function isFirecrawlAvailable(): boolean {
+  return !!process.env.FIRECRAWL_API_KEY
 }
 
 export interface FirecrawlPage {
@@ -50,7 +63,7 @@ export async function crawlWebsite(
     onlyMainContent = true
   } = options
 
-  const firecrawl = getFirecrawlClient()
+  const firecrawl = await getFirecrawlClient()
 
   try {
     Logger.info(`[Firecrawl] Starting crawl of ${url} (limit: ${limit})`)
@@ -79,9 +92,10 @@ export async function crawlWebsite(
 
 /**
  * Map a website to discover all URLs
+ * Returns array of URL strings or objects with url property
  */
-export async function mapWebsite(url: string): Promise<string[]> {
-  const firecrawl = getFirecrawlClient()
+export async function mapWebsite(url: string): Promise<Array<string | { url: string; title?: string; description?: string }>> {
+  const firecrawl = await getFirecrawlClient()
 
   try {
     Logger.info(`[Firecrawl] Mapping ${url}`)
@@ -107,7 +121,7 @@ export async function mapWebsite(url: string): Promise<string[]> {
  * Scrape a single page
  */
 export async function scrapePage(url: string): Promise<FirecrawlPage> {
-  const firecrawl = getFirecrawlClient()
+  const firecrawl = await getFirecrawlClient()
 
   try {
     const result = await firecrawl.scrape(url, {
