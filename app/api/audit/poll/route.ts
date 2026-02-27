@@ -67,10 +67,6 @@ export async function GET(request: Request) {
     const auditedUrls = issuesJson.auditedUrls || []
     
     console.log(`[Poll GET] runId=${runId}, status=${status}`)
-    // #region agent log
-    // DEBUG: Log poll status check
-    fetch('http://127.0.0.1:7242/ingest/46d3112f-6e93-4e4c-a7bb-bc54c7690dac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/audit/poll/route.ts:69',message:'Poll GET status check',data:{runId,status,issueCount:issues.length,auditedUrlCount:auditedUrls.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
     
     // If completed, return full results
     if (status === 'completed') {
