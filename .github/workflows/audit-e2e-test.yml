@@ -1,0 +1,102 @@
+name: Audit E2E Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_domain:
+        description: 'Domain to audit (should be non-English to test language output)'
+        required: false
+        default: 'nl.wikipedia.org'
+
+jobs:
+  audit-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Start dev server
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
+          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+        run: pnpm dev &
+
+      - name: Wait for server to be ready
+        run: |
+          echo "Waiting for Next.js dev server..."
+          for i in $(seq 1 40); do
+            if curl -sf http://localhost:3000 > /dev/null 2>&1; then
+              echo "Server ready after ${i}s"
+              break
+            fi
+            sleep 3
+          done
+
+      - name: Run audit and validate output
+        env:
+          TEST_DOMAIN: ${{ github.event.inputs.test_domain || 'nl.wikipedia.org' }}
+        run: |
+          echo "--- Starting audit for: $TEST_DOMAIN ---"
+
+          # Trigger audit
+          RESPONSE=$(curl -sf -X POST http://localhost:3000/api/audit \
+            -H "Content-Type: application/json" \
+            -d "{\"domain\": \"$TEST_DOMAIN\"}")
+
+          echo "Audit response: $RESPONSE"
+
+          RUN_ID=$(echo "$RESPONSE" | jq -r '.runId')
+          SESSION_TOKEN=$(echo "$RESPONSE" | jq -r '.sessionToken')
+
+          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+            echo "ERROR: No runId returned"
+            exit 1
+          fi
+
+          echo "Audit started - runId: $RUN_ID"
+
+          # Poll until complete (max ~5 min)
+          for i in $(seq 1 60); do
+            sleep 5
+            RESULT=$(curl -sf "http://localhost:3000/api/audit/$RUN_ID?session_token=$SESSION_TOKEN")
+            STATUS=$(echo "$RESULT" | jq -r '.status')
+            ISSUE_COUNT=$(echo "$RESULT" | jq '.issues | length')
+
+            echo "Poll $i: status=$STATUS issues=$ISSUE_COUNT"
+
+            if [ "$STATUS" = "completed" ]; then
+              echo "--- Audit completed with $ISSUE_COUNT issues ---"
+              echo "$RESULT" | jq '.issues[0:3] | .[] | {desc: .issue_description, fix: .suggested_fix}'
+              break
+            fi
+
+            if [ "$STATUS" = "failed" ]; then
+              echo "ERROR: Audit failed"
+              echo "$RESULT" | jq '.'
+              exit 1
+            fi
+          done
+
+          if [ "$STATUS" != "completed" ]; then
+            echo "ERROR: Audit timed out after 5 minutes"
+            exit 1
+          fi
+
+          echo "--- PASS: Audit completed successfully ---"
