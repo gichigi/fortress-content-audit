@@ -525,13 +525,24 @@ export async function POST(request: Request) {
       try {
         await runAuditAndSave()
       } catch (error) {
-        console.error('[Audit] Background audit error:', error)
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        // handleAuditError attaches the raw error before sanitization
+        const rawError = (error as any)?.originalError || errorMessage
+        console.error('[Audit] Background audit error:', rawError)
+        if (error instanceof Error && error.stack) console.error('[Audit] Stack:', error.stack)
+
         try {
           const { error: updateError } = await supabaseAdmin
             .from('brand_audit_runs')
             .update({
-              issues_json: { issues: [], auditedUrls: [], status: 'failed', error: errorMessage }
+              issues_json: {
+                issues: [],
+                auditedUrls: [],
+                status: 'failed',
+                error: errorMessage,
+                // Store raw error for DB debugging (only if different from sanitized message)
+                ...(rawError !== errorMessage ? { errorDetails: rawError } : {}),
+              }
             })
             .eq('id', runId)
 

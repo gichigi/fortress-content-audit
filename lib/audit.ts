@@ -2094,44 +2094,51 @@ function extractRequestId(errorMessage: string): string | null {
 }
 
 // Map OpenAI errors to user-friendly messages
-function handleAuditError(error: unknown): Error {
+// Attaches originalError property so route handler can store raw error in DB for debugging
+function handleAuditError(error: unknown): Error & { originalError?: string } {
+  const rawMessage = error instanceof Error ? error.message : String(error)
+
+  const sanitized = _sanitizeAuditError(error)
+  // Attach raw message for DB debugging (only when message was actually changed)
+  if (sanitized.message !== rawMessage) {
+    ;(sanitized as Error & { originalError?: string }).originalError = rawMessage
+  }
+  return sanitized as Error & { originalError?: string }
+}
+
+function _sanitizeAuditError(error: unknown): Error {
   if (!(error instanceof Error)) {
     Logger.error("[Audit] Unknown error type", undefined, { error: String(error) })
     return new Error("Audit generation failed. Please try again.")
   }
 
   const msg = error.message.toLowerCase()
-  
+
   // Detect OpenAI 500 errors with request IDs and help.openai.com references
   const isOpenAI500Error = (msg.includes("500") || msg.includes("error occurred while processing")) &&
                            (msg.includes("help.openai.com") || msg.includes("request id req_") || /req_[a-z0-9]+/i.test(error.message))
-  
+
   if (isOpenAI500Error) {
-    // Extract request ID for logging
     const requestId = extractRequestId(error.message)
-    Logger.error("[Audit] OpenAI 500 error", error, { 
+    Logger.error("[Audit] OpenAI 500 error", error, {
       requestId,
-      // Only include stack in development
       ...(process.env.NODE_ENV === 'development' ? { stack: error.stack } : {})
     })
     return new Error("Our AI service encountered a temporary issue. Please try again in a moment.")
   }
-  
+
   // Log original error for debugging - simplified for expected errors
-  const isExpectedError = msg.includes('bot protection') || 
+  const isExpectedError = msg.includes('bot protection') ||
                          msg.includes('daily limit') ||
                          msg.includes('invalid domain') ||
                          msg.includes('rate_limit') ||
                          msg.includes('429')
-  
+
   if (isExpectedError) {
-    // For expected errors, log only message without full stack
     Logger.error(`[Audit] ${error.message}`)
   } else {
-    // For unexpected errors, log with context but truncate stack in production
-    Logger.error(`[Audit] Error: ${error.message}`, error, { 
+    Logger.error(`[Audit] Error: ${error.message}`, error, {
       name: error.name,
-      // Only include full stack in development
       ...(process.env.NODE_ENV === 'development' ? { stack: error.stack } : {})
     })
   }
@@ -2179,19 +2186,17 @@ function handleAuditError(error: unknown): Error {
 
   // Fallback - sanitize any remaining OpenAI errors
   if (error.message && error.message.length > 0) {
-    // Check if it contains OpenAI-specific patterns that should be sanitized
     if (msg.includes("help.openai.com") || /req_[a-z0-9]+/i.test(error.message)) {
       const requestId = extractRequestId(error.message)
-      Logger.error("[Audit] Unhandled OpenAI error", error, { 
+      Logger.error("[Audit] Unhandled OpenAI error", error, {
         requestId,
         ...(process.env.NODE_ENV === 'development' ? { stack: error.stack } : {})
       })
       return new Error("Our AI service encountered an issue. Please try again in a moment.")
     }
-    
-    // For other errors, return generic message
+
     return new Error("Audit generation failed. Please try again.")
   }
-  
+
   return new Error("Audit generation failed. Please try again.")
 }
