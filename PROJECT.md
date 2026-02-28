@@ -50,6 +50,10 @@ Content audit SaaS platform built with Next.js, Supabase, and AI integrations. H
 - `/vlow` - Reminder to keep verbosity low
 - `/confidence` - Rate confidence in assessment
 
+## Architecture Decisions
+Recorded in `docs/decisions/` as numbered ADRs. Check these before making changes to the content extraction pipeline.
+- [ADR-001](docs/decisions/001-strip-hidden-elements-before-extraction.md) — Strip hidden DOM elements before Firecrawl markdown extraction
+
 ## Important URLs
 - Production: https://aistyleguide.com (if deployed)
 - Supabase Admin URL: Check `.env.local`

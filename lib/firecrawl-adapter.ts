@@ -6,6 +6,7 @@
 import { mapWebsite, scrapePage, isFirecrawlAvailable, FirecrawlPage } from './firecrawl-client'
 import { selectPagesToAudit } from './page-selector'
 import { crawlLinks, type CrawlerIssue } from './link-crawler'
+import * as cheerio from 'cheerio'
 import Logger from './logger'
 
 // Fallback to old method when Firecrawl unavailable
@@ -177,7 +178,75 @@ export async function extractWithFirecrawl(
 }
 
 /**
- * Format Firecrawl pages for audit prompts (replaces formatManifestForPrompt)
+ * Extract a lightweight element manifest from Firecrawl HTML.
+ * Lists interactive elements (links, buttons) with attributes so models
+ * can cross-reference what's actually on the page vs what markdown shows.
+ */
+function extractElementManifestFromHtml(html: string, pageUrl: string): string {
+  const $ = cheerio.load(html)
+  const lines: string[] = []
+
+  // Extract links with href and text
+  const links: string[] = []
+  $('a[href]').each((_i, el) => {
+    const $el = $(el)
+    const href = $el.attr('href') || ''
+    const text = $el.text().trim().substring(0, 80)
+    if (!text && !href) return
+
+    // Classify link type
+    let type = 'internal'
+    if (href.startsWith('mailto:')) type = 'mailto'
+    else if (href.startsWith('tel:')) type = 'tel'
+    else if (href.startsWith('http') && !href.includes(new URL(pageUrl).hostname)) type = 'external'
+    else if (href.startsWith('#')) type = 'anchor'
+    else if (href.startsWith('javascript:')) type = 'javascript'
+
+    links.push(`- "${text || '[no text]'}" → ${href} (${type})`)
+  })
+
+  if (links.length > 0) {
+    lines.push(`### Links (${links.length})`)
+    // Cap at 50 to avoid token bloat
+    lines.push(...links.slice(0, 50))
+    if (links.length > 50) lines.push(`... and ${links.length - 50} more`)
+  }
+
+  // Extract buttons
+  const buttons: string[] = []
+  $('button, [role="button"], input[type="submit"], input[type="button"]').each((_i, el) => {
+    const $el = $(el)
+    const text = $el.text().trim().substring(0, 80) || $el.attr('value') || ''
+    const onclick = $el.attr('onclick') ? ' (has onclick)' : ''
+    if (text) buttons.push(`- "${text}"${onclick}`)
+  })
+
+  if (buttons.length > 0) {
+    lines.push(`### Buttons (${buttons.length})`)
+    lines.push(...buttons.slice(0, 30))
+  }
+
+  // Extract interactive widgets (chat, modals, etc.)
+  const widgets: string[] = []
+  $('[data-chat], [class*="chat"], [id*="chat"], [class*="intercom"], [id*="intercom"], [class*="crisp"], [id*="crisp"], [class*="drift"], [id*="drift"], [class*="widget"], [class*="modal"]').each((_i, el) => {
+    const $el = $(el)
+    const tag = el.type === 'tag' ? (el as cheerio.TagElement).tagName : 'unknown'
+    const id = $el.attr('id') || ''
+    const classes = ($el.attr('class') || '').substring(0, 60)
+    widgets.push(`- <${tag}> id="${id}" class="${classes}"`)
+  })
+
+  if (widgets.length > 0) {
+    lines.push(`### Interactive Widgets (${widgets.length})`)
+    lines.push(...widgets.slice(0, 10))
+  }
+
+  return lines.join('\n')
+}
+
+/**
+ * Format Firecrawl pages for audit prompts (replaces formatManifestForPrompt).
+ * Includes both markdown content AND a structured element manifest from HTML.
  */
 export function formatFirecrawlForPrompt(manifest: AuditManifest): string {
   const { pages } = manifest
@@ -207,6 +276,14 @@ export function formatFirecrawlForPrompt(manifest: AuditManifest): string {
         : page.markdown
 
       output += `**Content:**\n${contentPreview}\n\n`
+    }
+
+    // Append element manifest from HTML if available
+    if (page.html) {
+      const elementManifest = extractElementManifestFromHtml(page.html, page.url)
+      if (elementManifest) {
+        output += `**Element Manifest (from HTML):**\n${elementManifest}\n\n`
+      }
     }
 
     output += '---\n\n'

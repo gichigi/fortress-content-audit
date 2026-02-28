@@ -120,7 +120,14 @@ export async function mapWebsite(url: string): Promise<Array<string | { url: str
 // JS to strip hidden elements before extraction (see ADR-001).
 // Runs in browser context where getComputedStyle resolves all CSS
 // including Tailwind responsive classes and media queries.
+// Also strips sr-only / visually-hidden elements and aria-hidden content.
 const STRIP_HIDDEN_ELEMENTS_SCRIPT = `
+  // Phase 1: Strip by class/attribute (sr-only, visually-hidden, aria-hidden)
+  document.querySelectorAll('.sr-only, .visually-hidden, [aria-hidden="true"]').forEach(el => {
+    el.remove();
+  });
+
+  // Phase 2: Strip by computed style (display:none, visibility:hidden, zero-size)
   document.querySelectorAll('*').forEach(el => {
     try {
       const style = window.getComputedStyle(el);
@@ -128,6 +135,16 @@ const STRIP_HIDDEN_ELEMENTS_SCRIPT = `
         style.display === 'none' ||
         style.visibility === 'hidden' ||
         (el.offsetHeight === 0 && el.offsetWidth === 0)
+      ) {
+        el.remove();
+        return;
+      }
+      // Catch clip-based hiding patterns (position:absolute + clip rect)
+      if (
+        style.position === 'absolute' &&
+        style.overflow === 'hidden' &&
+        el.offsetWidth <= 1 &&
+        el.offsetHeight <= 1
       ) {
         el.remove();
       }
@@ -144,7 +161,7 @@ export async function scrapePage(url: string): Promise<FirecrawlPage> {
 
   try {
     const result = await firecrawl.scrape(url, {
-      formats: ['markdown', 'links'],
+      formats: ['markdown', 'links', 'html'],
       onlyMainContent: true,
       actions: [
         { type: 'wait', milliseconds: 500 },
