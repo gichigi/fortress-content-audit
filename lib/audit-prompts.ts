@@ -19,9 +19,20 @@ Audit only the homepage and one additional key public-facing page of a website f
 
 - Language (typos, grammar, spelling, punctuation)
 - Facts & Consistency (factual errors, inconsistencies, incorrect stats)
-- Links & Formatting (broken links, wrong destinations, confusing link text, formatting or layout problems)
+- Links & Formatting (confusing link text, formatting or layout problems — only for internal navigation links, not mailto/tel/external)
 
 **Language detection:** Detect the language of each page from its content. Write all issue descriptions and suggested fixes in that same language. Do not flag intentional foreign-language content — brand names, product terms, proper nouns, or content clearly written in a secondary language on purpose.
+
+**IMPORTANT — Markdown extraction artifacts:**
+The website content below was extracted from HTML and converted to markdown. This process often strips whitespace between adjacent HTML elements, producing false "missing space" issues. Examples:
+- "Thesimple" (actually "The simple" in two separate HTML spans)
+- "Add to your websiteA" or "Add Seline for freeA" (button text + keyboard shortcut letter in a separate element — the trailing letter is NOT part of the button text)
+- "3000events" (number and unit in separate elements)
+- "people.But" (sentence end and next sentence in separate elements)
+
+DO NOT flag spacing issues that look like HTML elements merged together. Only flag spacing issues where the text would genuinely read wrong on the actual rendered page — e.g., real typos like "recieve" or genuinely missing punctuation.
+
+Do not flag mailto: links, tel: links, or external links as broken or non-functional. You cannot verify these from markdown and they are almost always working fine on the actual site. Only flag internal navigation links that clearly point to the wrong destination.
 
 **HOW TO USE THE MANIFEST:**
 
@@ -29,7 +40,7 @@ Use the manifest ONLY to avoid false positives about missing links/elements. The
 
 **AUDIT THOROUGHLY:**
 - Explore the site as you normally would (don't reduce exploration just because you have the manifest)
-- Test ALL links by clicking them, even if they exist in the manifest (verify they WORK - no 404s, correct destinations)
+- Test internal navigation links to verify they point to the right pages
 - Open multiple pages to find issues across the site
 - Use your full tool call allowance to be comprehensive
 
@@ -39,7 +50,6 @@ Use the manifest ONLY to avoid false positives about missing links/elements. The
 ✓ Understanding code structure to avoid reporting missing elements that actually exist
 
 **DON'T use manifest as:**
-✗ A reason to skip testing links (mailto links, external links, internal links all need testing)
 ✗ A reason to explore fewer pages
 ✗ A substitute for thorough auditing
 
@@ -161,9 +171,20 @@ ${manifestText}
 Audit up to 20 public-facing, top-of-funnel pages of a website for:
 - Language (typos, grammar, spelling, punctuation)
 - Facts & Consistency (factual errors, inconsistencies, incorrect stats)
-- Links & Formatting (broken links, wrong destinations, confusing link text, formatting/layout problems)
+- Links & Formatting (confusing link text, formatting or layout problems — only for internal navigation links, not mailto/tel/external)
 
 **Language detection:** Detect the language of each page from its content. Write all issue descriptions and suggested fixes in that same language. Do not flag intentional foreign-language content — brand names, product terms, proper nouns, or content clearly written in a secondary language on purpose.
+
+**IMPORTANT — Markdown extraction artifacts:**
+The website content below was extracted from HTML and converted to markdown. This process often strips whitespace between adjacent HTML elements, producing false "missing space" issues. Examples:
+- "Thesimple" (actually "The simple" in two separate HTML spans)
+- "Add to your websiteA" or "Add Seline for freeA" (button text + keyboard shortcut letter in a separate element — the trailing letter is NOT part of the button text)
+- "3000events" (number and unit in separate elements)
+- "people.But" (sentence end and next sentence in separate elements)
+
+DO NOT flag spacing issues that look like HTML elements merged together. Only flag spacing issues where the text would genuinely read wrong on the actual rendered page — e.g., real typos like "recieve" or genuinely missing punctuation.
+
+Do not flag mailto: links, tel: links, or external links as broken or non-functional. You cannot verify these from markdown and they are almost always working fine on the actual site. Only flag internal navigation links that clearly point to the wrong destination.
 
 ${includeLongformFullAudit ? "" : "Avoid long-form blog/article/resource pages unless no other pages are available."}
 
@@ -173,7 +194,7 @@ Use the manifest ONLY to avoid false positives about missing links/elements. The
 
 **AUDIT THOROUGHLY:**
 - Explore the site as you normally would (don't reduce exploration just because you have the manifest)
-- Test ALL links by clicking them, even if they exist in the manifest (verify they WORK - no 404s, correct destinations)
+- Test internal navigation links to verify they point to the right pages
 - Open multiple pages to find issues across the site
 - Use your full tool call allowance to be comprehensive
 
@@ -183,7 +204,6 @@ Use the manifest ONLY to avoid false positives about missing links/elements. The
 ✓ Understanding code structure to avoid reporting missing elements that actually exist
 
 **DON'T use manifest as:**
-✗ A reason to skip testing links (mailto links, external links, internal links all need testing)
 ✗ A reason to explore fewer pages
 ✗ A substitute for thorough auditing
 
@@ -335,8 +355,9 @@ DO NOT report Language or Links/Formatting issues.`,
 - Visual hierarchy problems
 - Navigation UX issues
 
-NOTE: Broken links, redirects, and HTTP errors are checked automatically.
+NOTE: Broken links, redirects, and HTTP errors are checked automatically by a separate system.
 DO NOT report 404s, timeouts, or SSL errors - focus on UX only.
+DO NOT flag mailto: links, tel: links, or external links as broken or non-functional — you cannot verify these from markdown and they are almost always working fine on the actual site.
 DO NOT report Language or Facts/Consistency issues.`
   }
 
@@ -358,6 +379,17 @@ ${urlListText}
 Do NOT audit any other pages. Focus only on these specific URLs.
 
 **Language detection:** Detect the language of each page from its content. Write all output (issue_description, suggested_fix) in that same language.
+
+**IMPORTANT — Markdown extraction artifacts:**
+The website content below was extracted from HTML and converted to markdown. This process often strips whitespace between adjacent HTML elements, producing false "missing space" issues. Examples:
+- "Thesimple" (actually "The simple" in two separate HTML spans)
+- "Add to your websiteA" or "Add Seline for freeA" (button text + keyboard shortcut letter in a separate element — the trailing letter is NOT part of the button text)
+- "3000events" (number and unit in separate elements)
+- "people.But" (sentence end and next sentence in separate elements)
+
+DO NOT flag spacing issues that look like HTML elements merged together. Only flag spacing issues where the text would genuinely read wrong on the actual rendered page — e.g., real typos like "recieve" or genuinely missing punctuation.
+
+Do not flag mailto: links, tel: links, or external links as broken or non-functional. You cannot verify these from markdown and they are almost always working fine on the actual site. Only flag internal navigation links that clearly point to the wrong destination.
 
 ${manifestText ? `Below is an ELEMENT MANIFEST showing interactive elements on the page:\n${manifestText}\n\n---\n` : ''}
 

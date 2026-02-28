@@ -117,8 +117,27 @@ export async function mapWebsite(url: string): Promise<Array<string | { url: str
   }
 }
 
+// JS to strip hidden elements before extraction (see ADR-001).
+// Runs in browser context where getComputedStyle resolves all CSS
+// including Tailwind responsive classes and media queries.
+const STRIP_HIDDEN_ELEMENTS_SCRIPT = `
+  document.querySelectorAll('*').forEach(el => {
+    try {
+      const style = window.getComputedStyle(el);
+      if (
+        style.display === 'none' ||
+        style.visibility === 'hidden' ||
+        (el.offsetHeight === 0 && el.offsetWidth === 0)
+      ) {
+        el.remove();
+      }
+    } catch (e) {}
+  });
+`
+
 /**
  * Scrape a single page
+ * Strips hidden elements (responsive duplicates) before extraction
  */
 export async function scrapePage(url: string): Promise<FirecrawlPage> {
   const firecrawl = await getFirecrawlClient()
@@ -126,7 +145,12 @@ export async function scrapePage(url: string): Promise<FirecrawlPage> {
   try {
     const result = await firecrawl.scrape(url, {
       formats: ['markdown', 'links'],
-      onlyMainContent: true
+      onlyMainContent: true,
+      actions: [
+        { type: 'wait', milliseconds: 500 },
+        { type: 'executeJavascript' as any, script: STRIP_HIDDEN_ELEMENTS_SCRIPT },
+        { type: 'wait', milliseconds: 200 },
+      ]
     })
 
     return {
