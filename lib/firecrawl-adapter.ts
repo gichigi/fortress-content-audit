@@ -120,8 +120,34 @@ export async function extractWithFirecrawl(
     Logger.debug(`[Firecrawl] Phase 1: Mapping URLs from ${domain}...`)
     const mapResults = await mapWebsite(domain)
     // Extract URL strings from map results (Firecrawl returns {url, title, description})
-    const allUrls = mapResults.map(r => typeof r === 'string' ? r : r.url || r)
-    Logger.debug(`[Firecrawl] Discovered ${allUrls.length} URLs`)
+    let allUrls = mapResults.map(r => typeof r === 'string' ? r : r.url || r)
+    Logger.debug(`[Firecrawl] Map discovered ${allUrls.length} URLs`)
+
+    // SPA fallback: if map found very few URLs, scrape the homepage to
+    // discover links. Map does a lightweight fetch that misses client-rendered
+    // content; scrape runs a real browser and sees everything.
+    const MIN_MAP_URLS = 5
+    if (allUrls.length < MIN_MAP_URLS) {
+      Logger.info(`[Firecrawl] Map returned only ${allUrls.length} URLs — scraping homepage for SPA link discovery`)
+      const normalizedDomain = domain.startsWith('http') ? domain : `https://${domain}`
+      try {
+        const homePage = await scrapePage(normalizedDomain)
+        const homeLinks = (homePage.links || []).filter(link => {
+          // Only keep internal links on the same domain
+          try {
+            const linkHost = new URL(link).hostname
+            const domainHost = extractDomainHostname(domain)
+            return linkHost === domainHost || linkHost === `www.${domainHost}` || `www.${linkHost}` === domainHost
+          } catch { return false }
+        })
+        // Merge with map results, deduplicate
+        const urlSet = new Set([...allUrls, ...homeLinks])
+        allUrls = Array.from(urlSet)
+        Logger.info(`[Firecrawl] SPA fallback added ${homeLinks.length} links from homepage (${allUrls.length} total URLs)`)
+      } catch (err) {
+        Logger.warn('[Firecrawl] SPA fallback homepage scrape failed:', err)
+      }
+    }
 
     // Phase 2: Smart Selection - Use our intelligent page selector
     const domainHostname = extractDomainHostname(domain)
