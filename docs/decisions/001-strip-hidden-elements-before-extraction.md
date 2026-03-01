@@ -22,6 +22,35 @@ This solves responsive duplicates at the source — before Firecrawl converts to
 
 Whitespace artifacts are handled separately via prompt-level caveats in `lib/audit-prompts.ts`.
 
+## Updates
+
+### 2026-03-01: sr-only and aria-hidden stripping
+
+Screen-reader-only elements (Tailwind's `.sr-only`, `.visually-hidden`) and `aria-hidden="true"` elements were appearing in the extracted markdown. Example: a comparison table cell showing "YesYes" because the sr-only text "Yes" was concatenated with the visible "Yes".
+
+The `executeJavascript` script now strips these in two phases:
+1. **By selector** — `.sr-only`, `.visually-hidden`, `[aria-hidden="true"]`
+2. **By computed style** — `position:absolute` + `overflow:hidden` + dimensions <=1px (catches clip-based hiding patterns)
+
+### 2026-03-01: Element manifest restored from HTML
+
+Firecrawl scrape now requests `html` format alongside `markdown` and `links`. The adapter (`lib/firecrawl-adapter.ts`) parses the HTML with cheerio to build a structured element manifest listing links (with type: internal/mailto/tel/external), buttons, and interactive widgets (chat, modals). This is appended to each page's content in the prompt.
+
+This restores the ability for models to cross-reference interactive elements — e.g., confirming a "live chat" link is backed by a real chat widget, or verifying whether a link actually exists on the page. Previously lost when we moved from the legacy manifest-extractor to Firecrawl markdown.
+
+### 2026-03-01: AI link checking removed, HTTP crawler expanded
+
+AI models can't reliably judge link destinations from markdown — they don't understand product context (e.g., a homepage link that scrolls to a scan section looks "wrong" to the model). Link checking is now split:
+
+- **HTTP link crawler** (`lib/link-crawler.ts`) — checks all internal links for HTTP errors (404, 500, timeouts). Deterministic and reliable.
+- **AI models** — focus on language, facts, and formatting/UX only. All link-related instructions removed from prompts.
+
+The crawler also now checks ALL internal links, not just links to audited pages. And `scrapePage` uses `onlyMainContent: false` so nav/footer links are included.
+
+### 2026-03-01: SPA fallback for page discovery
+
+Firecrawl's `map` endpoint does a lightweight fetch that misses client-rendered SPA content (the HTML is empty until JavaScript runs). When map returns fewer than 5 URLs, the adapter scrapes the homepage in a real browser to discover links, then merges them into the URL list. No extra API calls for server-rendered sites.
+
 ## Alternatives considered
 
 ### A. Prompt-level fix only (previously implemented)
@@ -53,5 +82,8 @@ Whitespace artifacts are handled separately via prompt-level caveats in `lib/aud
 
 - Firecrawl scrape calls now include an `executeJavascript` action
 - Elements hidden via CSS at the default 1920px viewport are removed before extraction
+- sr-only and aria-hidden elements are also stripped
 - Risk: elements intentionally hidden initially but shown via JS interaction (dropdowns, accordions, modals) may be stripped. Acceptable tradeoff — these rarely contain auditable content.
 - The prompt-level caveats for whitespace remain as a safety net
+- Link checking is fully automated via HTTP crawler; AI models no longer assess links
+- SPA sites get a fallback homepage scrape for page discovery when map fails
