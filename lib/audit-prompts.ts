@@ -15,11 +15,11 @@ ${manifestText}
 
 ---
 
-Audit only the homepage and one additional key public-facing page of a website for language quality, factual accuracy, and functional links/formatting. In a single unified pass, audit both pages for all three content categories at once: Language, Facts & Consistency, and Links & Formatting. For each page, identify and log issues per category:
+Audit only the homepage and one additional key public-facing page of a website for language quality, factual accuracy, and formatting. In a single unified pass, audit both pages for all three content categories at once: Language, Facts & Consistency, and Formatting. For each page, identify and log issues per category:
 
 - Language (typos, grammar, spelling, punctuation)
 - Facts & Consistency (factual errors, inconsistencies, incorrect stats)
-- Links & Formatting (confusing link text, formatting or layout problems — only for internal navigation links, not mailto/tel/external)
+- Formatting (layout problems, visual hierarchy issues, formatting inconsistencies — NOT link issues, those are checked by a separate automated system)
 
 **Language detection:** Detect the language of each page from its content. Write all issue descriptions and suggested fixes in that same language. Do not flag intentional foreign-language content — brand names, product terms, proper nouns, or content clearly written in a secondary language on purpose.
 
@@ -32,20 +32,18 @@ The website content below was extracted from HTML and converted to markdown. Thi
 
 DO NOT flag spacing issues that look like HTML elements merged together. Only flag spacing issues where the text would genuinely read wrong on the actual rendered page — e.g., real typos like "recieve" or genuinely missing punctuation.
 
-Do not flag mailto: links, tel: links, or external links as broken or non-functional. You cannot verify these from markdown and they are almost always working fine on the actual site. Only flag internal navigation links that clearly point to the wrong destination.
+Do NOT check or report ANY link issues — broken links, wrong destinations, link text, mailto/tel links, or external links. A separate automated system handles all link validation via HTTP checks.
 
 **HOW TO USE THE MANIFEST:**
 
-Use the manifest ONLY to avoid false positives about missing links/elements. The manifest shows code structure, NOT functionality.
+Use the manifest to avoid false positives about missing elements. The manifest shows code structure, NOT functionality.
 
 **AUDIT THOROUGHLY:**
 - Explore the site as you normally would (don't reduce exploration just because you have the manifest)
-- Test internal navigation links to verify they point to the right pages
 - Open multiple pages to find issues across the site
 - Use your full tool call allowance to be comprehensive
 
 **Use manifest for:**
-✓ Verifying if text is actually a link (avoid "plain text" false positives when manifest shows <a href="...">)
 ✓ Checking if headings are duplicated or legitimate (responsive designs may show same heading at different breakpoints)
 ✓ Understanding code structure to avoid reporting missing elements that actually exist
 
@@ -171,7 +169,7 @@ ${manifestText}
 Audit up to 20 public-facing, top-of-funnel pages of a website for:
 - Language (typos, grammar, spelling, punctuation)
 - Facts & Consistency (factual errors, inconsistencies, incorrect stats)
-- Links & Formatting (confusing link text, formatting or layout problems — only for internal navigation links, not mailto/tel/external)
+- Formatting (layout problems, visual hierarchy issues, formatting inconsistencies — NOT link issues, those are checked by a separate automated system)
 
 **Language detection:** Detect the language of each page from its content. Write all issue descriptions and suggested fixes in that same language. Do not flag intentional foreign-language content — brand names, product terms, proper nouns, or content clearly written in a secondary language on purpose.
 
@@ -184,22 +182,20 @@ The website content below was extracted from HTML and converted to markdown. Thi
 
 DO NOT flag spacing issues that look like HTML elements merged together. Only flag spacing issues where the text would genuinely read wrong on the actual rendered page — e.g., real typos like "recieve" or genuinely missing punctuation.
 
-Do not flag mailto: links, tel: links, or external links as broken or non-functional. You cannot verify these from markdown and they are almost always working fine on the actual site. Only flag internal navigation links that clearly point to the wrong destination.
+Do NOT check or report ANY link issues — broken links, wrong destinations, link text, mailto/tel links, or external links. A separate automated system handles all link validation via HTTP checks.
 
 ${includeLongformFullAudit ? "" : "Avoid long-form blog/article/resource pages unless no other pages are available."}
 
 **HOW TO USE THE MANIFEST:**
 
-Use the manifest ONLY to avoid false positives about missing links/elements. The manifest shows code structure, NOT functionality.
+Use the manifest to avoid false positives about missing elements. The manifest shows code structure, NOT functionality.
 
 **AUDIT THOROUGHLY:**
 - Explore the site as you normally would (don't reduce exploration just because you have the manifest)
-- Test internal navigation links to verify they point to the right pages
 - Open multiple pages to find issues across the site
 - Use your full tool call allowance to be comprehensive
 
 **Use manifest for:**
-✓ Verifying if text is actually a link (avoid "plain text" false positives when manifest shows <a href="...">)
 ✓ Checking if headings are duplicated or legitimate (responsive designs may show same heading at different breakpoints)
 ✓ Understanding code structure to avoid reporting missing elements that actually exist
 
@@ -349,15 +345,12 @@ DO NOT report Facts/Consistency or Links/Formatting issues.`,
 DO NOT report Language or Links/Formatting issues.`,
 
     "Links & Formatting": `Focus ONLY on Formatting & UX issues:
-- Confusing or misleading link text (e.g., "click here" with no context)
 - Formatting problems (inconsistent styles, broken layouts)
 - Layout issues affecting readability
 - Visual hierarchy problems
 - Navigation UX issues
 
-NOTE: Broken links, redirects, and HTTP errors are checked automatically by a separate system.
-DO NOT report 404s, timeouts, or SSL errors - focus on UX only.
-DO NOT flag mailto: links, tel: links, or external links as broken or non-functional — you cannot verify these from markdown and they are almost always working fine on the actual site.
+DO NOT check or report ANY link issues — broken links, wrong destinations, link text quality, mailto/tel links, or external links. A separate automated system handles all link validation via HTTP checks.
 DO NOT report Language or Facts/Consistency issues.`
   }
 
@@ -389,7 +382,7 @@ The website content below was extracted from HTML and converted to markdown. Thi
 
 DO NOT flag spacing issues that look like HTML elements merged together. Only flag spacing issues where the text would genuinely read wrong on the actual rendered page — e.g., real typos like "recieve" or genuinely missing punctuation.
 
-Do not flag mailto: links, tel: links, or external links as broken or non-functional. You cannot verify these from markdown and they are almost always working fine on the actual site. Only flag internal navigation links that clearly point to the wrong destination.
+Do NOT check or report ANY link issues — broken links, wrong destinations, link text, mailto/tel links, or external links. A separate automated system handles all link validation via HTTP checks.
 
 ${manifestText ? `Below is an ELEMENT MANIFEST showing interactive elements on the page:\n${manifestText}\n\n---\n` : ''}
 
@@ -397,7 +390,6 @@ ${categoryInstructions[category]}
 
 **HOW TO USE THE MANIFEST:**
 - Use it to avoid false positives about missing elements
-- Still test all links by clicking them
 - The manifest shows code structure, NOT functionality
 
 If you encounter bot protection, return: BOT_PROTECTION_OR_FIREWALL_BLOCKED

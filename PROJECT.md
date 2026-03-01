@@ -55,6 +55,6 @@ Recorded in `docs/decisions/` as numbered ADRs. Check these before making change
 - [ADR-001](docs/decisions/001-strip-hidden-elements-before-extraction.md) — Strip hidden DOM elements before Firecrawl markdown extraction
 
 ## Important URLs
-- Production: https://aistyleguide.com (if deployed)
+- Production: https://usefortress.vercel.com
 - Supabase Admin URL: Check `.env.local`
 - PostHog Dashboard: Check project settings

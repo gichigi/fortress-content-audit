@@ -154,7 +154,8 @@ const STRIP_HIDDEN_ELEMENTS_SCRIPT = `
 
 /**
  * Scrape a single page
- * Strips hidden elements (responsive duplicates) before extraction
+ * Strips hidden elements (responsive duplicates) before extraction.
+ * Uses onlyMainContent: false so the link crawler sees nav/footer links too.
  */
 export async function scrapePage(url: string): Promise<FirecrawlPage> {
   const firecrawl = await getFirecrawlClient()
@@ -162,7 +163,7 @@ export async function scrapePage(url: string): Promise<FirecrawlPage> {
   try {
     const result = await firecrawl.scrape(url, {
       formats: ['markdown', 'links', 'html'],
-      onlyMainContent: true,
+      onlyMainContent: false,
       actions: [
         { type: 'wait', milliseconds: 500 },
         { type: 'executeJavascript' as any, script: STRIP_HIDDEN_ELEMENTS_SCRIPT },

@@ -459,18 +459,7 @@ export async function crawlLinks(
         return false
       }
 
-      // For internal links: only check if they point to an audited page
-      if (isInternal && auditedUrls && auditedUrls.length > 0) {
-        // Normalize both URLs for comparison (remove trailing slash, query params, etc.)
-        const normalizedHref = normalizeUrlForComparison(link.href)
-        const isAuditedPage = auditedUrls.some(auditedUrl =>
-          normalizeUrlForComparison(auditedUrl) === normalizedHref
-        )
-
-        if (!isAuditedPage) {
-          return false // Skip internal links to non-audited pages
-        }
-      }
+      // Check all internal links — broken links to any page should be caught
 
       // Skip non-HTML files (images, videos, PDFs, etc.)
       // Firecrawl can't scrape these and they should be validated differently
