@@ -10,6 +10,7 @@
 - **Fewer issues, higher confidence** — it's better to miss an edge case than to report false positives. Users lose trust in the tool when it flags things that aren't real issues.
 - **Link auditing is internal-only** — only flag internal navigation links that are broken or point to the wrong page. Never flag mailto:, tel:, or external links as broken — AI models can't verify these from markdown and they're almost always fine on the live site.
 - **Extraction artifacts are not issues** — Firecrawl's HTML-to-markdown conversion strips whitespace between adjacent HTML elements (e.g., `<span>The</span><span>simple</span>` becomes `Thesimple`). The prompts in `lib/audit-prompts.ts` include explicit caveats telling models to ignore these. If similar artifact patterns emerge, fix at the prompt level, not by modifying the crawled content.
+- **HTML-direct is the future** — Validated approach: feed cleaned raw HTML (after strip-hidden-elements JS) directly to models instead of markdown. Eliminates extraction artifacts entirely. See ADR-001 for details. The strip script must preserve zero-dimension inline tags (`<br>`, `<img>`, `<svg>`, etc.).
 
 ### Testing
 - **For AI prompt or model/API changes: always run a real end-to-end audit test before pushing to prod** — prompt wording directly affects output quality and regressions are invisible without live testing

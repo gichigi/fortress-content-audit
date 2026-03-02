@@ -78,12 +78,12 @@ export async function crawlWebsite(
         formats: ['markdown', 'links'],
         onlyMainContent
       }
-    })
+    } as any)
 
     const duration = Date.now() - startTime
     Logger.info(`[Firecrawl] Crawl completed in ${(duration / 1000).toFixed(1)}s: ${result.data?.length || 0} pages`)
 
-    return result.data || []
+    return (result.data || []) as FirecrawlPage[]
   } catch (error) {
     Logger.error('[Firecrawl] Crawl failed', error instanceof Error ? error : undefined)
     throw error
@@ -128,7 +128,10 @@ const STRIP_HIDDEN_ELEMENTS_SCRIPT = `
   });
 
   // Phase 2: Strip by computed style (display:none, visibility:hidden, zero-size)
+  // Skip inline formatting tags like <br>, <wbr>, <hr> — they have zero dimensions but carry meaning
+  const skipTags = new Set(['BR', 'WBR', 'HR', 'IMG', 'INPUT', 'SVG', 'META', 'LINK']);
   document.querySelectorAll('*').forEach(el => {
+    if (skipTags.has(el.tagName)) return;
     try {
       const style = window.getComputedStyle(el);
       if (

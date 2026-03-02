@@ -78,12 +78,73 @@ Firecrawl's `map` endpoint does a lightweight fetch that misses client-rendered 
 - Firecrawl's JSON mode works on markdown internally, not HTML — can't see CSS classes
 - Building our own JSON from HTML is essentially option C with extra steps
 
+### 2026-03-02: Skip zero-dimension inline tags in strip script
+
+The strip script's zero-size check (`offsetHeight === 0 && offsetWidth === 0`) was removing `<br>`, `<wbr>`, `<hr>`, `<img>`, `<input>`, `<svg>`, `<meta>`, and `<link>` tags — all of which have zero box dimensions but carry meaning. This caused 7 false positives on seline.com where `<br>` line breaks between sentences were stripped, making the model report "missing space after period" issues that didn't exist on the live site.
+
+Fix: added a `skipTags` set to Phase 2 that bypasses the zero-size check for these inline/void elements.
+
+### 2026-03-02: HTML-direct audit approach validated (future direction)
+
+Tested feeding cleaned raw HTML directly to GPT-5.1 instead of Firecrawl's markdown conversion. Results across 4 sites (seline.so, justcancel.io, vercel.com, dub.co):
+
+- **24/24 issues verified real (100% accuracy)** with responsive duplicate prompt
+- **0 false positives** — compared to 40-60% false positive rates with early markdown approach
+- HTML preserves `<br>`, heading levels, table structure, alt text, and class attributes that markdown loses
+- Token cost: ~75K tokens for 5 pages (~$0.19 input) — higher than markdown but acceptable
+- Responsive duplicates handled via prompt instruction telling models to recognize Tailwind breakpoint classes (`hidden md:flex`, etc.) rather than trying to strip them
+
+**This approach (Firecrawl scrape → strip script → raw HTML → model) is the recommended path for the production pipeline.** The current markdown approach works but is more fragile.
+
+### 2026-03-02: Screenshot/vision approaches rejected
+
+Tested two screenshot-based approaches against the HTML-direct approach:
+
+1. **Firecrawl scrape screenshots** — viewport screenshots passed as `input_image` to GPT-5.1. Found real issues but also markdown extraction artifacts from the supplementary text.
+2. **Retina browser session screenshots** — Firecrawl CDP + Playwright at 2x deviceScaleFactor, pure vision (no text). Model hallucinated text content it couldn't actually read (e.g., reported "Googla Analytics" when the screenshot clearly showed "Google Analytics", reported garbled "se0n*d" on linear.app).
+
+Screenshots are a liability for text auditing — the model invents errors from compressed/small text. Rejected for content auditing. May have value for layout/visual auditing in future.
+
+### 2026-03-02: Two-pass verification (noted for future)
+
+Non-determinism means the model misses some real issues between runs (4 real issues dropped when re-running dub.co and vercel.com with identical settings). A potential improvement:
+
+1. **Pass 1 (auditor):** Current approach — find candidate issues from HTML
+2. **Pass 2 (verifier):** A second model checks each candidate issue against the HTML (or a screenshot, or both). Only confirmed issues are returned.
+
+This adds latency and cost but could push accuracy from ~95% to near-100%. Not implemented yet — the single-pass approach at 100% verified accuracy (with responsive prompt) is sufficient for now.
+
+## Alternatives considered
+
+### D. Send raw HTML to models instead of markdown (UPDATED — now validated)
+- Models can read HTML with class attributes
+- 3-5x more tokens — higher cost but manageable (~$0.19 per 5-page audit)
+- **Tested 2026-03-02: 100% accuracy across 24 issues on 4 sites**
+- Responsive duplicates handled via prompt, not stripping
+- Recommended as the production approach going forward
+
+### F. Screenshot-first audit (tested and rejected 2026-03-02)
+- Firecrawl screenshots + GPT-5.1 vision
+- Model hallucinates text from compressed screenshots — fabricated typos that don't exist
+- Retina (2x) CDP screenshots still hallucinate — "Googla", "se0n*d"
+- No ground truth to cross-reference = no way to verify claims
+- Slower (30-85s capture) and more expensive than HTML-direct
+
+### G. Host scraped HTML for model web_search (noted for future)
+- Scrape with Firecrawl → inline CSS → host on own domain → model web_searches hosted version
+- Solves bot protection (model hits your URL, not the original site)
+- Enables future UI feature: users scroll through issues highlighted on the rendered page
+- Requires: CSS inlining, asset URL rewriting, hosting infrastructure
+- Not implemented — current HTML-direct approach sufficient
+
 ## Consequences
 
 - Firecrawl scrape calls now include an `executeJavascript` action
 - Elements hidden via CSS at the default 1920px viewport are removed before extraction
 - sr-only and aria-hidden elements are also stripped
+- Zero-dimension inline tags (`<br>`, `<hr>`, `<img>`, `<svg>`, etc.) are preserved by the strip script
 - Risk: elements intentionally hidden initially but shown via JS interaction (dropdowns, accordions, modals) may be stripped. Acceptable tradeoff — these rarely contain auditable content.
 - The prompt-level caveats for whitespace remain as a safety net
 - Link checking is fully automated via HTTP crawler; AI models no longer assess links
 - SPA sites get a fallback homepage scrape for page discovery when map fails
+- Future direction: switch production pipeline from markdown to HTML-direct with responsive duplicate prompt
