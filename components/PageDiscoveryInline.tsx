@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { ChevronDown, ChevronUp, CheckCircle2, Circle, ExternalLink } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -26,17 +26,25 @@ function formatUrl(url: string): string {
   }
 }
 
-// Check if a URL was audited by comparing against actual auditedUrls list
-function isAudited(url: string, auditedUrls: string[]): boolean {
-  return auditedUrls.some(audited => {
+// Build a Set of audited pathname keys for O(1) lookup
+function buildAuditedPathSet(auditedUrls: string[]): Set<string> {
+  const set = new Set<string>()
+  for (const url of auditedUrls) {
     try {
-      const auditedPath = new URL(audited).pathname.replace(/\/$/, "")
-      const urlPath = new URL(url).pathname.replace(/\/$/, "")
-      return auditedPath === urlPath
+      set.add(new URL(url).pathname.replace(/\/$/, ""))
     } catch {
-      return audited === url
+      set.add(url)
     }
-  })
+  }
+  return set
+}
+
+function isAuditedBySet(url: string, auditedSet: Set<string>): boolean {
+  try {
+    return auditedSet.has(new URL(url).pathname.replace(/\/$/, ""))
+  } catch {
+    return auditedSet.has(url)
+  }
 }
 
 // Get page priority for intelligent sorting
@@ -65,12 +73,12 @@ function getPagePriority(url: string): number {
 // Shared list UI: scrollable grid, full-width when used in dashboard row
 function PageDiscoveryListInner({
   sortedPages,
-  auditedUrls,
+  auditedSet,
   isDesktop,
   className,
 }: {
   sortedPages: string[]
-  auditedUrls: string[]
+  auditedSet: Set<string>
   isDesktop: boolean
   className?: string
 }) {
@@ -85,7 +93,7 @@ function PageDiscoveryListInner({
           }`}
         >
           {sortedPages.map((url, i) => {
-            const audited = isAudited(url, auditedUrls)
+            const audited = isAuditedBySet(url, auditedSet)
             return (
               <a
                 key={i}
@@ -149,26 +157,25 @@ export function PageDiscoveryInline({
   const totalPages = pagesFound ?? discoveredPages.length
   const auditedCount = auditedUrls.length
 
+  // Pre-compute audited path set once (O(m) instead of O(n*m) per render)
+  const auditedSet = useMemo(() => buildAuditedPathSet(auditedUrls), [auditedUrls])
+
+  // Memoize sorted pages so toggling expanded doesn't re-sort
+  const sortedPages = useMemo(() => {
+    return [...discoveredPages].sort((a, b) => {
+      const aAudited = isAuditedBySet(a, auditedSet)
+      const bAudited = isAuditedBySet(b, auditedSet)
+      if (aAudited && !bAudited) return -1
+      if (!aAudited && bAudited) return 1
+      const aPriority = getPagePriority(a)
+      const bPriority = getPagePriority(b)
+      if (aPriority !== bPriority) return aPriority - bPriority
+      return a.localeCompare(b)
+    })
+  }, [discoveredPages, auditedSet])
+
   // Don't render if no pages discovered
   if (totalPages === 0) return null
-
-  // Sort pages: audited first, then by priority, then alphabetically
-  const sortedPages = [...discoveredPages].sort((a, b) => {
-    const aAudited = isAudited(a, auditedUrls)
-    const bAudited = isAudited(b, auditedUrls)
-
-    // Audited pages first
-    if (aAudited && !bAudited) return -1
-    if (!aAudited && bAudited) return 1
-
-    // Then by priority
-    const aPriority = getPagePriority(a)
-    const bPriority = getPagePriority(b)
-    if (aPriority !== bPriority) return aPriority - bPriority
-
-    // Finally alphabetically
-    return a.localeCompare(b)
-  })
 
   // Tier limits
   const freeLimit = 5
@@ -207,7 +214,7 @@ export function PageDiscoveryInline({
         <div className="mt-3 animate-in fade-in slide-in-from-top-2 duration-200 w-full">
           <PageDiscoveryListInner
             sortedPages={sortedPages}
-            auditedUrls={auditedUrls}
+            auditedSet={auditedSet}
             isDesktop={isDesktop}
           />
         </div>
@@ -232,16 +239,20 @@ export function PageDiscoveryList({
     return () => window.removeEventListener('resize', update)
   }, [])
 
-  const sortedPages = [...discoveredPages].sort((a, b) => {
-    const aAudited = isAudited(a, auditedUrls)
-    const bAudited = isAudited(b, auditedUrls)
-    if (aAudited && !bAudited) return -1
-    if (!aAudited && bAudited) return 1
-    const aPriority = getPagePriority(a)
-    const bPriority = getPagePriority(b)
-    if (aPriority !== bPriority) return aPriority - bPriority
-    return a.localeCompare(b)
-  })
+  const auditedSet = useMemo(() => buildAuditedPathSet(auditedUrls), [auditedUrls])
+
+  const sortedPages = useMemo(() => {
+    return [...discoveredPages].sort((a, b) => {
+      const aAudited = isAuditedBySet(a, auditedSet)
+      const bAudited = isAuditedBySet(b, auditedSet)
+      if (aAudited && !bAudited) return -1
+      if (!aAudited && bAudited) return 1
+      const aPriority = getPagePriority(a)
+      const bPriority = getPagePriority(b)
+      if (aPriority !== bPriority) return aPriority - bPriority
+      return a.localeCompare(b)
+    })
+  }, [discoveredPages, auditedSet])
 
   if (sortedPages.length === 0) return null
 
@@ -249,7 +260,7 @@ export function PageDiscoveryList({
     <div className="animate-in fade-in slide-in-from-top-2 duration-200 w-full">
       <PageDiscoveryListInner
         sortedPages={sortedPages}
-        auditedUrls={auditedUrls}
+        auditedSet={auditedSet}
         isDesktop={isDesktop}
       />
     </div>
