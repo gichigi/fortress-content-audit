@@ -193,13 +193,13 @@ export function AuditIntentPicker({
           )}
         </div>
 
-        {/* Spelling standard */}
+        {/* English variant */}
         <div className="px-4 py-3">
           <label htmlFor="locale-check" className="flex items-center justify-between cursor-pointer">
             <div className="pr-4">
-              <span className="text-sm font-medium block">Spelling standard</span>
+              <span className="text-sm font-medium block">English variant</span>
               <span className="text-xs text-muted-foreground">
-                {localeEnabled ? "Audit against chosen English variant" : "Off - model infers from site content"}
+                {localeEnabled ? "Flag spelling that doesn't match the chosen variant" : "Off - model infers from site content"}
               </span>
             </div>
             <Switch

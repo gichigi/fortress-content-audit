@@ -331,14 +331,14 @@ export default function AuditOptionsPage() {
           <h2 className="font-serif text-2xl font-semibold mb-4">Writing standards</h2>
           <p className="text-sm text-muted-foreground mb-6">Intended style to audit against</p>
 
-          {/* Spelling standard — off means model infers from site content */}
+          {/* English variant — off means model infers from site content */}
           <div className="rounded-md border border-border p-4 mb-6">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <Label htmlFor="locale_toggle" className="cursor-pointer font-medium">Spelling standard</Label>
+                <Label htmlFor="locale_toggle" className="cursor-pointer font-medium">English variant</Label>
                 <p className="text-sm text-muted-foreground mt-0.5">
                   {localeEnabled
-                    ? "Audit against the chosen English variant"
+                    ? "Flag spelling that doesn't match the chosen variant"
                     : "Off - model infers from site content"}
                 </p>
               </div>
