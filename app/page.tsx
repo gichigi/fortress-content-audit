@@ -697,6 +697,7 @@ export default function Home() {
                     auditedUrls={auditResults.meta.auditedUrls || []}
                     pagesFound={auditResults.meta.pagesFound}
                     isAuthenticated={isAuthenticated}
+                    plan={auditTier}
                   />
                 )}
               </div>

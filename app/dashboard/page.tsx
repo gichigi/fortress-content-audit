@@ -1380,6 +1380,7 @@ export default function DashboardPage() {
                         auditedUrls={mostRecentAudit.issues_json?.auditedUrls || []}
                         pagesFound={mostRecentAudit.pages_found ?? mostRecentAudit.issues_json?.pagesFound ?? null}
                         isAuthenticated={true}
+                        plan={plan as 'free' | 'pro' | 'enterprise'}
                         fullWidthExpanded
                         expanded={pageListExpanded}
                         onExpandChange={setPageListExpanded}

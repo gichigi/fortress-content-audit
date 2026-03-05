@@ -8,6 +8,8 @@ interface PageDiscoveryInlineProps {
   auditedUrls: string[] // Actual list of audited URLs (replaces pagesAudited number)
   pagesFound: number | null
   isAuthenticated?: boolean
+  /** User's plan - controls which audit tier label is shown */
+  plan?: 'free' | 'pro' | 'enterprise'
   /** When true, expanded list is rendered by parent (full-width row). Summary only here. */
   fullWidthExpanded?: boolean
   expanded?: boolean
@@ -128,6 +130,7 @@ export function PageDiscoveryInline({
   auditedUrls,
   pagesFound,
   isAuthenticated = false,
+  plan = 'free',
   fullWidthExpanded = false,
   expanded: controlledExpanded,
   onExpandChange,
@@ -199,7 +202,10 @@ export function PageDiscoveryInline({
             Free audit: up to {freeLimit} pages · <span className="text-foreground">Pro audit: up to {proLimit} pages</span>
           </span>
         ) : (
-          <span className="text-muted-foreground">Pro audit</span>
+          // Show the correct tier label based on the user's actual plan
+          <span className="text-muted-foreground">
+            {plan === 'pro' || plan === 'enterprise' ? 'Pro audit' : 'Free audit'}
+          </span>
         )}
         {isExpanded ? (
           <ChevronUp className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
