@@ -179,7 +179,7 @@ export async function POST(request: Request) {
           
           // Process audience with error handling
           let audienceStr = ''
-          if (audienceResult?.success && audienceResult?.content) {
+          if (audienceResult?.success && 'content' in audienceResult && audienceResult?.content) {
             audienceStr = audienceResult.content.trim()
           } else {
             // Fallback to original targetAudience from brand details
@@ -201,7 +201,7 @@ export async function POST(request: Request) {
           
           // Process keywords with error handling
           let keywords = ''
-          if (keywordsResult?.success && keywordsResult?.content) {
+          if (keywordsResult?.success && 'content' in keywordsResult && keywordsResult?.content) {
             const parsed = JSON.parse(keywordsResult.content)
             const keywordArray = Array.isArray(parsed.keywords) ? parsed.keywords : []
             keywords = keywordArray.join('\n')
@@ -226,7 +226,7 @@ export async function POST(request: Request) {
               Logger.info("Parsed suggested traits:", suggestedTraits)
             }
           } catch (error) {
-            Logger.error("Failed to generate trait suggestions:", error)
+            Logger.error("Failed to generate trait suggestions:", error instanceof Error ? error : undefined)
           }
 
           Logger.info("Successfully generated brand details from description")
@@ -243,7 +243,7 @@ export async function POST(request: Request) {
           throw new Error("Failed to generate brand details")
         }
       } catch (error) {
-        Logger.error("Error processing description", error)
+        Logger.error("Error processing description", error instanceof Error ? error : undefined)
         return NextResponse.json({
           success: false,
           message: "Could not process description. Try again or add details manually.",
@@ -475,7 +475,7 @@ ${summary}`
 
     // Process audience with error handling
     let audience = ''
-    if (audienceResult?.success && audienceResult?.content) {
+    if (audienceResult?.success && 'content' in audienceResult && audienceResult?.content) {
       audience = audienceResult.content.trim()
     }
 
@@ -488,7 +488,7 @@ ${summary}`
 
     // Process keywords with error handling
     let keywords = ''
-    if (keywordsResult?.success && keywordsResult?.content) {
+    if (keywordsResult?.success && 'content' in keywordsResult && keywordsResult?.content) {
       const parsed = JSON.parse(keywordsResult.content)
       const keywordArray = Array.isArray(parsed.keywords) ? parsed.keywords : []
       keywords = keywordArray.join('\n')
@@ -513,7 +513,7 @@ ${summary}`
         Logger.info("Parsed suggested traits:", suggestedTraits)
       }
     } catch (error) {
-      Logger.error("Failed to generate trait suggestions:", error)
+      Logger.error("Failed to generate trait suggestions:", error instanceof Error ? error : undefined)
     }
 
     Logger.info("Successfully extracted brand information")

@@ -106,20 +106,20 @@ export function GuidelinesEditor({
   return (
     <div className={cn("rounded-md border border-input overflow-hidden min-h-[25rem] flex flex-col", className)}>
       <FixedToolbar>
-        <ToolbarBtn onClick={() => editor.tf.h1?.toggle?.()} title="Heading 1">
+        <ToolbarBtn onClick={() => (editor.tf as any).h1?.toggle?.()} title="Heading 1">
           <Heading1 className="h-4 w-4" />
         </ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.tf.h2?.toggle?.()} title="Heading 2">
+        <ToolbarBtn onClick={() => (editor.tf as any).h2?.toggle?.()} title="Heading 2">
           <Heading2 className="h-4 w-4" />
         </ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.tf.h3?.toggle?.()} title="Heading 3">
+        <ToolbarBtn onClick={() => (editor.tf as any).h3?.toggle?.()} title="Heading 3">
           <Heading3 className="h-4 w-4" />
         </ToolbarBtn>
         <div className="w-px h-4 bg-border mx-1" />
-        <ToolbarBtn onClick={() => editor.tf.bold?.toggle?.()} title="Bold (⌘B)">
+        <ToolbarBtn onClick={() => (editor.tf as any).bold?.toggle?.()} title="Bold (⌘B)">
           <Bold className="h-4 w-4" />
         </ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.tf.italic?.toggle?.()} title="Italic (⌘I)">
+        <ToolbarBtn onClick={() => (editor.tf as any).italic?.toggle?.()} title="Italic (⌘I)">
           <Italic className="h-4 w-4" />
         </ToolbarBtn>
         <div className="w-px h-4 bg-border mx-1" />
@@ -130,6 +130,7 @@ export function GuidelinesEditor({
           <ListOrdered className="h-4 w-4" />
         </ToolbarBtn>
       </FixedToolbar>
+      {/* @ts-expect-error Plate editor type mismatch with markdown plugin */}
       <Plate editor={editor} onChange={handleChange} className="flex-1 flex flex-col min-h-0">
         <PlateContent
           id={id}

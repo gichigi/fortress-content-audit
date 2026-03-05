@@ -5,7 +5,6 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { validateUrl } from '@/lib/url-validation'
 import { auditSite, miniAudit, parallelMiniAudit, parallelProAudit, AuditTier, AuditResult, getExcludedIssues, getActiveIssues, AuditIssueContext } from '@/lib/audit'
 import { runBrandVoiceAuditPass } from '@/lib/brand-voice-audit'
-import PostHogClient from '@/lib/posthog'
 import Logger from '@/lib/logger'
 import { checkDailyLimit, checkDomainLimit, isNewDomain, incrementAuditUsage, getAuditUsage } from '@/lib/audit-rate-limit'
 import { createMockAuditData } from '@/lib/mock-audit-data'
@@ -662,22 +661,6 @@ export async function POST(request: Request) {
         ...(process.env.NODE_ENV === 'development' ? { stack: error.stack } : {})
       })
     }
-    
-    try {
-      const posthog = PostHogClient()
-      posthog.capture({
-        distinctId: 'server',
-        event: 'error_occurred',
-        properties: {
-          type: 'crawl',
-          message: error.message,
-          endpoint: '/api/audit',
-          duration_ms: duration,
-          domain: requestDomain || 'unknown',
-        }
-      })
-      posthog.shutdown()
-    } catch {}
     
     // Return user-friendly error message (error.message is already sanitized by handleAuditError)
     return NextResponse.json(

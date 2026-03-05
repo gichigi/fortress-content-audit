@@ -5,7 +5,7 @@ interface LogEntry {
   level: LogLevel
   message: string
   details?: any
-  error?: Error
+  error?: Error | object
 }
 
 class Logger {

@@ -57,9 +57,10 @@ export function parseStyleGuideContent(html: string): StyleGuideSection[] {
   })
 
   // Don't forget the last section
-  if (currentSection && sectionContent.length > 0) {
-    currentSection.content = sectionContent.map(el => el.outerHTML).join('')
-    sections.push(currentSection)
+  const lastSection = currentSection as StyleGuideSection | null
+  if (lastSection && sectionContent.length > 0) {
+    lastSection.content = sectionContent.map(el => el.outerHTML).join('')
+    sections.push(lastSection)
   }
 
   return sections

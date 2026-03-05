@@ -1,7 +1,6 @@
 // fortress v1
 import { NextResponse } from "next/server"
 import Stripe from "stripe"
-import PostHogClient from "@/lib/posthog"
 import { supabaseAdmin } from "@/lib/supabase-admin"
 
 type StripeMode = 'test' | 'live'
@@ -93,20 +92,6 @@ export async function POST(request: Request) {
     const duration = Date.now() - startTime
     const err = error instanceof Error ? error : new Error('Unknown error')
     console.error('[Stripe] create subscription error:', err.message)
-    try {
-      const posthog = PostHogClient()
-      posthog.capture({
-        distinctId: 'server',
-        event: 'error_occurred',
-        properties: {
-          type: 'billing',
-          message: err.message,
-          endpoint: '/api/create-checkout-session',
-          duration_ms: duration,
-        }
-      })
-      posthog.shutdown()
-    } catch {}
     return NextResponse.json(
       { error: err.message || 'Failed to create session' },
       { status: 500 }

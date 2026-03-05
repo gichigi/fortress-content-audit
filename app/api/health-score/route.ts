@@ -116,7 +116,7 @@ export async function GET(request: Request) {
 
     // Calculate health score for each audit date
     // Group audits by date (same day audits use aggregated score)
-    const scoresByDate = new Map<string, { date: string; score: number; metrics: any }>()
+    const scoresByDate = new Map<string, { date: string; score: number; metrics: any; isBaseline?: boolean }>()
     
     // Group audits by date (YYYY-MM-DD)
     const auditsByDate = new Map<string, AuditRun[]>()

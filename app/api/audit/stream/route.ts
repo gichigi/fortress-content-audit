@@ -155,7 +155,7 @@ export async function GET(request: Request) {
           const pagesAudited = result.pagesAudited || 0
           const auditedUrls = result.auditedUrls || []
           const issuesCount = result.issues?.length || 0
-          const reasoningSummaries = result.reasoningSummaries || []
+          const reasoningSummaries = (result as any).reasoningSummaries || []
 
           // Send progress event if there are changes
           if (

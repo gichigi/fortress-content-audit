@@ -3,7 +3,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { generateAuditMarkdown, generateAuditJSON, generateAuditHTML } from '@/lib/audit-exporter'
-import PostHogClient from '@/lib/posthog'
 import Logger from '@/lib/logger'
 
 function getBearer(req: Request) {
@@ -97,25 +96,6 @@ export async function GET(
           const markdown = generateAuditMarkdown(audit, issuesList)
           const duration = Date.now() - startTime
           
-          // Log successful export
-          try {
-            const posthog = PostHogClient()
-            posthog.capture({
-              distinctId: userId,
-              event: 'audit_exported',
-              properties: {
-                format: 'md',
-                auditId: id,
-                domain: audit.domain,
-                duration_ms: duration,
-                success: true,
-              },
-            })
-            posthog.shutdown()
-          } catch (phError) {
-            console.error('[Export] PostHog error:', phError)
-          }
-          
           return new NextResponse(markdown, {
             headers: {
               'Content-Type': 'text/markdown',
@@ -141,25 +121,6 @@ export async function GET(
           const json = generateAuditJSON(audit, issuesList)
           const duration = Date.now() - startTime
           
-          // Log successful export
-          try {
-            const posthog = PostHogClient()
-            posthog.capture({
-              distinctId: userId,
-              event: 'audit_exported',
-              properties: {
-                format: 'json',
-                auditId: id,
-                domain: audit.domain,
-                duration_ms: duration,
-                success: true,
-              },
-            })
-            posthog.shutdown()
-          } catch (phError) {
-            console.error('[Export] PostHog error:', phError)
-          }
-          
           return new NextResponse(json, {
             headers: {
               'Content-Type': 'application/json',
@@ -183,13 +144,14 @@ export async function GET(
       case 'pdf': {
         try {
           // Generate HTML content on server for client-side PDF conversion
-          const auditedUrls = Array.isArray(audit.issues_json?.auditedUrls) ? audit.issues_json.auditedUrls : []
+          const issuesJson = audit.issues_json as Record<string, any> | null
+          const auditedUrls = Array.isArray(issuesJson?.auditedUrls) ? issuesJson.auditedUrls : []
           const domain = audit.domain || 'Unknown domain'
           const pagesAudited = audit.pages_audited || 0
 
           // Calculate pages with issues from issue page_url
           const pagesWithIssues = new Set<string>()
-          issuesList.forEach(issue => {
+          issuesList.forEach((issue: any) => {
             if (issue.page_url) {
               try {
                 const url = new URL(issue.page_url)
@@ -207,27 +169,6 @@ export async function GET(
 
           const html = generateAuditHTML(title, domain, pagesAudited, pagesWithIssuesCount, totalIssues, createdAt, issuesList, auditedUrls)
           const duration = Date.now() - startTime
-
-          // Log successful HTML generation
-          try {
-            const posthog = PostHogClient()
-            posthog.capture({
-              distinctId: userId,
-              event: 'audit_exported',
-              properties: {
-                format: 'pdf',
-                auditId: id,
-                domain: audit.domain,
-                duration_ms: duration,
-                success: true,
-                conversionMethod: 'client-side',
-              },
-            })
-            posthog.shutdown()
-          } catch (phError) {
-            // Don't fail export if PostHog fails
-            console.error('[Export] PostHog error:', phError)
-          }
 
           return new NextResponse(html, {
             headers: {
@@ -251,25 +192,6 @@ export async function GET(
             timestamp: new Date().toISOString(),
           })
 
-          // Track export failure in PostHog
-          try {
-            const posthog = PostHogClient()
-            posthog.capture({
-              distinctId: userId,
-              event: 'audit_export_failed',
-              properties: {
-                format: 'pdf',
-                auditId: id,
-                domain: audit.domain,
-                error: errorMessage,
-                duration_ms: duration,
-              },
-            })
-            posthog.shutdown()
-          } catch (phError) {
-            console.error('[Export] PostHog error:', phError)
-          }
-
           return NextResponse.json(
             {
               error: 'Failed to generate PDF. Please try again or export as Markdown/JSON instead.'
@@ -292,23 +214,6 @@ export async function GET(
       duration_ms: duration,
       timestamp: new Date().toISOString(),
     })
-    
-    // Track in PostHog (only if we have userId)
-    try {
-      // Try to get userId from error context if available
-      const posthog = PostHogClient()
-      posthog.capture({
-        distinctId: 'server',
-        event: 'audit_export_failed',
-        properties: {
-          error: error.message,
-          duration_ms: duration,
-        },
-      })
-      posthog.shutdown()
-    } catch (phError) {
-      // PostHog errors are non-critical, log silently
-    }
     
     // Return user-friendly error message
     return NextResponse.json({ error: error.message }, { status: 500 })

@@ -4,7 +4,6 @@ import { ThemeProvider } from "@/components/theme-provider"
 import "./globals.css"
 import { Toaster } from "@/components/ui/toaster"
 import { Analytics } from "@vercel/analytics/next"
-import { PostHogProvider } from "@/components/PostHogProvider"
 import Header from "@/components/Header"
 
 const geistSans = Geist({ subsets: ["latin"], display: "swap", variable: "--font-sans" })
@@ -280,14 +279,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className={`font-sans overflow-x-hidden ${geistSans.variable} ${geistMono.variable} ${cormorantGaramond.variable} antialiased`}>        
-        <PostHogProvider>
           <ThemeProvider attribute="class" defaultTheme="light">
             <Header />
             {children}
             <Toaster />
           </ThemeProvider>
           <Analytics />
-        </PostHogProvider>
       </body>
     </html>
   )

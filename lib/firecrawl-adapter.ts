@@ -37,6 +37,39 @@ function extractDomainHostname(domain: string): string {
 }
 
 /**
+ * Filter and deduplicate URLs for an accurate page count.
+ * Strips non-page resources (sitemaps, feeds, assets) and normalises
+ * trailing slashes / query params to avoid inflated counts.
+ */
+function deduplicateAndFilterUrls(urls: (string | any)[]): string[] {
+  // Non-page extensions and path patterns to exclude
+  const EXCLUDE_EXTENSIONS = /\.(xml|json|rss|atom|txt|pdf|png|jpg|jpeg|gif|svg|ico|css|js|woff2?|ttf|eot|mp4|webm|zip|tar)$/i
+  const EXCLUDE_PATHS = /\/(sitemap|feed|rss|api\/|_next\/|static\/|assets\/|crawled-sitemap)/i
+
+  const seen = new Set<string>()
+
+  for (const raw of urls) {
+    const urlStr = typeof raw === 'string' ? raw : raw?.url
+    if (!urlStr || typeof urlStr !== 'string') continue
+
+    try {
+      const parsed = new URL(urlStr)
+      // Skip non-page resources
+      if (EXCLUDE_EXTENSIONS.test(parsed.pathname)) continue
+      if (EXCLUDE_PATHS.test(parsed.pathname)) continue
+
+      // Normalise: strip trailing slash and query params for dedup
+      const normalised = `${parsed.origin}${parsed.pathname.replace(/\/$/, '')}`
+      seen.add(normalised)
+    } catch {
+      continue
+    }
+  }
+
+  return Array.from(seen)
+}
+
+/**
  * Fallback: Use legacy manifest extractor when Firecrawl unavailable
  */
 async function extractWithLegacyManifest(
@@ -120,7 +153,7 @@ export async function extractWithFirecrawl(
     Logger.debug(`[Firecrawl] Phase 1: Mapping URLs from ${domain}...`)
     const mapResults = await mapWebsite(domain)
     // Extract URL strings from map results (Firecrawl returns {url, title, description})
-    let allUrls = mapResults.map(r => typeof r === 'string' ? r : r.url || r)
+    let allUrls: string[] = mapResults.map(r => typeof r === 'string' ? r : (r.url || String(r)))
     Logger.debug(`[Firecrawl] Map discovered ${allUrls.length} URLs`)
 
     // SPA fallback: if map found very few URLs, scrape the homepage to
@@ -183,10 +216,13 @@ export async function extractWithFirecrawl(
     })
     Logger.info(`[LinkCrawler] Found ${linkValidationIssues.length} link issues`)
 
+    // Count unique pages, excluding non-page URLs (sitemaps, feeds, etc.)
+    const uniquePageUrls = deduplicateAndFilterUrls(allUrls)
+
     return {
       pages,
       discoveredUrls: allUrls, // Already extracted as strings above
-      pagesFound: allUrls.length,
+      pagesFound: uniquePageUrls.length,
       linkValidationIssues
     }
   } catch (error) {
@@ -204,12 +240,54 @@ export async function extractWithFirecrawl(
 }
 
 /**
+ * Deduplicate responsive text from elements that have separate desktop/mobile
+ * child spans with identical content (e.g. ctaText + ctaTextMobile).
+ * Cheerio's .text() concatenates all children, producing "Talk to an ExpertTalk to an Expert".
+ */
+function deduplicateElementText($el: ReturnType<cheerio.CheerioAPI>, $: cheerio.CheerioAPI): string {
+  const raw = $el.text().trim()
+  if (!raw) return ''
+
+  // Collect unique text from direct text-bearing children
+  const childTexts: string[] = []
+  $el.children().each((_i: number, child: any) => {
+    const t = $(child).text().trim()
+    if (t) childTexts.push(t)
+  })
+
+  // If children have duplicate texts (responsive variants), deduplicate
+  if (childTexts.length >= 2) {
+    const unique = [...new Set(childTexts)]
+    if (unique.length < childTexts.length) {
+      return unique.join(' ').substring(0, 80)
+    }
+  }
+
+  // Fallback heuristic: if the string is its own first half repeated, take the first half
+  // Handles cases where children are nested deeper than direct children
+  if (raw.length >= 4 && raw.length % 2 === 0) {
+    const half = raw.length / 2
+    if (raw.substring(0, half) === raw.substring(half)) {
+      return raw.substring(0, half).substring(0, 80)
+    }
+  }
+
+  return raw.substring(0, 80)
+}
+
+/**
  * Extract a lightweight element manifest from Firecrawl HTML.
  * Lists interactive elements (links, buttons) with attributes so models
  * can cross-reference what's actually on the page vs what markdown shows.
  */
 function extractElementManifestFromHtml(html: string, pageUrl: string): string {
   const $ = cheerio.load(html)
+
+  // Strip hidden elements at the Cheerio level as a safety net
+  // (the browser-side script may miss some CSS-hidden responsive variants)
+  $('[aria-hidden="true"], .sr-only, .visually-hidden').remove()
+  $('[style*="display:none"], [style*="display: none"], [style*="visibility:hidden"], [style*="visibility: hidden"]').remove()
+
   const lines: string[] = []
 
   // Extract links with href and text
@@ -217,7 +295,7 @@ function extractElementManifestFromHtml(html: string, pageUrl: string): string {
   $('a[href]').each((_i, el) => {
     const $el = $(el)
     const href = $el.attr('href') || ''
-    const text = $el.text().trim().substring(0, 80)
+    const text = deduplicateElementText($el, $)
     if (!text && !href) return
 
     // Classify link type
@@ -242,7 +320,7 @@ function extractElementManifestFromHtml(html: string, pageUrl: string): string {
   const buttons: string[] = []
   $('button, [role="button"], input[type="submit"], input[type="button"]').each((_i, el) => {
     const $el = $(el)
-    const text = $el.text().trim().substring(0, 80) || $el.attr('value') || ''
+    const text = deduplicateElementText($el, $) || $el.attr('value') || ''
     const onclick = $el.attr('onclick') ? ' (has onclick)' : ''
     if (text) buttons.push(`- "${text}"${onclick}`)
   })
@@ -256,7 +334,7 @@ function extractElementManifestFromHtml(html: string, pageUrl: string): string {
   const widgets: string[] = []
   $('[data-chat], [class*="chat"], [id*="chat"], [class*="intercom"], [id*="intercom"], [class*="crisp"], [id*="crisp"], [class*="drift"], [id*="drift"], [class*="widget"], [class*="modal"]').each((_i, el) => {
     const $el = $(el)
-    const tag = el.type === 'tag' ? (el as cheerio.TagElement).tagName : 'unknown'
+    const tag = el.type === 'tag' ? (el as any).tagName || 'unknown' : 'unknown'
     const id = $el.attr('id') || ''
     const classes = ($el.attr('class') || '').substring(0, 60)
     widgets.push(`- <${tag}> id="${id}" class="${classes}"`)
@@ -296,10 +374,16 @@ export function formatFirecrawlForPrompt(manifest: AuditManifest): string {
     }
 
     if (page.markdown) {
+      // Clean up responsive duplicate text in markdown (e.g. "Talk to an ExpertTalk to an Expert")
+      let cleaned = page.markdown.replace(/\b(\w[\w\s]{2,30}?)\1\b/g, (_match, p1) => {
+        // Only dedup if the repeated part looks like a label/CTA (not normal prose)
+        return p1.trim().split(/\s+/).length <= 6 ? p1 : _match
+      })
+
       // Limit content length to avoid token limits
-      const contentPreview = page.markdown.length > 8000
-        ? page.markdown.substring(0, 8000) + '\n\n[Content truncated...]'
-        : page.markdown
+      const contentPreview = cleaned.length > 8000
+        ? cleaned.substring(0, 8000) + '\n\n[Content truncated...]'
+        : cleaned
 
       output += `**Content:**\n${contentPreview}\n\n`
     }

@@ -1,5 +1,6 @@
 'use client'
 
+// @ts-expect-error html2pdf.js has no type declarations
 import html2pdf from 'html2pdf.js'
 
 /**

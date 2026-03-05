@@ -14,7 +14,6 @@ const PUBLIC_ROUTES = [
   '/brand-details',
   '/preview',
   '/payment',
-  '/ingest', // PostHog analytics endpoint
   '/api/scrape',
   '/api/preview',
   '/api/analyze-brand',

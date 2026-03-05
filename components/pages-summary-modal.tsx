@@ -140,7 +140,7 @@ export function PagesSummaryModal({
                           {formatUrl(url)}
                         </span>
                         {hasIssues && (
-                          <FileDiff className="h-4 w-4 text-muted-foreground shrink-0" title="Has content issues" />
+                          <FileDiff className="h-4 w-4 text-muted-foreground shrink-0" aria-label="Has content issues" />
                         )}
                       </li>
                     )

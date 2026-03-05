@@ -3,6 +3,8 @@
  * Used by POST /api/brand-voice/generate.
  */
 
+import { extractWithFirecrawl, type AuditManifest } from "@/lib/firecrawl-adapter"
+import { isFirecrawlAvailable } from "@/lib/firecrawl-client"
 import { extractElementManifest, type ElementManifest } from "@/lib/manifest-extractor"
 import { generateWithOpenAI } from "@/lib/openai"
 import Logger from "@/lib/logger"
@@ -18,14 +20,42 @@ export interface BrandVoiceExtractResult {
   ignore_keywords: string[]
 }
 
-function formatContentSampleForVoice(manifests: ElementManifest[]): string {
+function formatContentSampleForVoice(manifest: AuditManifest): string {
+  if (manifest.pages.length === 0) return "(No content extracted.)"
+  let out = ""
+  for (const page of manifest.pages) {
+    out += `## ${page.url}\n`
+    if (page.metadata?.title) {
+      out += `Title: ${page.metadata.title}\n`
+    }
+    // Extract headings and key text from markdown content
+    if (page.markdown) {
+      const lines = page.markdown.split('\n')
+      const headings = lines.filter(l => l.startsWith('#')).slice(0, 10)
+      if (headings.length > 0) {
+        out += "Headings: " + headings.map(h => h.replace(/^#+\s*/, '')).join(" | ") + "\n"
+      }
+      // Get a sample of body copy (first 500 chars excluding headings)
+      const bodyCopy = lines.filter(l => !l.startsWith('#') && l.trim().length > 20).slice(0, 3)
+      if (bodyCopy.length > 0) {
+        out += "Copy samples:\n"
+        for (const line of bodyCopy) {
+          out += `- ${line.substring(0, 200)}\n`
+        }
+      }
+    }
+    out += "\n"
+  }
+  return out.trim()
+}
+
+function formatContentSampleForVoiceLegacy(manifests: ElementManifest[]): string {
   if (manifests.length === 0) return "(No content extracted.)"
   let out = ""
   for (const m of manifests) {
     out += `## ${m.page_url}\n`
     out += "Headings: " + m.headings.map((h) => h.text).filter(Boolean).join(" | ") + "\n"
     out += "Link/button text: " + [...m.links.slice(0, 20).map((l) => l.text), ...m.buttons.map((b) => b.text)].filter(Boolean).join(" | ") + "\n"
-    // Add description samples for voice understanding
     const descriptions = m.descriptions || []
     if (descriptions.length > 0) {
       out += "Copy samples:\n"
@@ -57,9 +87,22 @@ export async function extractBrandVoiceFromSite(
   domain: string
 ): Promise<BrandVoiceExtractResult> {
   const baseUrl = domain.startsWith("http") ? domain : `https://${domain}`
-  const manifests = await extractElementManifest(baseUrl)
-  const sourcePages = manifests.map((m) => m.page_url)
-  const contentSample = formatContentSampleForVoice(manifests)
+
+  let sourcePages: string[]
+  let contentSample: string
+
+  if (isFirecrawlAvailable()) {
+    // Use Firecrawl (preferred)
+    const manifest = await extractWithFirecrawl(baseUrl, 'FREE')
+    sourcePages = manifest.pages.map((p) => p.url)
+    contentSample = formatContentSampleForVoice(manifest)
+  } else {
+    // Fallback to legacy manifest extractor
+    Logger.warn('[BrandVoiceExtract] Firecrawl unavailable, using legacy extractor')
+    const manifests = await extractElementManifest(baseUrl)
+    sourcePages = manifests.map((m) => m.page_url)
+    contentSample = formatContentSampleForVoiceLegacy(manifests)
+  }
 
   const userPrompt = `Domain: ${domain}\n\nContent sample from pages:\n\n${contentSample}\n\nInfer a full brand voice guidelines document from the actual headings and copy. voice_summary: one markdown document with (1) short summary (who the brand is, audience, how they sound), (2) 2–4 core traits with "what it means" / "what it doesn't mean" bullets, (3) tone guidelines or do's/don'ts. Be specific to this brand—use the vocabulary and themes in the content. source_summary: 2–4 phrases on why we inferred this. Return JSON with keys: voice_summary, source_summary, readability_level, formality, locale, flag_keywords, ignore_keywords.`
 

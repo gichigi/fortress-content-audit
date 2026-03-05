@@ -67,7 +67,7 @@ export async function POST(request: Request) {
     } catch (connectionError) {
       console.error('[Email Capture API] Supabase connection test failed:', connectionError)
       return NextResponse.json(
-        { error: 'Database connection failed', details: connectionError.message },
+        { error: 'Database connection failed', details: (connectionError as Error).message },
         { status: 503 }
       )
     }
@@ -87,7 +87,7 @@ export async function POST(request: Request) {
     if (error) {
       console.error('[Email Capture API] Supabase upsert error:', {
         code: error.code,
-        message: error.message,
+        message: (error as Error).message,
         details: error.details,
         hint: error.hint
       })
@@ -130,14 +130,14 @@ export async function POST(request: Request) {
   } catch (error) {
     const duration = Date.now() - startTime
     console.error('[Email Capture API] Unexpected error:', {
-      error: error.message,
-      stack: error.stack,
+      error: (error as Error).message,
+      stack: (error as Error).stack,
       duration: `${duration}ms`
     })
     return NextResponse.json(
       { 
         error: 'Internal server error',
-        message: error.message,
+        message: (error as Error).message,
         duration: `${duration}ms`
       },
       { status: 500 }
@@ -216,7 +216,7 @@ export async function PUT(request: Request) {
     } catch (parseError) {
       console.error('[Email Capture API] PUT - Invalid JSON in request body:', parseError)
       return NextResponse.json(
-        { error: 'Invalid JSON in request body', details: parseError.message },
+        { error: 'Invalid JSON in request body', details: (parseError as Error).message },
         { status: 400 }
       )
     }
@@ -293,7 +293,7 @@ export async function PUT(request: Request) {
     if (error) {
       console.error('[Email Capture API] PUT - Supabase update error:', {
         code: error.code,
-        message: error.message,
+        message: (error as Error).message,
         details: error.details,
         hint: error.hint
       })
@@ -334,14 +334,14 @@ export async function PUT(request: Request) {
   } catch (error) {
     const duration = Date.now() - startTime
     console.error('[Email Capture API] PUT - Unexpected error:', {
-      error: error.message,
-      stack: error.stack,
+      error: (error as Error).message,
+      stack: (error as Error).stack,
       duration: `${duration}ms`
     })
     return NextResponse.json(
       { 
         error: 'Internal server error',
-        message: error.message,
+        message: (error as Error).message,
         duration: `${duration}ms`
       },
       { status: 500 }
