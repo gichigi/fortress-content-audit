@@ -46,6 +46,9 @@ export function NewAuditDialog({ open, onOpenChange, onSuccess, defaultDomain }:
   // 2-step flow: 1 = enter URL, 2 = pick preset
   // If a defaultDomain is provided, skip straight to step 2
   const [step, setStep] = useState<1 | 2>(defaultDomain ? 2 : 1)
+  // Saved audit settings for the domain, loaded before showing the picker
+  const [savedSettings, setSavedSettings] = useState<CustomAuditOptions | undefined>(undefined)
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
 
   // Poll for audit completion (runs after dialog closes)
   const pollForCompletion = useCallback(async (runId: string, domainName: string) => {
@@ -113,7 +116,50 @@ export function NewAuditDialog({ open, onOpenChange, onSuccess, defaultDomain }:
     
     // Start polling after a short delay
     setTimeout(poll, 3000)
-  }, [toast, onSuccess])
+  }, [onSuccess])
+
+  // Fetch saved audit settings for a domain to pre-populate the picker.
+  // Called before step 2 is shown so the picker always mounts with the right initial values.
+  const loadDomainSettings = useCallback(async (domainName: string) => {
+    if (!domainName) { setSettingsLoaded(true); return }
+    try {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { setSettingsLoaded(true); return }
+
+      const cleanDomain = domainName
+        .replace(/^https?:\/\//, '')
+        .replace(/^www\./, '')
+        .replace(/\/$/, '')
+
+      const res = await fetch(`/api/brand-voice?domain=${encodeURIComponent(cleanDomain)}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` }
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        if (data) {
+          // Normalize formality values to match picker options
+          const formalityMap: Record<string, string> = {
+            very_casual: "casual", casual: "casual",
+            neutral: "neutral", formal: "formal", very_formal: "formal",
+          }
+          setSavedSettings({
+            // undefined means "never explicitly set" — picker defaults to true
+            flagAiWriting: data.flag_ai_writing ?? undefined,
+            readabilityLevel: data.readability_level || undefined,
+            formality: formalityMap[data.formality] || data.formality || undefined,
+            locale: data.locale || undefined,
+            includeLongform: !!data.include_longform_full_audit,
+          })
+        }
+      }
+    } catch (e) {
+      console.error('[NewAuditDialog] Failed to load domain settings:', e)
+    } finally {
+      setSettingsLoaded(true)
+    }
+  }, [])
 
   const loadUsageInfo = useCallback(async () => {
     try {
@@ -155,9 +201,19 @@ export function NewAuditDialog({ open, onOpenChange, onSuccess, defaultDomain }:
       // Reset states when dialog opens; if defaultDomain given, pre-fill and skip to step 2
       setDomain(defaultDomain ?? "")
       setError(null)
-      setStep(defaultDomain ? 2 : 1)
+      setSavedSettings(undefined)
+      if (defaultDomain) {
+        // Rerun flow: domain is known upfront, load settings immediately
+        setSettingsLoaded(false)
+        setStep(2)
+        loadDomainSettings(defaultDomain)
+      } else {
+        // New domain flow: no domain yet, picker will use defaults when user reaches step 2
+        setSettingsLoaded(true)
+        setStep(1)
+      }
     }
-  }, [open, loadUsageInfo, defaultDomain])
+  }, [open, loadUsageInfo, loadDomainSettings, defaultDomain])
 
   // Listen for payment success to refresh plan data
   useEffect(() => {
@@ -180,7 +236,11 @@ export function NewAuditDialog({ open, onOpenChange, onSuccess, defaultDomain }:
     }
 
     setError(null)
+    setSavedSettings(undefined)
+    setSettingsLoaded(false)
     setStep(2)
+    // Load saved settings in the background; picker shows spinner until ready
+    loadDomainSettings(domain)
   }
 
   // Step 2: Run audit with selected preset
@@ -357,10 +417,12 @@ export function NewAuditDialog({ open, onOpenChange, onSuccess, defaultDomain }:
                 </Alert>
               )}
 
-              {loading ? (
+              {(loading || !settingsLoaded) ? (
                 <div className="flex flex-col items-center justify-center py-8 gap-3">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                  <p className="text-sm text-muted-foreground">Starting audit...</p>
+                  <p className="text-sm text-muted-foreground">
+                    {loading ? "Starting audit..." : "Loading settings..."}
+                  </p>
                 </div>
               ) : (
                 <AuditIntentPicker
@@ -368,6 +430,8 @@ export function NewAuditDialog({ open, onOpenChange, onSuccess, defaultDomain }:
                   plan={plan === 'pro' || plan === 'enterprise' ? plan as 'pro' | 'enterprise' : 'free'}
                   domain={domain.trim().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '')}
                   onSelect={handleRunWithPreset}
+                  // Pre-populate from saved audit settings; undefined = use picker defaults
+                  defaultOptions={savedSettings}
                   // If we pre-filled the domain (rerun flow), back closes the dialog; otherwise go to step 1
                   onBack={defaultDomain
                     ? () => { onOpenChange(false); setError(null) }

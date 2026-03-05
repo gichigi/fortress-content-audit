@@ -291,6 +291,9 @@ export async function miniAudit(
       )
 
       // Create new response with inline prompt
+      // NOTE: temperature is intentionally omitted. GPT-5.1 with reasoning.effort
+      // set to anything other than null does not accept non-default temperature values
+      // and returns a 400 error. Consistency is governed by reasoning.effort instead.
       const params: any = {
         model: "gpt-5.1-2025-11-13",
         input: promptText,
@@ -537,6 +540,7 @@ async function runCategoryAudit(
   // Calculate tool calls: need at least 1 per page to open + buffer for retries
   const toolCallsPerModel = Math.max(8, urlsToAudit.length + 3)
 
+  // NOTE: temperature omitted — GPT-5.1 with reasoning enabled rejects non-default values (400 error)
   const params: any = {
     model: "gpt-5.1-2025-11-13",
     input: promptText,
@@ -1059,6 +1063,7 @@ async function runCategoryAuditPro(
     keywords?.flag
   )
 
+  // NOTE: temperature omitted — GPT-5.1 with reasoning enabled rejects non-default values (400 error)
   const params: any = {
     model: "gpt-5.1-2025-11-13",
     input: promptText,
@@ -1274,6 +1279,7 @@ export async function auditSite(
       options?.includeLongformFullAudit ?? false
     )
 
+    // NOTE: temperature omitted — GPT-5.1 with reasoning enabled rejects non-default values (400 error)
     const params: any = {
       model: tierConfig.model,
       input: promptText,

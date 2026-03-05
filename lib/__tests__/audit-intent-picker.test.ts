@@ -40,6 +40,57 @@ const defaults: PickerState = {
   voiceSummary: "",
 }
 
+// Mirror the initial-state derivation from AuditIntentPicker
+function deriveInitialState(defaultOptions?: Partial<ReturnType<typeof buildOptions>>) {
+  const hasSaved = defaultOptions !== undefined
+  return {
+    flagAiWriting: defaultOptions?.flagAiWriting ?? true,
+    readabilityEnabled: hasSaved ? !!defaultOptions?.readabilityLevel : true,
+    readabilityLevel: defaultOptions?.readabilityLevel ?? "grade_10_12",
+    formalityEnabled: hasSaved ? !!defaultOptions?.formality : false,
+    formality: defaultOptions?.formality ?? "neutral",
+    localeEnabled: hasSaved ? !!defaultOptions?.locale : false,
+    locale: defaultOptions?.locale ?? "en-GB",
+    includeLongform: defaultOptions?.includeLongform ?? false,
+  }
+}
+
+describe('AuditIntentPicker defaultOptions initialization', () => {
+  it('uses full-audit defaults when no defaultOptions provided', () => {
+    const state = deriveInitialState(undefined)
+    expect(state.flagAiWriting).toBe(true)
+    expect(state.readabilityEnabled).toBe(true) // on by default
+    expect(state.readabilityLevel).toBe("grade_10_12")
+    expect(state.localeEnabled).toBe(false) // off by default
+    expect(state.formalityEnabled).toBe(false)
+  })
+
+  it('loads saved settings when defaultOptions provided', () => {
+    const state = deriveInitialState({
+      flagAiWriting: false,
+      readabilityLevel: "grade_6_8",
+      locale: "en-US",
+    })
+    expect(state.flagAiWriting).toBe(false)
+    expect(state.readabilityEnabled).toBe(true)
+    expect(state.readabilityLevel).toBe("grade_6_8")
+    expect(state.localeEnabled).toBe(true) // locale provided → enabled
+    expect(state.locale).toBe("en-US")
+  })
+
+  it('readability is off when saved settings have no readabilityLevel', () => {
+    const state = deriveInitialState({ flagAiWriting: true }) // explicitly no readabilityLevel
+    expect(state.readabilityEnabled).toBe(false)
+    expect(state.readabilityLevel).toBe("grade_10_12") // fallback value
+  })
+
+  it('treats undefined flagAiWriting as true (picker default)', () => {
+    // API returns null for flag_ai_writing → mapped to undefined → picker defaults to true
+    const state = deriveInitialState({ readabilityLevel: "grade_10_12" })
+    expect(state.flagAiWriting).toBe(true)
+  })
+})
+
 describe('AuditIntentPicker option building', () => {
   it('defaults match full audit configuration', () => {
     const opts = buildOptions(defaults, false)

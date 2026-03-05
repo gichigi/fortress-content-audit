@@ -42,6 +42,12 @@ interface AuditIntentPickerProps {
   domain?: string
   /** Compact mode for use inside dialogs */
   compact?: boolean
+  /**
+   * Pre-populate toggles from saved audit settings.
+   * When provided, the picker uses these values as initial state instead of
+   * the "full audit" hardcoded defaults. Undefined fields fall back to defaults.
+   */
+  defaultOptions?: CustomAuditOptions
 }
 
 // Reusable pill selector for picking one value from a short list
@@ -88,18 +94,24 @@ export function AuditIntentPicker({
   onBack,
   domain,
   compact = false,
+  defaultOptions,
 }: AuditIntentPickerProps) {
   const isPaid = plan === 'pro' || plan === 'enterprise'
 
-  // Toggles — defaults mirror the "full" preset
-  const [flagAiWriting, setFlagAiWriting] = useState(true)
-  const [readabilityEnabled, setReadabilityEnabled] = useState(true)
-  const [readabilityLevel, setReadabilityLevel] = useState("grade_10_12")
-  const [formalityEnabled, setFormalityEnabled] = useState(false)
-  const [formality, setFormality] = useState("neutral")
-  const [localeEnabled, setLocaleEnabled] = useState(false)
-  const [locale, setLocale] = useState<"en-GB" | "en-US">("en-GB")
-  const [includeLongform, setIncludeLongform] = useState(false)
+  // If saved settings were passed in, use them; otherwise fall back to "full audit" defaults.
+  // The dialog renders this component only after settings are loaded, so initial values are stable.
+  const hasSaved = defaultOptions !== undefined
+
+  const [flagAiWriting, setFlagAiWriting] = useState(defaultOptions?.flagAiWriting ?? true)
+  // Readability: on by default unless saved settings say off (no readabilityLevel saved)
+  const [readabilityEnabled, setReadabilityEnabled] = useState(hasSaved ? !!defaultOptions?.readabilityLevel : true)
+  const [readabilityLevel, setReadabilityLevel] = useState(defaultOptions?.readabilityLevel ?? "grade_10_12")
+  const [formalityEnabled, setFormalityEnabled] = useState(hasSaved ? !!defaultOptions?.formality : false)
+  const [formality, setFormality] = useState(defaultOptions?.formality ?? "neutral")
+  // Locale: off by default unless saved settings specify a variant
+  const [localeEnabled, setLocaleEnabled] = useState(hasSaved ? !!defaultOptions?.locale : false)
+  const [locale, setLocale] = useState<"en-GB" | "en-US">((defaultOptions?.locale as "en-GB" | "en-US") ?? "en-GB")
+  const [includeLongform, setIncludeLongform] = useState(defaultOptions?.includeLongform ?? false)
   const [brandVoiceEnabled, setBrandVoiceEnabled] = useState(false)
   const [voiceSummary, setVoiceSummary] = useState("")
 

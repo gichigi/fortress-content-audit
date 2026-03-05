@@ -124,7 +124,7 @@ export async function generateWithOpenAI(
           { role: "system", content: systemPrompt },
           { role: "user", content: prompt }
         ],
-        temperature: 0.1, // Low temperature for consistent brand voice extraction
+        temperature: 0.1, // Low temperature for consistent brand voice extraction (Chat Completions only — Responses API omits this)
         max_tokens: max_tokens
       })
 

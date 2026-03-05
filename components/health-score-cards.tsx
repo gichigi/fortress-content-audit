@@ -184,7 +184,7 @@ export function HealthScoreCards({
           <div className="text-muted-foreground">
             {onPagesWithIssuesClick
               ? 'Click to see which pages have issues'
-              : `${metrics.pagesWithIssues || 0} had at least one content issue`}
+              : 'Pages with at least one content issue'}
           </div>
         </CardFooter>
       </Card>
