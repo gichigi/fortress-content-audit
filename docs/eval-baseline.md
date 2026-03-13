@@ -2,6 +2,73 @@
 
 ---
 
+## Run 4: gpt-5-mini Auditor
+
+**Run date:** 2026-03-13
+**Eval file:** `eval-results-1773417257766.json`
+**Branch:** `feature/two-pass-model-checker`
+**Change:** Pro auditor switched from `gpt-5.1-2025-11-13` → `gpt-5-mini`
+
+### Hypothesis
+gpt-5-mini at ~12% of gpt-5.1 input cost handles the liberal auditor pass well enough because:
+- Auditor is high-recall (finds everything, even false positives)
+- gpt-5.1 checker is the precision gate — it filters bad findings downstream
+- Lower reasoning capability of mini doesn't matter; auditor uses `reasoning: null`
+
+### Expected savings
+~88% reduction on auditor calls (3 of the 6 calls per site).
+Total site cost should drop from ~$0.93-1.14 to ~$0.30-0.45.
+
+### Results
+
+| Site | Pages | OLD raw→filtered (drop) | NEW raw→filtered (drop) | Checker rejected | Avg conf |
+|------|-------|------------------------|------------------------|-----------------|----------|
+| secondhome.io | 19 | 52→52 (0%) | 86→61 (29%) | 25 | 0.98 |
+| justcancel.io | 17 | 28→20 (28%) | 62→37 (40%) | 25 | 0.96 |
+| youform.com | 20 | 36→31 (13%) | 27→14 (48%) | 13 | 0.90 |
+| seline.so | 19 | 40→28 (30%) | 86→64 (25%) | 22 | 0.98 |
+
+### vs Run 3
+
+| Site | Run 3 drop | Run 4 drop | Run 3 rejected | Run 4 rejected |
+|------|-----------|-----------|----------------|----------------|
+| secondhome.io | 4% | 29% | 2 | 25 |
+| justcancel.io | 23% | 40% | 10 | 25 |
+| youform.com | 0% | 48% | 0 | 13 |
+| seline.so | 0% | 25% | 0 | 22 |
+
+Drop rate up significantly on all sites — mini is a noisier auditor. The checker is working correctly (rejections are FPs based on evidence), but checker now dominates pipeline cost.
+
+### Cost (from LangSmith traces, Run 4)
+
+| Call type | Tokens/call | Cost/call | vs Run 3 |
+|-----------|-------------|-----------|----------|
+| Auditor (gpt-5-mini) | ~100-136K | ~$0.028-0.035 | **~6-7x cheaper** |
+| Checker (gpt-5.1) | ~77-100K | ~$0.09-0.15 | unchanged |
+
+| Site | Cost/site | vs Run 3 |
+|------|-----------|---------|
+| seline.so | ~$0.49 | -47% ($0.44 saved) |
+| youform.com | ~$0.54 | -53% ($0.60 saved) |
+
+- 3 auditor calls: ~$0.08-0.11/site (was ~$0.51-0.63 in Run 3)
+- 3 checker calls: ~$0.27-0.45/site (checker now dominates at ~70-80% of total cost)
+- **Total reduction: ~55% vs Run 2 ($1.14 → ~$0.50)**
+
+### Quality assessment
+
+- **Checker is doing its job correctly** — rejections are genuine FPs (e.g. claiming multiple HubSpot forms when only one exists, flagging responsive duplicates that are CSS-hidden not real duplicates)
+- **youform recall concern**: 27 raw issues vs 22 in Run 3 — but only 14 survived checker (vs 22 in Run 3). The raw count is similar; the higher drop rate (48%) suggests mini is generating more marginal issues that checker rejects. Some real issues may be getting bundled with FPs and dropped as a batch.
+- **Avg confidence high** (0.90-0.98) — checker is not uncertain, it's actively rejecting issues it can disprove
+- **Cost-quality trade-off**: ~55% cost reduction, checker rejection rate up 10-15x. Quality of surviving issues appears similar (avg conf ≥ 0.90) but raw miss rate is unknown without manual ground truth review.
+
+### Notable
+- secondhome.io: checker correctly rejected "multiple HubSpot forms" x8 — mini audited the compressed HTML and couldn't see the JS-rendered form count correctly
+- All 4 sites still ≥ 0.90 avg confidence on surviving issues
+- Checker bottleneck: to cut costs further, needs cheaper checker or fewer checker pages
+
+---
+
 ## Run 3: Cost Optimisation (inline tag stripping + no manifest in checker + prompt caching)
 
 **Run date:** 2026-03-12

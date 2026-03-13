@@ -1012,10 +1012,12 @@ async function runCategoryAuditPro(
     keywords?.flag
   )
 
-  // NOTE: temperature omitted — GPT-5.1 with reasoning enabled rejects non-default values (400 error)
-  // reasoning: null disables reasoning for faster/cheaper audit pass (checker handles verification)
+  // Pro auditor uses gpt-5-mini: ~12% of gpt-5.1 input cost, same context window.
+  // Safe to use here because the checker (gpt-5.1) acts as the quality gate — lower
+  // recall from mini is acceptable; the checker filters false positives downstream.
+  // reasoning: null disables reasoning (not needed for high-recall auditing pass).
   const params: any = {
-    model: "gpt-5.1-2025-11-13",
+    model: "gpt-5-mini",
     input: promptText,
     tools: [{
       type: "web_search",

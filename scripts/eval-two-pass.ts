@@ -199,8 +199,9 @@ async function runCheckerPassLocal(issues: any[], manifest: AuditManifest, opena
 // ---------------------------------------------------------------------------
 
 async function runCategoryAudit(prompt: string, openai: any): Promise<any[]> {
+  // Matches production: gpt-5-mini for the liberal auditor pass, gpt-5.1 for checker
   const response = await openai.responses.create({
-    model: 'gpt-5.1-2025-11-13',
+    model: 'gpt-5-mini',
     input: prompt,
     max_output_tokens: 8000,
     text: { format: { type: 'text' } },
