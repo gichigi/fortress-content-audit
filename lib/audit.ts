@@ -1012,12 +1012,12 @@ async function runCategoryAuditPro(
     keywords?.flag
   )
 
-  // Pro auditor uses gpt-5-mini: ~12% of gpt-5.1 input cost, same context window.
-  // Safe to use here because the checker (gpt-5.1) acts as the quality gate — lower
-  // recall from mini is acceptable; the checker filters false positives downstream.
+  // Pro auditor uses gpt-5.1: stable, consistent output across runs.
+  // gpt-5-mini was tested (ADR-003) and rejected due to high run-to-run variance
+  // in issue count and category distribution — unacceptable for a quality-first product.
   // reasoning: null disables reasoning (not needed for high-recall auditing pass).
   const params: any = {
-    model: "gpt-5-mini",
+    model: "gpt-5.1-2025-11-13",
     input: promptText,
     tools: [{
       type: "web_search",

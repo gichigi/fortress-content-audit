@@ -53,8 +53,10 @@ Content audit SaaS platform built with Next.js, Supabase, and AI integrations. H
 - `/confidence` - Rate confidence in assessment
 
 ## Architecture Decisions
-Recorded in `docs/decisions/` as numbered ADRs. Check these before making changes to the content extraction pipeline.
+Recorded in `docs/decisions/` as numbered ADRs. Check these before making changes to the audit pipeline.
 - [ADR-001](docs/decisions/001-strip-hidden-elements-before-extraction.md) — Strip hidden DOM elements before Firecrawl markdown extraction
+- [ADR-002](docs/decisions/002-two-pass-checker-with-html-compression.md) — Two-pass pipeline: liberal auditor + model checker with HTML compression
+- [ADR-003](docs/decisions/003-auditor-model-gpt5mini-rejected.md) — Auditor model: gpt-5-mini rejected, gpt-5.1 confirmed
 
 ## Audit Architecture
 
@@ -81,10 +83,11 @@ All tiers use Firecrawl → semantic HTML compression → model input:
 ### Prompt Caching (cost optimisation)
 `buildLiberalCategoryAuditPrompt` puts the full site HTML manifest FIRST so the 3 parallel category calls share an identical prefix. OpenAI caches this prefix, reducing token cost on calls 2 and 3 by ~50% for the shared prefix tokens.
 
-### Cost Profile (Run 2 baseline, pre-optimisation)
-- ~$1.14/site (6 calls × ~130K input tokens × $2/M tokens)
-- No prompt caching was active in Run 2 (manifest was mid-prompt)
-- Run 3 optimisations: inline tag stripping, manifest-first caching, no manifest in checker
+### Cost Profile (current, post Run 3 optimisations)
+- ~$0.93-1.14/site (6 calls × ~100-136K input tokens × $1.25/M input, $10/M output)
+- Model: `gpt-5.1-2025-11-13` for both auditor and checker
+- Run 3 optimisations applied: inline tag stripping, manifest-first prompt caching, no manifest in checker
+- See `docs/eval-baseline.md` for full benchmark history and `docs/decisions/` for cost reduction options considered
 
 ### Issue Persistence (cross-audit context)
 Each re-audit feeds two context blocks into the model prompts:
