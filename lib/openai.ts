@@ -107,7 +107,7 @@ export async function generateWithOpenAI(
   systemPrompt: string,
   responseFormat: ResponseFormat = "json",
   max_tokens: number = 2000,
-  model: string = "gpt-4o-mini" // Default to faster model
+  model: string = "gpt-4.1-mini"
 ): Promise<GenerationResult> {
   const maxAttempts = 3
   Logger.info("Starting OpenAI generation", { prompt: prompt.substring(0, 100) + "...", format: responseFormat, model })
@@ -135,17 +135,9 @@ export async function generateWithOpenAI(
 
       Logger.debug("Raw OpenAI response", { response: rawResponse })
 
-      // Log token usage information
+      // Log token usage
       if (response.usage) {
-        console.log("=".repeat(50))
-        console.log("🔢 TOKEN USAGE SUMMARY")
-        console.log("=".repeat(50))
-        console.log(`Model: ${response.model}`)
-        console.log(`Prompt tokens: ${response.usage.prompt_tokens}`)
-        console.log(`Completion tokens: ${response.usage.completion_tokens}`) 
-        console.log(`Total tokens: ${response.usage.total_tokens}`)
-        console.log(`Max tokens requested: ${max_tokens}`)
-        console.log("=".repeat(50))
+        Logger.debug("Token usage", { model: response.model, prompt: response.usage.prompt_tokens, completion: response.usage.completion_tokens, total: response.usage.total_tokens })
       }
 
       // Clean the response based on expected format
@@ -218,7 +210,7 @@ export async function generateKeywords(params: { name: string; brandDetailsDescr
     "You are a keyword expert focused on content marketing terms.",
     "json",
     400,
-    "gpt-4o-mini"
+    "gpt-4.1-mini"
   )
 }
 
@@ -285,7 +277,7 @@ What they do: ${brandDetailsDescription}`
     "You are a brand strategist who writes precise, practical audience descriptions.",
     "markdown",
     200,
-    "gpt-4o-mini"
+    "gpt-4.1-mini"
   )
 }
 

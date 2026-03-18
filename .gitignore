@@ -29,6 +29,41 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# Eval and test result artifacts
+eval-results-*.json
+pro-audit-*.json
+parallel-audit-results-*.json
+reliability-test-*.json
+audit-comparison-*.json
+test-two-pass-results-*.json
+test-verify-results-*.json
+
 # macOS
 .DS_Store
 **/.DS_Store.stripe-config/
+
+# IDE / editor
+.cursor/
+.claude/settings.local.json
+
+# Root-level throwaway test scripts
+/test-*.ts
+/debug-*.ts
+/check-*.ts
+/run-*.ts
+
+# Root-level working-note markdown files (not docs)
+/AUDIT-COVERAGE-ANALYSIS.md
+/FIRECRAWL-DECISION.md
+/FIRECRAWL-FIXES.md
+/FIRECRAWL-SUCCESS.md
+/HYBRID-LINK-CRAWLER.md
+/IMPLEMENTATION-COMPLETE.md
+/LINK-VALIDATION-IMPLEMENTATION.md
+/PRODUCTION-TEST-REPORT.md
+/RELIABILITY-TEST-REPORT.md
+/red-flags-ai-writing.md
+/testestste.md
+/combined-migrations.sql
+/archive/
+/docs/superpowers/

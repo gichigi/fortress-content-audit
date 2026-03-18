@@ -2,7 +2,7 @@
 
 ---
 
-## Run 4: gpt-5-mini Auditor
+## Run 4: gpt-5-mini Auditor (rejected - see ADR-003)
 
 **Run date:** 2026-03-13
 **Eval file:** `eval-results-1773417257766.json`
@@ -69,7 +69,7 @@ Drop rate up significantly on all sites — mini is a noisier auditor. The check
 
 ---
 
-## Run 3: Cost Optimisation (inline tag stripping + no manifest in checker + prompt caching)
+## Run 3: Cost Optimisation (inline tag stripping + no manifest in checker + prompt caching) (current)
 
 **Run date:** 2026-03-12
 **Branch:** `feature/two-pass-model-checker`
@@ -128,7 +128,7 @@ Inline tag stripping added ~5-15pp on top of Run 2 attribute stripping:
 
 ---
 
-## Run 2: HTML Compression + Full-HTML Checker (current)
+## Run 2: HTML Compression + Full-HTML Checker
 
 **Run date:** 2026-03-12
 **Eval file:** `eval-results-1773317152769.json`

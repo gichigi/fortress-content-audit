@@ -1,5 +1,13 @@
 # Two-Pass Model Checker: Research & Test Results
 
+> **SUPERSEDED** - This is a historical research spike. The production implementation differs in several ways:
+> - Model is `gpt-5.1-2025-11-13`, not `gpt-5.2`
+> - Checker is grouped by **category**, not by page
+> - `formatFirecrawlForPromptMarkdown` referenced below no longer exists
+> - See [ADR-002](decisions/002-two-pass-checker-with-html-compression.md) for the final production design
+
+---
+
 ## Overview
 
 A research spike to evaluate a two-pass audit architecture: a fast no-reasoning **audit pass** that sweeps for issues, followed by a low-reasoning **checker pass** that verifies each issue against the raw HTML evidence before surfacing it.
@@ -105,4 +113,4 @@ Audit pass: 13–22s (HTML) vs 15–25s (MD). Checker: 6–12s per variant. Tota
 
 ## Related Files
 - `test-two-pass-results-1773108498737.json` — full results from the final 3-site test run
-- `docs/decisions/ADR-001.md` — extraction pipeline decisions
+- `docs/decisions/001-strip-hidden-elements-before-extraction.md` — extraction pipeline decisions

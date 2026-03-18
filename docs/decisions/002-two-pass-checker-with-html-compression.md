@@ -18,7 +18,7 @@ Single-pass auditing with a conservative prompt missed real issues (low recall).
 Strip class/id/style/data-* attributes, unwrap inline formatting tags (`<strong>`, `<em>`, `<b>`, `<i>`, `<u>`, bare `<span>` etc. — auditing never needs bold/italic context), collapse SVGs to placeholders. Typically 60-91% size reduction on Tailwind pages.
 
 ### Full HTML to checker (not snippets)
-Checker receives full compressed page HTML, not extracted snippets. Eliminates the entire class of "snippet extractor couldn't locate the text" false drops.
+Checker receives full compressed page HTML, not extracted snippets. Eliminates the entire class of "snippet extractor couldn't locate the text" false drops. `lib/snippet-extractor.ts` has been deleted — it is no longer part of the codebase.
 
 ## Alternatives considered
 

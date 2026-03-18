@@ -444,45 +444,6 @@ export function formatPagesForChecker(
   return output
 }
 
-/**
- * Format Firecrawl pages for audit prompts using markdown content.
- * Used by the two-pass test to compare HTML vs markdown audit input.
- */
-export function formatFirecrawlForPromptMarkdown(manifest: AuditManifest): string {
-  const { pages } = manifest
-
-  if (pages.length === 0) {
-    return '# WEBSITE CONTENT\n\nNo content available (extraction failed).\n'
-  }
-
-  let output = '# WEBSITE CONTENT\n\n'
-  output += `Extracted from ${pages.length} pages using Firecrawl (bot-protected crawling).\n\n`
-
-  pages.forEach((page, index) => {
-    output += `## Page ${index + 1}: ${page.url}\n\n`
-
-    if (page.metadata?.title) {
-      output += `**Title:** ${page.metadata.title}\n\n`
-    }
-
-    if (page.metadata?.description) {
-      output += `**Description:** ${page.metadata.description}\n\n`
-    }
-
-    if (page.markdown) {
-      let content = page.markdown
-      if (content.length > 14000) {
-        content = content.substring(0, 14000)
-          + '\n\n[Content truncated due to length — do not flag truncation as an issue]'
-      }
-      output += `**Content (Markdown):**\n${content}\n\n`
-    }
-
-    output += '---\n\n'
-  })
-
-  return output
-}
 
 /**
  * Get audited URLs from manifest

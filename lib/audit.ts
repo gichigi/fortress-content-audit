@@ -1,13 +1,11 @@
 import OpenAI from "openai"
 import { z } from "zod"
 import Logger from "./logger"
-// Removed: manifest-extractor (replaced with Firecrawl)
 import { extractWithFirecrawl, formatFirecrawlForPrompt, formatPagesForChecker, countPagesFound, getDiscoveredPages, getAuditedUrls, type AuditManifest } from "./firecrawl-adapter"
 import { buildMiniAuditPrompt, buildFullAuditPrompt, buildCategoryAuditPrompt, buildLiberalCategoryAuditPrompt, buildCheckerPrompt } from "./audit-prompts"
 import { runBrandVoiceAuditPass, type BrandVoiceProfileForAudit } from "./brand-voice-audit"
 import { createTracedOpenAIClient } from "./langsmith-openai"
 import { applyCheckerDecisions, type CheckerVerification } from "./checker-decisions"
-// snippet-extractor no longer used by checker pass (full HTML sent instead)
 
 // ============================================================================
 // Content Audit
@@ -1623,7 +1621,7 @@ CRITICAL RULES:
   try {
     const transformStart = Date.now()
     const response = await openai.chat.completions.create({
-      model: "gpt-4.1",
+      model: "gpt-4.1-mini",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt }
