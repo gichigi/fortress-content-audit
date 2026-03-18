@@ -26,11 +26,12 @@ function UpgradeButton() {
     const loadPlan = async () => {
       try {
         const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) {
           setLoading(false)
           return
         }
+        const user = session.user
 
         const { data: profile } = await supabase
           .from('profiles')

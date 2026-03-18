@@ -21,56 +21,30 @@ describe('audit-rate-limit', () => {
     it('should return correct limits for free plan', () => {
       const limits = getAuditLimits('free')
       expect(limits.maxDomains).toBe(1)
-      expect(limits.maxAuditsPerDay).toBe(1)
+      // Daily audit limit is currently unlimited (Infinity) while rate limiting is disabled
+      expect(limits.maxAuditsPerDay).toBe(Infinity)
     })
 
     it('should return correct limits for pro plan', () => {
       const limits = getAuditLimits('pro')
       expect(limits.maxDomains).toBe(5)
-      expect(limits.maxAuditsPerDay).toBe(1)
+      expect(limits.maxAuditsPerDay).toBe(Infinity)
     })
 
     it('should return correct limits for enterprise plan', () => {
       const limits = getAuditLimits('enterprise')
       expect(limits.maxDomains).toBe(Infinity)
-      expect(limits.maxAuditsPerDay).toBe(1)
+      expect(limits.maxAuditsPerDay).toBe(Infinity)
     })
   })
 
   describe('checkDailyLimit', () => {
-    it('should allow audit when no usage exists', async () => {
-      const mockQuery = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
-      }
-
-      ;(supabaseAdmin.from as jest.Mock).mockReturnValue(mockQuery)
-
+    it('should allow audit when daily limit is disabled (Infinity)', async () => {
+      // Daily limit is currently Infinity (disabled) — function returns allowed without DB call
       const result = await checkDailyLimit(mockUserId, mockDomain, 'free', mockEmail)
 
       expect(result.allowed).toBe(true)
-      expect(result.used).toBe(0)
-      expect(result.limit).toBe(1)
-    })
-
-    it('should block audit when daily limit reached', async () => {
-      const mockQuery = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        maybeSingle: jest.fn().mockResolvedValue({
-          data: { audit_count: 1 },
-          error: null,
-        }),
-      }
-
-      ;(supabaseAdmin.from as jest.Mock).mockReturnValue(mockQuery)
-
-      const result = await checkDailyLimit(mockUserId, mockDomain, 'free', mockEmail)
-
-      expect(result.allowed).toBe(false)
-      expect(result.used).toBe(1)
-      expect(result.limit).toBe(1)
+      expect(supabaseAdmin.from).not.toHaveBeenCalled()
     })
   })
 

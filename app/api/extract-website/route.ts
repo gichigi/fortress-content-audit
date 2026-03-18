@@ -75,7 +75,7 @@ async function testOpenAIConnection() {
     
     // Simple test call with faster model
     const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-4.1-mini",
       messages: [{ role: "user", content: "Test" }],
       max_tokens: 5,
     })

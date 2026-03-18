@@ -111,7 +111,7 @@ export async function extractBrandVoiceFromSite(
     SYSTEM_PROMPT,
     "json",
     2500,
-    "gpt-4o-mini"
+    "gpt-4.1-mini"
   )
 
   if (!result.success || !result.content) {

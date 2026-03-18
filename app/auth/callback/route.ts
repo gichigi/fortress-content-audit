@@ -38,6 +38,11 @@ export async function GET(request: NextRequest) {
   }
 
   const cookieStore = await cookies()
+  // Track cookies set during the auth flow so we can copy them onto the redirect response.
+  // NextResponse.redirect() creates a new response object — cookies set on cookieStore alone
+  // are NOT automatically included, so the browser would never receive the session cookie.
+  const cookiesToSet: { name: string; value: string; options: Record<string, unknown> }[] = []
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -46,11 +51,12 @@ export async function GET(request: NextRequest) {
         getAll() {
           return cookieStore.getAll()
         },
-        setAll(cookiesToSet) {
+        setAll(incoming) {
           try {
-            cookiesToSet.forEach(({ name, value, options }) =>
+            incoming.forEach(({ name, value, options }) => {
               cookieStore.set(name, value, options)
-            )
+              cookiesToSet.push({ name, value, options: options as Record<string, unknown> })
+            })
           } catch {
             // Cookie setting may fail in some contexts
           }
@@ -80,9 +86,14 @@ export async function GET(request: NextRequest) {
         redirectUrl = `${origin}${next}`
       }
       
-      return NextResponse.redirect(redirectUrl)
+      const response = NextResponse.redirect(redirectUrl)
+      // Copy session cookies onto the redirect response so the browser receives them
+      cookiesToSet.forEach(({ name, value, options }) => {
+        response.cookies.set(name, value, options as Parameters<typeof response.cookies.set>[2])
+      })
+      return response
     }
-    
+
     // Log error details for debugging (but don't expose to user)
     console.error('[Auth Callback] Code exchange error:', {
       message: error?.message,
@@ -117,9 +128,13 @@ export async function GET(request: NextRequest) {
         redirectUrl = `${origin}${next}`
       }
       
-      return NextResponse.redirect(redirectUrl)
+      const response = NextResponse.redirect(redirectUrl)
+      cookiesToSet.forEach(({ name, value, options }) => {
+        response.cookies.set(name, value, options as Parameters<typeof response.cookies.set>[2])
+      })
+      return response
     }
-    
+
     // Log error for debugging
     console.error('[Auth Callback] OTP verification error:', {
       message: error?.message,

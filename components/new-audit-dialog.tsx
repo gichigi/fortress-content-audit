@@ -409,6 +409,7 @@ export function NewAuditDialog({ open, onOpenChange, onSuccess, defaultDomain }:
         ) : (
           /* Step 2: Pick audit preset */
           <>
+            <DialogTitle className="sr-only">Audit settings</DialogTitle>
             <div className="py-2">
               {error && (
                 <Alert variant="destructive" className="mb-4">

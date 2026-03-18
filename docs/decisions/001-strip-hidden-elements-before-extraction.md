@@ -94,7 +94,7 @@ Tested feeding cleaned raw HTML directly to GPT-5.1 instead of Firecrawl's markd
 - Token cost: ~75K tokens for 5 pages (~$0.19 input) — higher than markdown but acceptable
 - Responsive duplicates handled via prompt instruction telling models to recognize Tailwind breakpoint classes (`hidden md:flex`, etc.) rather than trying to strip them
 
-**This approach (Firecrawl scrape → strip script → raw HTML → model) is the recommended path for the production pipeline.** The current markdown approach works but is more fragile.
+**This approach (Firecrawl scrape → strip script → raw HTML → model) is the production pipeline** as of 2026-03-12. The markdown approach has been retired.
 
 ### 2026-03-02: Screenshot/vision approaches rejected
 
@@ -105,16 +105,16 @@ Tested two screenshot-based approaches against the HTML-direct approach:
 
 Screenshots are a liability for text auditing — the model invents errors from compressed/small text. Rejected for content auditing. May have value for layout/visual auditing in future.
 
-### 2026-03-02: Two-pass verification (noted for future)
+### 2026-03-02: Two-pass verification (implemented — see ADR-002)
 
-Non-determinism means the model misses some real issues between runs (4 real issues dropped when re-running dub.co and vercel.com with identical settings). A potential improvement:
+Non-determinism means the model misses some real issues between runs (4 real issues dropped when re-running dub.co and vercel.com with identical settings). Implemented as:
 
-1. **Pass 1 (auditor):** Current approach — find candidate issues from HTML
-2. **Pass 2 (verifier):** A second model checks each candidate issue against the HTML (or a screenshot, or both). Only confirmed issues are returned.
+1. **Pass 1 (auditor):** Liberal prompt — find candidate issues from compressed HTML
+2. **Pass 2 (checker):** A second model call checks each candidate issue against the full compressed HTML. Drops `confirmed=false` or `confirmed=uncertain` + confidence <0.7.
 
-This adds latency and cost but could push accuracy from ~95% to near-100%. Not implemented yet — the single-pass approach at 100% verified accuracy (with responsive prompt) is sufficient for now.
+See ADR-002 for full details, results, and cost profile.
 
-## Alternatives considered
+## Additional alternatives and updates (2026-03-02)
 
 ### D. Send raw HTML to models instead of markdown (UPDATED — now validated)
 - Models can read HTML with class attributes
@@ -147,4 +147,4 @@ This adds latency and cost but could push accuracy from ~95% to near-100%. Not i
 - The prompt-level caveats for whitespace remain as a safety net
 - Link checking is fully automated via HTTP crawler; AI models no longer assess links
 - SPA sites get a fallback homepage scrape for page discovery when map fails
-- Future direction: switch production pipeline from markdown to HTML-direct with responsive duplicate prompt
+- Production pipeline is HTML-direct (Firecrawl → strip script → compressed HTML → model); markdown approach retired

@@ -8,6 +8,7 @@ import { selectPagesToAudit } from './page-selector'
 import { crawlLinks, type CrawlerIssue } from './link-crawler'
 import * as cheerio from 'cheerio'
 import Logger from './logger'
+import { compressHtmlWithLogging } from './html-compressor'
 
 // Fallback to old method when Firecrawl unavailable
 import {
@@ -16,6 +17,25 @@ import {
   countInternalPages,
   extractDiscoveredPagesList
 } from './manifest-extractor'
+
+/**
+ * Strip script tags, HTML comments, and verbose SVGs from raw HTML before
+ * feeding to the model. SVGs are collapsed to a placeholder preserving any
+ * aria-label/role so the model still understands their purpose.
+ */
+export function stripHtmlNoise(html: string): string {
+  let cleaned = html
+  cleaned = cleaned.replace(/<script[\s\S]*?<\/script>/gi, '')
+  cleaned = cleaned.replace(/<!--[\s\S]*?-->/g, '')
+  cleaned = cleaned.replace(/<svg([^>]*)>[\s\S]*?<\/svg>/gi, (_match, attrs) => {
+    const ariaLabel = attrs.match(/aria-label="([^"]*)"/)?.[1]
+    const role = attrs.match(/role="([^"]*)"/)?.[1]
+    if (ariaLabel) return `<svg aria-label="${ariaLabel}"/>`
+    if (role) return `<svg role="${role}"/>`
+    return '<svg/>'
+  })
+  return cleaned.trim()
+}
 
 export interface AuditManifest {
   pages: FirecrawlPage[]
@@ -373,19 +393,12 @@ export function formatFirecrawlForPrompt(manifest: AuditManifest): string {
       output += `**Description:** ${page.metadata.description}\n\n`
     }
 
-    if (page.markdown) {
-      // Clean up responsive duplicate text in markdown (e.g. "Talk to an ExpertTalk to an Expert")
-      let cleaned = page.markdown.replace(/\b(\w[\w\s]{2,30}?)\1\b/g, (_match, p1) => {
-        // Only dedup if the repeated part looks like a label/CTA (not normal prose)
-        return p1.trim().split(/\s+/).length <= 6 ? p1 : _match
-      })
-
-      // Limit content length to avoid token limits
-      const contentPreview = cleaned.length > 8000
-        ? cleaned.substring(0, 8000) + '\n\n[Content truncated...]'
-        : cleaned
-
-      output += `**Content:**\n${contentPreview}\n\n`
+    if (page.html) {
+      // Pipeline: stripHtmlNoise (SVGs, scripts) → compressHtmlWithLogging (class/id/style attrs
+      // + 60K limit + DOM-aware chunking fallback). Compression reduces a 200K page to ~40-70K
+      // so most pages fit without truncation.
+      const contentPreview = compressHtmlWithLogging(stripHtmlNoise(page.html), page.url)
+      output += `**Content (HTML):**\n${contentPreview}\n\n`
     }
 
     // Append element manifest from HTML if available
@@ -401,6 +414,36 @@ export function formatFirecrawlForPrompt(manifest: AuditManifest): string {
 
   return output
 }
+
+/**
+ * Format only the pages that have issues for the checker pass.
+ * Gives the checker the same cleaned HTML + element manifest the auditor saw,
+ * but scoped to just the pages relevant to the current category — same
+ * stripHtmlNoise + 14k truncation as formatFirecrawlForPrompt.
+ */
+export function formatPagesForChecker(
+  manifest: AuditManifest,
+  pageUrls: Set<string>
+): string {
+  const pages = manifest.pages.filter(p => pageUrls.has(p.url))
+  if (pages.length === 0) return '[No HTML available for any issue page]'
+
+  let output = ''
+  for (const page of pages) {
+    output += `## Page: ${page.url}\n\n`
+    if (page.html) {
+      // Same pipeline as formatFirecrawlForPrompt: strip → compress (60K limit, DOM chunking fallback)
+      // Element manifest intentionally omitted here — the checker only needs to verify whether
+      // a claimed issue exists in the HTML. The compressed HTML is sufficient for that;
+      // the manifest is redundant and adds ~15-20% token overhead.
+      const content = compressHtmlWithLogging(stripHtmlNoise(page.html), page.url)
+      output += `${content}\n\n`
+    }
+    output += '---\n\n'
+  }
+  return output
+}
+
 
 /**
  * Get audited URLs from manifest
