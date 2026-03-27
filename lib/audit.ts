@@ -32,10 +32,10 @@ export type AuditTier = keyof typeof AUDIT_TIERS
 // See lib/audit-prompts.ts for prompt definitions
 
 // Zod schemas for structured audit output (new prompt format)
-const AUDIT_CATEGORIES = ["Language", "Facts & Consistency", "Links & Formatting", "Brand voice"] as const
+const AUDIT_CATEGORIES = ["Language", "Facts & Consistency", "Formatting", "Brand voice", "Links"] as const
 export type AuditCategory = (typeof AUDIT_CATEGORIES)[number]
 /** Categories run by category audit prompts (excludes Brand voice, which has its own pass) */
-export type ContentAuditCategory = "Language" | "Facts & Consistency" | "Links & Formatting"
+export type ContentAuditCategory = "Language" | "Facts & Consistency" | "Formatting"
 
 const NewPromptIssueSchema = z.object({
   page_url: z.string(),
@@ -423,7 +423,7 @@ function extractOpenedPagesCount(response: any): number {
 
 // ============================================================================
 // Parallel Mini Audit - FREE tier with 3 concurrent specialized models
-// Runs Language, Facts & Consistency, and Links & Formatting in parallel
+// Runs Language, Facts & Consistency, and Formatting in parallel
 // Uses low reasoning for 2x speed at 50% cost with better issue detection
 // ============================================================================
 
@@ -444,7 +444,7 @@ interface CategoryAuditResult {
   error?: string
 }
 
-// Run a single category audit (Language, Facts & Consistency, Links & Formatting only)
+// Run a single category audit (Language, Facts & Consistency, Formatting only)
 async function runCategoryAudit(
   category: ContentAuditCategory,
   urlsToAudit: string[],
@@ -718,7 +718,7 @@ export async function parallelMiniAudit(
     const categoryPromises = [
       runCategoryAuditWithRetry("Language", pagesToAudit, domainHostname, manifestText, issueContext, openai, keywords),
       runCategoryAuditWithRetry("Facts & Consistency", pagesToAudit, domainHostname, manifestText, issueContext, openai, keywords),
-      runCategoryAuditWithRetry("Links & Formatting", pagesToAudit, domainHostname, manifestText, issueContext, openai, keywords),
+      runCategoryAuditWithRetry("Formatting", pagesToAudit, domainHostname, manifestText, issueContext, openai, keywords),
     ]
 
     const brandVoicePromise = options?.brandVoice
@@ -882,7 +882,7 @@ export async function parallelProAudit(
     const categoryPromisesPro = [
       runCategoryAuditWithRetryPro("Language", pagesToAudit, domainHostname, manifestText, issueContext, openai, keywordsPro),
       runCategoryAuditWithRetryPro("Facts & Consistency", pagesToAudit, domainHostname, manifestText, issueContext, openai, keywordsPro),
-      runCategoryAuditWithRetryPro("Links & Formatting", pagesToAudit, domainHostname, manifestText, issueContext, openai, keywordsPro),
+      runCategoryAuditWithRetryPro("Formatting", pagesToAudit, domainHostname, manifestText, issueContext, openai, keywordsPro),
     ]
 
     const brandVoicePromisePro = options?.brandVoice
@@ -1602,7 +1602,7 @@ Return ONLY valid JSON matching this exact structure:
   "issues": [
     {
       "page_url": "<actual URL from text>",
-      "category": "Language|Facts & Consistency|Links & Formatting",
+      "category": "Language|Facts & Consistency|Formatting",
       "issue_description": "impact_word: concise problem description",
       "severity": "low|medium|critical",
       "suggested_fix": "Direct, actionable fix"

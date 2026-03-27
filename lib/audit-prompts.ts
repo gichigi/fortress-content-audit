@@ -77,7 +77,7 @@ After completing the single pass over both pages and categories, return as outpu
 
 # Steps
 
-1. For each of the two pages (homepage and one key additional public page), audit all three categories (Language; Facts & Consistency; Links & Formatting) in a single comprehensive review.
+1. For each of the two pages (homepage and one key additional public page), audit all three categories (Language; Facts & Consistency; Formatting) in a single comprehensive review.
 2. For every identified issue, generate a JSON object with required fields (see output format).
 3. Ensure the "issue_description" begins with the appropriate impact keyword for instant clarity.
 4. Track the total number of issues, count of pages with issues, and total pages audited.
@@ -91,7 +91,7 @@ If issues are found:
 Respond with a JSON object containing:
 - "issues": array of objects, each with:
     - page_url: [string]
-    - category: [string] — must be "Language", "Facts & Consistency", or "Links & Formatting"
+    - category: [string] — must be "Language", "Facts & Consistency", or "Formatting"
     - issue_description: [string] — begins with an impact word (e.g., "professionalism:", "frustration:", "trust:", "credibility:") then concise problem statement
     - severity: [string] — "critical", "medium", or "low"
     - suggested_fix: [string] — direct, actionable, concise fix
@@ -122,7 +122,7 @@ Example if issues are found:
     },
     {
       "page_url": "https://example.com/pricing",
-      "category": "Links & Formatting",
+      "category": "Formatting",
       "issue_description": "frustration: 'Contact Support' footer link leads to 404",
       "severity": "critical",
       "suggested_fix": "Update link to correct support page."
@@ -153,7 +153,7 @@ null
 - Use the precise output format above; do not include extraneous notes, explanations, or context.
 - DON'T report "/cdn-cgi/l/email-protection" links as broken - Cloudflare decodes these client-side into valid mailto links.
 
-**Important: Audit only the homepage and ONE key additional page. Audit all categories (Language, Facts & Consistency, Links & Formatting) in a single comprehensive pass (not three separate passes). If no issues are found, return null; otherwise, follow all formatting, style, and conciseness rules.**
+**Important: Audit only the homepage and ONE key additional page. Audit all categories (Language, Facts & Consistency, Formatting) in a single comprehensive pass (not three separate passes). If no issues are found, return null; otherwise, follow all formatting, style, and conciseness rules.**
 
 ${excludedIssues && excludedIssues !== '[]' ? `\n# Previously Resolved/Ignored Issues\n\nThe following issues have been resolved or ignored by the user. DO NOT report them again:\n${excludedIssues}\n` : ''}
 ${activeIssues && activeIssues !== '[]' ? `\n# Active Issues from Previous Audit\n\nThe following issues were found in a previous audit. Verify if they still exist:\n${activeIssues}\n` : ''}
@@ -224,7 +224,7 @@ For pages that are still loading or temporarily unavailable, retry up to three t
 
 For every issue, log:
 - page_url: [string]
-- category: "Language", "Facts & Consistency", or "Links & Formatting"
+- category: "Language", "Facts & Consistency", or "Formatting"
 - issue_description: impact label (professionalism:, trust:, clarity:, credibility:, frustration:) + problem in 10 words or fewer. For readability issues use "clarity:" or "accessibility:" — never "readability:" or grade codes. Always name WHERE: quote the text or name the section (hero, pricing table, nav, footer CTA).
 - severity: "critical", "medium", or "low"
 - suggested_fix: action verb + fix in 8 words or fewer
@@ -247,7 +247,7 @@ If issues are found, respond with:
   "issues": [
     {
       "page_url": "[string]",
-      "category": "[Language|Facts & Consistency|Links & Formatting]",
+      "category": "[Language|Facts & Consistency|Formatting]",
       "issue_description": "[impact word]: [ultra-concise problem statement]",
       "severity": "[critical|medium|low]",
       "suggested_fix": "[concise fix]"
@@ -276,14 +276,14 @@ Example if issues are found:
     },
     {
       "page_url": "https://example.com/about",
-      "category": "Links & Formatting",
+      "category": "Formatting",
       "issue_description": "frustration: 'Contact Us' footer link leads to 404",
       "severity": "critical",
       "suggested_fix": "Update link to correct contact page."
     },
     {
       "page_url": "https://example.com/pricing",
-      "category": "Links & Formatting",
+      "category": "Formatting",
       "issue_description": "trust: hero 'Learn More' button links to homepage, not pricing",
       "severity": "medium",
       "suggested_fix": "Change button href to pricing page."
@@ -329,7 +329,7 @@ ${activeIssues && activeIssues !== '[]' ? `\n# Active Issues from Previous Audit
  * @param flagKeywords - Terms to always flag when present
  */
 export function buildCategoryAuditPrompt(
-  category: "Language" | "Facts & Consistency" | "Links & Formatting",
+  category: "Language" | "Facts & Consistency" | "Formatting",
   urlsToAudit: string[],
   manifestText: string,
   excludedIssues: string,
@@ -347,7 +347,7 @@ export function buildCategoryAuditPrompt(
 
 Do not flag intentional foreign-language content — brand names, technical terms, proper nouns, or sections clearly written in a secondary language on purpose. Only flag genuine errors within the page's own detected language.
 
-DO NOT report Facts/Consistency or Links/Formatting issues.`,
+DO NOT report Facts/Consistency or Formatting issues.`,
 
     "Facts & Consistency": `Focus ONLY on Facts & Consistency issues:
 - Factual errors or incorrect information
@@ -356,9 +356,9 @@ DO NOT report Facts/Consistency or Links/Formatting issues.`,
 - Outdated information
 - Naming inconsistencies (product names, company name variations)
 
-DO NOT report Language or Links/Formatting issues.`,
+DO NOT report Language or Formatting issues.`,
 
-    "Links & Formatting": `Focus ONLY on Formatting & UX issues:
+    "Formatting": `Focus ONLY on Formatting & UX issues:
 - Formatting problems (inconsistent styles, broken layouts)
 - Layout issues affecting readability
 - Visual hierarchy problems
@@ -442,7 +442,7 @@ ${activeIssues && activeIssues !== '[]' ? `\n# Active Issues\n\nVerify if these 
  * Same signature as buildCategoryAuditPrompt so it can be swapped in directly.
  */
 export function buildLiberalCategoryAuditPrompt(
-  category: "Language" | "Facts & Consistency" | "Links & Formatting",
+  category: "Language" | "Facts & Consistency" | "Formatting",
   urlsToAudit: string[],
   manifestText: string,
   excludedIssues: string,
@@ -458,7 +458,7 @@ export function buildLiberalCategoryAuditPrompt(
 - Spelling inconsistencies
 - Awkward phrasing
 
-DO NOT report Facts/Consistency or Links/Formatting issues.`,
+DO NOT report Facts/Consistency or Formatting issues.`,
 
     "Facts & Consistency": `Focus ONLY on Facts & Consistency issues:
 - Factual errors or incorrect information
@@ -471,9 +471,9 @@ When reporting cross-page contradictions, ALWAYS quote the exact text from BOTH 
 Good: 'credibility: "file never touches our servers" (FAQ) contradicts "relayed through our server" (Transparency)'
 Bad: 'credibility: FAQ claim contradicts transparency page'
 
-DO NOT report Language or Links/Formatting issues.`,
+DO NOT report Language or Formatting issues.`,
 
-    "Links & Formatting": `Focus ONLY on Formatting & UX issues:
+    "Formatting": `Focus ONLY on Formatting & UX issues:
 - Formatting problems (inconsistent styles, broken layouts)
 - Layout issues affecting readability
 - Visual hierarchy problems
@@ -565,7 +565,7 @@ export function buildCheckerPrompt(
   const categoryVerification: Record<string, string> = {
     "Language": "Confirm the exact quoted text exists in the HTML AND contains the claimed error. Valid stylistic choices (brand voice, intentional tone) are not errors. Regional spelling (UK vs US English) on a locale-targeted site is a valid concern, not a stylistic choice. If the claimed error text appears inside an animated number component, counter, or interactive widget (look for `inert` attributes on sibling elements, or custom elements like `<number-flow-react>`), mark confirmed: false — these are scrape-time snapshots, not real content.",
     "Facts & Consistency": "Confirm the claimed text/data is present. You can verify internal consistency (numbers matching across sections) but not external facts. If the text exists and the inconsistency is real within the page, confirm. Cross-page contradictions are valid. If an issue claims page A contradicts page B, look for evidence from both pages in the excerpts. If the claimed value appears inside an interactive component (slider, counter, progress bar), mark confirmed: false — it is a snapshot state, not a real content error.",
-    "Links & Formatting": "Confirm the HTML structure supports the claim (empty alt, wrong heading level, missing aria). Layout/render issues that can't be verified from static HTML → mark uncertain. If the issue describes garbled or scrambled text inside a single isolated element, check for signs of animation (sibling elements with `inert`, custom web components, or repeated character sets 0-9) — if present, mark confirmed: false.",
+    "Formatting": "Confirm the HTML structure supports the claim (empty alt, wrong heading level, missing aria). Layout/render issues that can't be verified from static HTML → mark uncertain. If the issue describes garbled or scrambled text inside a single isolated element, check for signs of animation (sibling elements with `inert`, custom web components, or repeated character sets 0-9) — if present, mark confirmed: false.",
   }
 
   const verificationInstruction = categoryVerification[category]
