@@ -130,9 +130,30 @@ export function compressHtml(html: string): string {
     }
   })
 
+  // Detect badge/tag/label spans before unwrapping — replace with readable placeholder.
+  // These often appear as inline UI chips (e.g. "New", "Beta", "Pro") and get merged
+  // into adjacent text without whitespace, producing false positives.
+  $('span').each((_i, el) => {
+    const $el = $(el)
+    const cls = (el as any).attribs?.class || ''
+    const text = $el.text().trim()
+    if (text.length <= 30 && /badge|tag|label|chip|pill|status|tier|plan/i.test(cls)) {
+      $el.replaceWith(`[Badge: ${text}]`)
+    }
+  })
+
   // Unwrap inline formatting tags — keep text content, remove tag wrapper.
+  // Insert a space when the preceding sibling is a text/element node with no trailing
+  // whitespace, to avoid merging adjacent words (e.g. "ClickHere" instead of "Click Here").
   // Must run AFTER attribute stripping so aria-*/role detection on <span> still works.
   $(INLINE_FORMAT_TAGS.join(', ')).each((_i, el) => {
+    const prev = el.prev
+    if (prev && prev.type === 'text') {
+      const prevText = (prev as any).data || ''
+      if (prevText.length > 0 && !/\s$/.test(prevText)) {
+        (prev as any).data = prevText + ' '
+      }
+    }
     $(el).replaceWith($(el).contents())
   })
 

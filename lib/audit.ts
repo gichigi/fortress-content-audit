@@ -160,6 +160,17 @@ function verifyIssuesAgainstHtml(
 
     const allFound = quotedStrings.every(existsInHtml)
     if (allFound) {
+      // Special case: zero-width / invisible character claims need regex verification
+      const isZeroWidthClaim = /invisible character|zero.?width|hidden character|non.?printable/i.test(issue.issue_description)
+      if (isZeroWidthClaim) {
+        const rawHtml = htmlByUrl.get(issue.page_url) || ''
+        const zwRegex = /[\u200B\u200C\u200D\uFEFF\u00AD\u200E\u200F\u2060\u2061-\u2064]/
+        if (!zwRegex.test(rawHtml)) {
+          Logger.warn(`[IssueVerification] Dropped zero-width false positive: "${issue.issue_description}" — no zero-width chars in HTML`)
+          dropped++
+          continue
+        }
+      }
       verified.push(issue)
     } else {
       const missing = quotedStrings.filter(qs => !existsInHtml(qs))
