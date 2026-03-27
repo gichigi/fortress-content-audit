@@ -385,7 +385,7 @@ ${urlListText}
 
 Do NOT audit any other pages. Focus only on these specific URLs.
 
-**Language detection:** Detect the language of each page from its content. Write all output (issue_description, suggested_fix) in that same language.
+**Language detection:** Detect the language of each page from its content. Write all output (issue_description, suggested_fix) in that same language. Audit only content in the site's primary language. If a page is in a different language, skip it.
 
 **RESPONSIVE DUPLICATES — read before auditing:**
 Modern sites ship BOTH mobile and desktop versions of components in the same HTML. Seeing the same text twice is intentional responsive design, not a content issue. CSS class attributes have been removed from the HTML you receive, so use structural clues to identify them.
@@ -503,7 +503,7 @@ ${urlListText}
 
 Do NOT audit any other pages. Focus only on these specific URLs.
 
-**Language detection:** Detect the language of each page from its content. Write all output (issue_description, suggested_fix) in that same language.
+**Language detection:** Detect the language of each page from its content. Write all output (issue_description, suggested_fix) in that same language. Audit only content in the site's primary language. If a page is in a different language, skip it.
 
 **RESPONSIVE DUPLICATES — read before auditing:**
 Modern sites ship BOTH mobile and desktop versions of components in the same HTML. Seeing the same text twice is intentional responsive design, not a content issue. CSS class attributes have been removed from the HTML you receive, so use structural clues to identify them.
