@@ -36,6 +36,7 @@ How to spot them:
 - Do NOT flag garbled or partially-encoded text (e.g. "secure0n*d", "3x7K") inside a single isolated element — it is likely a text animation or encoding artifact captured mid-render, not a real content issue.
 - Do NOT flag form field labels that mix parameter names and type annotations — this is standard developer tooling UI, not a copywriting error.
 - Do NOT flag text adjacent to UI badge/tag/label elements (shown as [Badge: text] in the HTML) as a word-merging or concatenation error — these are intentional inline UI chips.
+- Do NOT flag invisible, zero-width, or non-printable characters (U+FEFF, U+200B, etc.) as content issues. These are encoding artifacts from CMS systems or web frameworks and do not affect how text renders or reads — flagging them is always a false positive.
 
 Pages are truncated at an HTML tag boundary and marked with "[Content truncated due to length]". DO NOT flag content near this marker as incomplete — it is an extraction limit, not a real site issue. Large pages may appear as "part 1 of 2" / "part 2 of 2" — treat them as one continuous page.
 
@@ -194,6 +195,7 @@ How to spot them:
 - Do NOT flag garbled or partially-encoded text (e.g. "secure0n*d", "3x7K") inside a single isolated element — it is likely a text animation or encoding artifact captured mid-render, not a real content issue.
 - Do NOT flag form field labels that mix parameter names and type annotations — this is standard developer tooling UI, not a copywriting error.
 - Do NOT flag text adjacent to UI badge/tag/label elements (shown as [Badge: text] in the HTML) as a word-merging or concatenation error — these are intentional inline UI chips.
+- Do NOT flag invisible, zero-width, or non-printable characters (U+FEFF, U+200B, etc.) as content issues. These are encoding artifacts from CMS systems or web frameworks and do not affect how text renders or reads — flagging them is always a false positive.
 
 Pages are truncated at an HTML tag boundary and marked with "[Content truncated due to length]". DO NOT flag content near this marker as incomplete — it is an extraction limit, not a real site issue. Large pages may appear as "part 1 of 2" / "part 2 of 2" — treat them as one continuous page.
 
@@ -402,6 +404,7 @@ How to spot them:
 - Do NOT flag garbled or partially-encoded text (e.g. "secure0n*d", "3x7K") inside a single isolated element — it is likely a text animation or encoding artifact captured mid-render, not a real content issue.
 - Do NOT flag form field labels that mix parameter names and type annotations — this is standard developer tooling UI, not a copywriting error.
 - Do NOT flag text adjacent to UI badge/tag/label elements (shown as [Badge: text] in the HTML) as a word-merging or concatenation error — these are intentional inline UI chips.
+- Do NOT flag invisible, zero-width, or non-printable characters (U+FEFF, U+200B, etc.) as content issues. These are encoding artifacts from CMS systems or web frameworks and do not affect how text renders or reads — flagging them is always a false positive.
 
 Pages are truncated at an HTML tag boundary and marked with "[Content truncated due to length]". DO NOT flag content near this marker as incomplete — it is an extraction limit, not a real site issue. Large pages may appear as "part 1 of 2" / "part 2 of 2" — treat them as one continuous page.
 
@@ -533,6 +536,7 @@ How to spot them:
 - Do NOT flag garbled or partially-encoded text (e.g. "secure0n*d", "3x7K") inside a single isolated element — it is likely a text animation or encoding artifact captured mid-render, not a real content issue.
 - Do NOT flag form field labels that mix parameter names and type annotations — this is standard developer tooling UI, not a copywriting error.
 - Do NOT flag text adjacent to UI badge/tag/label elements (shown as [Badge: text] in the HTML) as a word-merging or concatenation error — these are intentional inline UI chips.
+- Do NOT flag invisible, zero-width, or non-printable characters (U+FEFF, U+200B, etc.) as content issues. These are encoding artifacts from CMS systems or web frameworks and do not affect how text renders or reads — flagging them is always a false positive.
 
 Pages are truncated at an HTML tag boundary and marked with "[Content truncated due to length]". DO NOT flag content near this marker as incomplete — it is an extraction limit, not a real site issue. Large pages may appear as "part 1 of 2" / "part 2 of 2" — treat them as one continuous page.
 

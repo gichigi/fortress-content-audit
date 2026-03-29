@@ -17,16 +17,22 @@
         {
           "id": "sel-1",
           "description": "immidiately typo",
-          "matchPatterns": ["immidiately", "immediately"],
+          "matchPatterns": [
+            "immidiately",
+            "immediately"
+          ],
           "category": "Language",
           "expectedSeverity": "medium",
           "page_url_pattern": "/docs/install-seline",
-          "source": "QA round 2 — confirmed real, found in raw HTML"
+          "source": "QA round 2 \u2014 confirmed real, found in raw HTML"
         },
         {
           "id": "sel-2",
           "description": "monitize typo",
-          "matchPatterns": ["monitize", "monetize"],
+          "matchPatterns": [
+            "monitize",
+            "monetize"
+          ],
           "category": "Language",
           "expectedSeverity": "medium",
           "page_url_pattern": "",
@@ -35,56 +41,76 @@
         {
           "id": "sel-3",
           "description": "Wait a coupe minutes typo",
-          "matchPatterns": ["coupe minutes", "couple minutes"],
+          "matchPatterns": [
+            "coupe minutes",
+            "couple minutes"
+          ],
           "category": "Language",
           "expectedSeverity": "medium",
           "page_url_pattern": "/docs/stripe",
-          "source": "eval-baseline.md Run 6 — accordion content"
+          "source": "eval-baseline.md Run 6 \u2014 accordion content"
         },
         {
           "id": "sel-4",
           "description": "20/80 rule should be 80/20 rule",
-          "matchPatterns": ["20/80 rule", "80/20"],
+          "matchPatterns": [
+            "20/80 rule",
+            "80/20"
+          ],
           "category": "Facts & Consistency",
           "expectedSeverity": "medium",
           "page_url_pattern": "/seline-vs-posthog",
-          "source": "eval-baseline.md Run 6 — accordion content"
+          "source": "eval-baseline.md Run 6 \u2014 accordion content"
         },
         {
           "id": "sel-5",
           "description": "IP adresses typo",
-          "matchPatterns": ["IP adresses", "IP addresses"],
+          "matchPatterns": [
+            "IP adresses",
+            "IP addresses"
+          ],
           "category": "Language",
           "expectedSeverity": "medium",
           "page_url_pattern": "",
-          "source": "eval-baseline.md Run 2 — confirmed at confidence 1.0"
+          "source": "eval-baseline.md Run 2 \u2014 confirmed at confidence 1.0"
         },
         {
           "id": "sel-6",
           "description": "Key takeway typo",
-          "matchPatterns": ["takeway", "takeaway"],
+          "matchPatterns": [
+            "takeway",
+            "takeaway"
+          ],
           "category": "Language",
           "expectedSeverity": "medium",
           "page_url_pattern": "",
-          "source": "eval-baseline.md Run 2 — confirmed at confidence 1.0"
+          "source": "eval-baseline.md Run 2 \u2014 confirmed at confidence 1.0"
         },
         {
           "id": "sel-7",
-          "description": "Find the your checkout flow — grammar error",
-          "matchPatterns": ["Find the your", "find the your"],
+          "description": "Find the your checkout flow \u2014 grammar error",
+          "matchPatterns": [
+            "Find the your",
+            "find the your"
+          ],
           "category": "Language",
           "expectedSeverity": "medium",
           "page_url_pattern": "",
-          "source": "QA round 2 — confirmed as real issue (appeared twice)"
+          "source": "QA round 2 \u2014 confirmed as real issue (appeared twice)"
         },
         {
           "id": "sel-8",
           "description": "Pricing inconsistencies across comparison pages",
-          "matchPatterns": ["$9", "$14", "$24", "pricing"],
+          "matchPatterns": [
+            "$9",
+            "$14",
+            "$24",
+            "pricing"
+          ],
           "category": "Facts & Consistency",
           "expectedSeverity": "medium",
           "page_url_pattern": "",
-          "source": "eval-baseline.md Run 6 — cross-page contradiction"
+          "source": "eval-baseline.md Run 6 \u2014 cross-page contradiction"
         }
       ],
       "falsePositivePatterns": [
@@ -123,38 +149,49 @@
         {
           "id": "dub-1",
           "description": "word-class typo",
-          "matchPatterns": ["word-class", "world-class"],
+          "matchPatterns": [
+            "word-class",
+            "world-class"
+          ],
           "category": "Language",
           "expectedSeverity": "medium",
           "page_url_pattern": "",
-          "source": "QA round 2 — consistent across runs"
+          "source": "QA round 2 \u2014 consistent across runs"
         },
         {
           "id": "dub-2",
           "description": "Gather insights grammar issue",
-          "matchPatterns": ["Gather insights"],
+          "matchPatterns": [
+            "Gather insights"
+          ],
           "category": "Language",
           "expectedSeverity": "low",
           "page_url_pattern": "",
-          "source": "QA round 2 — consistent across runs"
+          "source": "QA round 2 \u2014 consistent across runs"
         },
         {
           "id": "dub-3",
-          "description": "Understand how what your audience — grammar",
-          "matchPatterns": ["how what your", "how what"],
+          "description": "Understand how what your audience \u2014 grammar",
+          "matchPatterns": [
+            "how what your",
+            "how what"
+          ],
           "category": "Language",
           "expectedSeverity": "medium",
           "page_url_pattern": "",
-          "source": "QA round 2 — consistent across runs"
+          "source": "QA round 2 \u2014 consistent across runs"
         },
         {
           "id": "dub-4",
-          "description": "Product Hunt is is — duplicate word",
-          "matchPatterns": ["is is", "Hunt is is"],
+          "description": "Product Hunt is is \u2014 duplicate word",
+          "matchPatterns": [
+            "is is",
+            "Hunt is is"
+          ],
           "category": "Language",
           "expectedSeverity": "low",
           "page_url_pattern": "",
-          "source": "QA round 2 — consistent across runs"
+          "source": "QA round 2 \u2014 consistent across runs"
         }
       ],
       "falsePositivePatterns": [
@@ -171,7 +208,7 @@
         {
           "id": "dub-fp-3",
           "pattern": "carousel.*slide indicators|dots.*indicators",
-          "reason": "Visual/layout issue not verifiable from HTML — render-dependent."
+          "reason": "Visual/layout issue not verifiable from HTML \u2014 render-dependent."
         }
       ]
     },
@@ -205,12 +242,15 @@
       "knownIssues": [
         {
           "id": "jc-1",
-          "description": "1,100+ Cancel Guides — clarity issue flagged twice with different wording",
-          "matchPatterns": ["1,100+ Cancel Guides", "1100"],
+          "description": "1,100+ Cancel Guides \u2014 clarity issue flagged twice with different wording",
+          "matchPatterns": [
+            "1,100+ Cancel Guides",
+            "1100"
+          ],
           "category": "Language",
           "expectedSeverity": "low",
           "page_url_pattern": "",
-          "source": "QA round 2 — real but should be deduped"
+          "source": "QA round 2 \u2014 real but should be deduped"
         }
       ],
       "falsePositivePatterns": []
@@ -287,8 +327,8 @@
         },
         {
           "id": "lot-fp-2",
-          "pattern": "SVG.*path|SVG.*data|SVG.*content",
-          "reason": "SVG path data exposed in audit results. Should be collapsed by compressor."
+          "pattern": "<path[\\s>]|d=\"[MCLHVSQTAZmclhvsqtaz]|SVG path data|SVG coordinate data|path\\s+d=",
+          "reason": "SVG path coordinate data (d= attributes, <path> tags) exposed in audit results. Should be collapsed by compressor. Pattern updated 2026-03-29 to avoid matching text content that mentions SVG as a word."
         }
       ]
     }
