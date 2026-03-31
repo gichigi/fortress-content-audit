@@ -95,6 +95,16 @@ function extractLinksFromMarkdown(
       continue
     }
 
+    // Skip base64 image placeholders inserted by Firecrawl's markdown renderer
+    // e.g. <Base64-Image-Removed> which gets URL-encoded in link hrefs
+    if (
+      href.includes('Base64-Image-Removed') ||
+      href.includes('%3CBase64-Image-Removed%3E') ||
+      href.includes('<Base64-Image-Removed>')
+    ) {
+      continue
+    }
+
     links.push({ text, href, sourceUrl })
   }
 
@@ -164,6 +174,56 @@ const BROWSER_HEADERS = {
   'Accept-Language': 'en-US,en;q=0.5',
 }
 
+// File extensions that indicate a download link (not a regular web page)
+// These links often redirect to CDN/S3 URLs that respond with 404-like codes to HEAD requests
+const DOWNLOAD_EXTENSIONS = [
+  '.dmg', '.exe', '.msi', '.deb', '.rpm', '.pkg', '.appimage',
+  '.zip', '.tar.gz', '.tar.bz2', '.tgz', '.gz', '.bz2', '.7z', '.rar',
+  '.apk', '.ipa',
+  '.pdf', // PDFs may also be served as downloads
+]
+
+// Hostnames that are known download CDNs / distribution platforms
+// These servers often return 404 or reject HEAD requests from bots
+// even when the download works fine in a real browser
+const DOWNLOAD_CDN_HOSTS = [
+  'dl.todesktop.com',
+  'releases.github.com',
+  'github-releases.githubusercontent.com',
+  'objects.githubusercontent.com',
+  'release-assets.github.com',
+  'dl.dropboxusercontent.com',
+  's3.amazonaws.com',
+]
+
+/**
+ * Check if a URL looks like a direct file download link OR a download CDN
+ * These need special treatment because servers may reject HEAD requests
+ * or respond with unexpected codes to lightweight checks
+ */
+function isDownloadLink(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    const pathname = parsed.pathname.toLowerCase()
+    const hostname = parsed.hostname.toLowerCase()
+
+    // Check for known download CDN hostnames
+    if (DOWNLOAD_CDN_HOSTS.some(cdn => hostname === cdn || hostname.endsWith('.' + cdn))) {
+      return true
+    }
+
+    // Check for paths that look like download endpoints
+    if (pathname === '/download' || pathname.endsWith('/download')) {
+      return true
+    }
+
+    // Check for direct file download extensions
+    return DOWNLOAD_EXTENSIONS.some(ext => pathname.endsWith(ext))
+  } catch {
+    return false
+  }
+}
+
 /**
  * Check a single link using HEAD request (fast, free)
  * Falls back to GET if HEAD returns 403/401 (some servers block HEAD).
@@ -220,8 +280,20 @@ async function checkLinkWithFetch(
       }
     }
 
-    // 404 = Broken
+    // 404 = Broken (but some download servers reject HEAD/GET even for valid links)
     if (statusCode === 404) {
+      // Download links (e.g. .dmg, .exe, .zip) often trigger 404 on HEAD requests
+      // even when they work fine in a browser via redirect-to-CDN. Skip them.
+      if (isDownloadLink(url)) {
+        return {
+          url,
+          sourceUrl,
+          linkText,
+          status: 'ok', // treat as inconclusive to avoid false positives
+          httpStatus: statusCode,
+          responseTimeMs
+        }
+      }
       return {
         url,
         sourceUrl,
