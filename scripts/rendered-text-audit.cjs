@@ -16,7 +16,7 @@
  */
 
 const { chromium } = require('/home/ubuntu/.openclaw/tools/browser/node_modules/playwright')
-const { existsSync, readFileSync } = require('fs')
+const { existsSync, readFileSync, writeFileSync, mkdirSync } = require('fs')
 const { join } = require('path')
 
 // Load .env.local if present
@@ -69,6 +69,11 @@ async function extractRenderedText(page) {
               node.offsetWidth <= 1 && node.offsetHeight <= 1) {
             return NodeFilter.FILTER_REJECT
           }
+          // Skip elements with Tailwind/CSS a11y hiding classes
+          const cls = (node.className || '').toString().toLowerCase()
+          if (/\b(sr-only|visually-hidden|screen-reader-text|clip-hidden)\b/.test(cls)) {
+            return NodeFilter.FILTER_REJECT
+          }
           // Skip script, style, svg, noscript
           const tag = node.tagName.toLowerCase()
           if (['script','style','svg','noscript','iframe','video','audio','canvas','img'].includes(tag)) {
@@ -103,7 +108,7 @@ async function extractRenderedText(page) {
         
         text = text?.trim()
         
-        if (text && text.length > 1 && !seen.has(text)) {
+        if (text && text.length > 2 && !seen.has(text)) {
           seen.add(text)
           
           // Figure out the section context
@@ -165,6 +170,61 @@ function formatForModel(url, elements) {
 // ============================================================================
 // Step 3: Send to Claude for audit
 // ============================================================================
+
+// ============================================================================
+// Step 2.5: LangSmith tracing
+// ============================================================================
+
+async function traceLangSmith(name, metadata, fn) {
+  const apiKey = process.env.LANGSMITH_API_KEY
+  const endpoint = process.env.LANGSMITH_ENDPOINT || 'https://api.smith.langchain.com'
+  const project = process.env.LANGSMITH_PROJECT || 'aicontentaudit'
+  const tracing = process.env.LANGSMITH_TRACING === 'true'
+  
+  if (!tracing || !apiKey) return fn()
+  
+  const runId = require('crypto').randomUUID()
+  const startTime = new Date().toISOString()
+  
+  // Create run
+  try {
+    await fetch(`${endpoint}/runs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+      body: JSON.stringify({
+        id: runId,
+        name,
+        run_type: 'chain',
+        inputs: { pages: metadata.sites || [] },
+        extra: { metadata },
+        session_name: project,
+        start_time: startTime
+      })
+    })
+  } catch (e) { /* best effort */ }
+  
+  const result = await fn()
+  
+  // Patch run with outputs
+  try {
+    await fetch(`${endpoint}/runs/${runId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+      body: JSON.stringify({
+        end_time: new Date().toISOString(),
+        outputs: {
+          issues: result.issues,
+          input_tokens: result.input_tokens,
+          output_tokens: result.output_tokens,
+          latency_ms: result.latency_ms
+        },
+        extra: { metadata: { ...metadata, ...result.metrics } }
+      })
+    })
+  } catch (e) { /* best effort */ }
+  
+  return result
+}
 
 async function auditWithClaude(pagesText) {
   const prompt = `You are auditing a website for content quality issues. Below is the visible text extracted from a rendered browser, organized by HTML element and page section.
@@ -242,6 +302,14 @@ async function main() {
   
   console.log('=== Rendered Text Audit Experiment ===\n')
   
+  // Run log
+  const runLog = {
+    timestamp: new Date().toISOString(),
+    sites: [],
+    totals: { input_tokens: 0, output_tokens: 0, latency_ms: 0, issues: 0 },
+    issues: []
+  }
+  
   // Launch browser
   const browser = await chromium.launch({ headless: true })
   const context = await browser.newContext({
@@ -250,12 +318,14 @@ async function main() {
   })
   
   let allPagesText = ''
+  const siteMetrics = []
   
   for (const url of urls) {
     const fullUrl = url.startsWith('http') ? url : `https://${url}`
     console.log(`\n📄 Rendering: ${fullUrl}`)
     
     const page = await context.newPage()
+    const siteStart = Date.now()
     
     try {
       await page.goto(fullUrl, { waitUntil: 'networkidle', timeout: 30000 })
@@ -270,6 +340,8 @@ async function main() {
       const tokenEstimate = Math.round(charCount / 4)
       console.log(`   📊 ${charCount} chars (~${tokenEstimate} tokens)`)
       
+      siteMetrics.push({ url: fullUrl, elements: elements.length, chars: charCount, token_estimate: tokenEstimate, render_ms: Date.now() - siteStart })
+      
       // Log a sample
       console.log(`\n   --- Sample (first 10 elements) ---`)
       elements.slice(0, 10).forEach(el => {
@@ -280,6 +352,7 @@ async function main() {
       allPagesText += formatted + '\n\n'
     } catch (err) {
       console.error(`   ❌ Failed: ${err.message}`)
+      siteMetrics.push({ url: fullUrl, error: err.message })
     } finally {
       await page.close()
     }
@@ -294,32 +367,65 @@ async function main() {
   const startTime = Date.now()
   
   try {
-    const result = await auditWithClaude(allPagesText)
-    const durationMs = Date.now() - startTime
+    const traceMetadata = {
+      sites: urls,
+      model: 'claude-sonnet-4-20250514',
+      site_count: urls.length,
+      total_chars: allPagesText.length
+    }
     
-    const responseText = result.content?.[0]?.text || ''
-    console.log(`⏱️  Claude responded in ${(durationMs / 1000).toFixed(1)}s`)
-    console.log(`📊 Input tokens: ${result.usage?.input_tokens}, Output tokens: ${result.usage?.output_tokens}`)
-    
-    // Parse issues
-    try {
-      const parsed = JSON.parse(responseText)
-      console.log(`\n=== Results: ${parsed.issues?.length || 0} issues found ===\n`)
+    const auditResult = await traceLangSmith('rendered-text-audit', traceMetadata, async () => {
+      const result = await auditWithClaude(allPagesText)
+      const durationMs = Date.now() - startTime
+      const responseText = result.content?.[0]?.text || ''
+      let parsed = { issues: [] }
+      try { parsed = JSON.parse(responseText) } catch {}
       
-      if (parsed.issues?.length) {
-        for (const issue of parsed.issues) {
-          const icon = issue.severity === 'critical' ? '🔴' : issue.severity === 'medium' ? '🟡' : '⚪'
-          console.log(`${icon} [${issue.category}] ${issue.issue_description}`)
-          console.log(`   Fix: ${issue.suggested_fix}`)
-          console.log(`   Page: ${issue.page_url}\n`)
+      return {
+        issues: parsed.issues || [],
+        input_tokens: result.usage?.input_tokens || 0,
+        output_tokens: result.usage?.output_tokens || 0,
+        latency_ms: durationMs,
+        metrics: {
+          issue_count: (parsed.issues || []).length,
+          fp_rate: 0 // to be filled after verification
         }
       }
-    } catch {
-      console.log('Raw response:', responseText)
+    })
+    
+    console.log(`⏱️  Claude responded in ${(auditResult.latency_ms / 1000).toFixed(1)}s`)
+    console.log(`📊 Input tokens: ${auditResult.input_tokens}, Output tokens: ${auditResult.output_tokens}`)
+    console.log(`\n=== Results: ${auditResult.issues.length} issues found ===\n`)
+    
+    for (const issue of auditResult.issues) {
+      const icon = issue.severity === 'critical' ? '🔴' : issue.severity === 'medium' ? '🟡' : '⚪'
+      console.log(`${icon} [${issue.category}] ${issue.issue_description}`)
+      console.log(`   Fix: ${issue.suggested_fix}`)
+      console.log(`   Page: ${issue.page_url}\n`)
     }
+    
+    // Build run log
+    runLog.sites = siteMetrics
+    runLog.totals = {
+      input_tokens: auditResult.input_tokens,
+      output_tokens: auditResult.output_tokens,
+      latency_ms: auditResult.latency_ms,
+      issues: auditResult.issues.length
+    }
+    runLog.issues = auditResult.issues
+    
   } catch (err) {
     console.error(`❌ Audit failed: ${err.message}`)
+    runLog.error = err.message
   }
+  
+  // Write timestamped log
+  const logsDir = join(__dirname, 'logs')
+  mkdirSync(logsDir, { recursive: true })
+  const ts = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '')
+  const logPath = join(logsDir, `rendered-audit-${ts}.json`)
+  writeFileSync(logPath, JSON.stringify(runLog, null, 2))
+  console.log(`\n📁 Log saved: ${logPath}`)
 }
 
 main().catch(console.error)
