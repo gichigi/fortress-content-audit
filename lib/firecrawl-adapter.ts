@@ -9,11 +9,13 @@ import { crawlLinks, type CrawlerIssue } from './link-crawler'
 import * as cheerio from 'cheerio'
 import Logger from './logger'
 import { compressHtmlWithLogging, compressHtmlToChunks } from './html-compressor'
+import { htmlToAnnotatedTextChunks } from './html-to-annotated-text'
 
-// Feature flag: use Playwright DOM extraction instead of HTML compress step.
-// When enabled, Firecrawl still handles map + page selection; Playwright replaces
-// the scrape + compress step only. Set USE_PLAYWRIGHT_EXTRACTION=true to enable.
-export const USE_PLAYWRIGHT_EXTRACTION = process.env.USE_PLAYWRIGHT_EXTRACTION === 'true'
+// Feature flag: use annotated text instead of compressed HTML for model input.
+// Annotated text is 3-5x fewer tokens than compressed HTML while preserving
+// semantic structure via prefixes like [NAV], [H1], [SECTION], [Badge: X].
+// Set USE_ANNOTATED_TEXT=true in env to enable.
+const USE_ANNOTATED_TEXT = process.env.USE_ANNOTATED_TEXT === 'true'
 
 // Fallback to old method when Firecrawl unavailable
 import {
@@ -375,134 +377,8 @@ function extractElementManifestFromHtml(html: string, pageUrl: string): string {
 }
 
 /**
- * Extract structured visible text from a rendered page using Playwright.
- * Returns a formatted string of {tag, text, href, section} tuples.
- * Only used when USE_PLAYWRIGHT_EXTRACTION=true.
- */
-export async function extractRenderedTextForUrl(url: string): Promise<string> {
-  // Dynamic import to avoid loading Playwright unless needed
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { chromium } = require('/home/ubuntu/.openclaw/tools/browser/node_modules/playwright')
-  const browser = await chromium.launch({ headless: true })
-  const page = await browser.newPage()
-  try {
-    await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 })
-    await page.waitForTimeout(2000)
-
-    const elements: Array<{ tag: string; text: string; href?: string; section?: string }> = await page.evaluate(() => {
-      const results: Array<{ tag: string; text: string; href?: string; section?: string }> = []
-      const seen = new Set<string>()
-      const SEMANTIC_TAGS = new Set([
-        'h1','h2','h3','h4','h5','h6',
-        'p','li','td','th','caption',
-        'a','button','label','legend',
-        'blockquote','figcaption','summary','dt','dd',
-        'section','article','nav','header','footer','main','aside'
-      ])
-
-      function getNearestSection(node: Element): string {
-        let el: Element | null = node
-        while (el && el !== document.body) {
-          const tag = el.tagName?.toLowerCase()
-          if (['nav','header','footer','main','aside','section','article'].includes(tag)) {
-            return el.getAttribute('aria-label') || el.id || tag
-          }
-          el = el.parentElement
-        }
-        return ''
-      }
-
-      const walker = document.createTreeWalker(
-        document.body,
-        NodeFilter.SHOW_ELEMENT,
-        {
-          acceptNode: (node: Element) => {
-            const style = window.getComputedStyle(node)
-            if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
-              return NodeFilter.FILTER_REJECT
-            }
-            if ((node as HTMLElement).offsetHeight === 0 && (node as HTMLElement).offsetWidth === 0) {
-              return NodeFilter.FILTER_REJECT
-            }
-            if (style.position === 'absolute' && style.overflow === 'hidden' &&
-                (node as HTMLElement).offsetWidth <= 1 && (node as HTMLElement).offsetHeight <= 1) {
-              return NodeFilter.FILTER_REJECT
-            }
-            const cls = ((node as HTMLElement).className || '').toString().toLowerCase()
-            if (/\b(sr-only|visually-hidden|screen-reader-text|clip-hidden)\b/.test(cls)) {
-              return NodeFilter.FILTER_REJECT
-            }
-            const tag = node.tagName.toLowerCase()
-            if (['script','style','svg','noscript','iframe','video','audio','canvas','img'].includes(tag)) {
-              return NodeFilter.FILTER_REJECT
-            }
-            return NodeFilter.FILTER_ACCEPT
-          }
-        } as TreeWalker as any
-      )
-
-      let node: Node | null = walker.currentNode
-      while (node) {
-        const el = node as Element
-        const tag = el.tagName?.toLowerCase()
-        if (tag && SEMANTIC_TAGS.has(tag)) {
-          const isContainer = ['section','article','nav','header','footer','main','aside'].includes(tag)
-          let text = ''
-          if (isContainer) {
-            for (const child of el.childNodes) {
-              if (child.nodeType === Node.TEXT_NODE) {
-                text += child.textContent || ''
-              }
-            }
-            text = text.trim()
-          } else {
-            text = (el as HTMLElement).innerText?.replace(/\s+/g, ' ').trim() || ''
-          }
-
-          if (text.length > 2) {
-            const key = `${tag}:${text}`
-            if (!seen.has(key)) {
-              seen.add(key)
-              const entry: { tag: string; text: string; href?: string; section?: string } = { tag, text }
-              if (tag === 'a') {
-                entry.href = (el as HTMLAnchorElement).href || undefined
-              }
-              const section = getNearestSection(el)
-              if (section) entry.section = section
-              results.push(entry)
-            }
-          }
-        }
-        node = walker.nextNode()
-      }
-      return results
-    })
-
-    let output = `# Page: ${url}\n\n`
-    let currentSection = ''
-    for (const el of elements) {
-      if (el.section && el.section !== currentSection) {
-        currentSection = el.section
-        output += `\n--- ${currentSection} ---\n`
-      }
-      const tagLabel = el.tag.toUpperCase()
-      if (el.tag === 'a') {
-        output += `[${tagLabel}] ${el.text} -> ${el.href || ''}\n`
-      } else {
-        output += `[${tagLabel}] ${el.text}\n`
-      }
-    }
-    return output
-  } finally {
-    await browser.close()
-  }
-}
-
-/**
  * Format Firecrawl pages for audit prompts (replaces formatManifestForPrompt).
  * Includes both markdown content AND a structured element manifest from HTML.
- * When USE_PLAYWRIGHT_EXTRACTION=true, replaces the HTML compress step with
- * Playwright DOM extraction for cleaner, lower-token input.
  */
 export function formatFirecrawlForPrompt(manifest: AuditManifest): string {
   const { pages } = manifest
@@ -531,46 +407,54 @@ export function formatFirecrawlForPrompt(manifest: AuditManifest): string {
       output += `**Description:** ${page.metadata.description}\n\n`
     }
 
-    if (USE_PLAYWRIGHT_EXTRACTION && page.renderedText) {
-      // Playwright path: use pre-extracted structured DOM text instead of compressed HTML.
-      // CSS-resolved, JS-rendered, hidden elements already stripped.
-      output += `**Content (Playwright DOM):**\n${page.renderedText}\n\n`
-    } else if (page.html) {
-      // Pipeline: stripHtmlNoise → compressHtmlToChunks (up to 2 × 60K chunks).
-      // Dedup nav/header/footer before inserting into prompt so repeated chrome
-      // doesn't burn tokens on page 2+. Element manifest still runs on raw HTML (unaffected).
-      const chunks = compressHtmlToChunks(stripHtmlNoise(page.html), page.url)
-
-      // Deduplicate shared structural blocks (nav, header, footer) across pages.
-      // Fingerprint includes text + href values so a nav with the same text but different
-      // links (e.g. localized navs) is NOT treated as a duplicate.
-      const $c = cheerio.load(chunks.join(''), { decodeEntities: false })
-      for (const tag of ['nav', 'header', 'footer'] as const) {
-        $c(tag).each((_i, el) => {
-          const text = $c(el).text().replace(/\s+/g, ' ').trim()
-          const hrefs = $c(el).find('a[href]').map((_i2, a) => $c(a).attr('href') || '').toArray()
-          const fp = `${tag}:${text.slice(0, 200)}:${hrefs.slice(0, 5).join(',')}`
-          if (seenBlocks.has(fp)) {
-            $c(el).replaceWith(`<${tag}>[Same as Page 1]</${tag}>`)
-          } else {
-            seenBlocks.add(fp)
-          }
-        })
-      }
-      const dedupedHtml = $c.html()
-
-      // Re-split at the original chunk boundaries after dedup (best-effort).
-      // For a single chunk, this is a no-op. For 2 chunks, dedup shrinks the combined
-      // HTML so we output it as-is (still within token budget for the auditor).
-      if (chunks.length === 1) {
-        output += `**Content (HTML):**\n${dedupedHtml}\n\n`
+    if (page.html) {
+      if (USE_ANNOTATED_TEXT) {
+        // Annotated text path: strip noise then convert to semantic plain text.
+        // 3-5x fewer tokens than compressed HTML while preserving structure.
+        const chunks = htmlToAnnotatedTextChunks(stripHtmlNoise(page.html), page.url)
+        if (chunks.length === 1) {
+          output += `**Content (Annotated Text):**\n${chunks[0]}\n\n`
+        } else {
+          output += `**Content (Annotated Text, part 1 of 2):**\n${chunks[0]}\n\n`
+          output += `**Content (Annotated Text, part 2 of 2):**\n${chunks[1]}\n\n`
+        }
       } else {
-        // Distribute deduped content back into two labelled parts for model clarity
-        const mid = Math.ceil(dedupedHtml.length / 2)
-        const boundary = dedupedHtml.lastIndexOf('>', mid)
-        const split = boundary > 0 ? boundary + 1 : mid
-        output += `**Content (HTML, part 1 of 2):**\n${dedupedHtml.slice(0, split)}\n\n`
-        output += `**Content (HTML, part 2 of 2):**\n${dedupedHtml.slice(split)}\n\n`
+        // Compressed HTML path (default): stripHtmlNoise → compressHtmlToChunks (up to 2 × 60K chunks).
+        // Dedup nav/header/footer before inserting into prompt so repeated chrome
+        // doesn't burn tokens on page 2+. Element manifest still runs on raw HTML (unaffected).
+        const chunks = compressHtmlToChunks(stripHtmlNoise(page.html), page.url)
+
+        // Deduplicate shared structural blocks (nav, header, footer) across pages.
+        // Fingerprint includes text + href values so a nav with the same text but different
+        // links (e.g. localized navs) is NOT treated as a duplicate.
+        const $c = cheerio.load(chunks.join(''), { decodeEntities: false })
+        for (const tag of ['nav', 'header', 'footer'] as const) {
+          $c(tag).each((_i, el) => {
+            const text = $c(el).text().replace(/\s+/g, ' ').trim()
+            const hrefs = $c(el).find('a[href]').map((_i2, a) => $c(a).attr('href') || '').toArray()
+            const fp = `${tag}:${text.slice(0, 200)}:${hrefs.slice(0, 5).join(',')}`
+            if (seenBlocks.has(fp)) {
+              $c(el).replaceWith(`<${tag}>[Same as Page 1]</${tag}>`)
+            } else {
+              seenBlocks.add(fp)
+            }
+          })
+        }
+        const dedupedHtml = $c.html()
+
+        // Re-split at the original chunk boundaries after dedup (best-effort).
+        // For a single chunk, this is a no-op. For 2 chunks, dedup shrinks the combined
+        // HTML so we output it as-is (still within token budget for the auditor).
+        if (chunks.length === 1) {
+          output += `**Content (HTML):**\n${dedupedHtml}\n\n`
+        } else {
+          // Distribute deduped content back into two labelled parts for model clarity
+          const mid = Math.ceil(dedupedHtml.length / 2)
+          const boundary = dedupedHtml.lastIndexOf('>', mid)
+          const split = boundary > 0 ? boundary + 1 : mid
+          output += `**Content (HTML, part 1 of 2):**\n${dedupedHtml.slice(0, split)}\n\n`
+          output += `**Content (HTML, part 2 of 2):**\n${dedupedHtml.slice(split)}\n\n`
+        }
       }
     }
 
@@ -607,15 +491,25 @@ export function formatPagesForChecker(
   for (const page of pages) {
     output += `## Page: ${page.url}\n\n`
     if (page.html) {
-      // Use compressHtmlToChunks so both chunks are included for checker verification.
-      // Previously only chunk 1 was sent (compressHtmlWithLogging), causing the checker
-      // to miss issues in the second half of long pages.
-      const chunks = compressHtmlToChunks(stripHtmlNoise(page.html), page.url)
-      if (chunks.length === 1) {
-        output += `${chunks[0]}\n\n`
+      if (USE_ANNOTATED_TEXT) {
+        const chunks = htmlToAnnotatedTextChunks(stripHtmlNoise(page.html), page.url)
+        if (chunks.length === 1) {
+          output += `${chunks[0]}\n\n`
+        } else {
+          output += `**part 1 of 2:**\n${chunks[0]}\n\n`
+          output += `**part 2 of 2:**\n${chunks[1]}\n\n`
+        }
       } else {
-        output += `**part 1 of 2:**\n${chunks[0]}\n\n`
-        output += `**part 2 of 2:**\n${chunks[1]}\n\n`
+        // Use compressHtmlToChunks so both chunks are included for checker verification.
+        // Previously only chunk 1 was sent (compressHtmlWithLogging), causing the checker
+        // to miss issues in the second half of long pages.
+        const chunks = compressHtmlToChunks(stripHtmlNoise(page.html), page.url)
+        if (chunks.length === 1) {
+          output += `${chunks[0]}\n\n`
+        } else {
+          output += `**part 1 of 2:**\n${chunks[0]}\n\n`
+          output += `**part 2 of 2:**\n${chunks[1]}\n\n`
+        }
       }
     }
     output += '---\n\n'

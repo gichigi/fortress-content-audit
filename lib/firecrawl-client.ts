@@ -38,9 +38,6 @@ export interface FirecrawlPage {
     description?: string
     statusCode?: number
   }
-  /** Pre-extracted structured text from Playwright DOM walk. Populated upstream
-   * when USE_PLAYWRIGHT_EXTRACTION=true. Replaces HTML compress step in prompt formatting. */
-  renderedText?: string
 }
 
 export interface CrawlOptions {
