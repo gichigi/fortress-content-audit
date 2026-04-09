@@ -179,10 +179,10 @@ describe('buildCheckerPrompt — skeptical quality gate', () => {
 
   it('uses Language-specific verification criteria when category is Language', () => {
     const prompt = buildCheckerPrompt(snippetsText, issues, 'Language')
-    expect(prompt).toContain('exact quoted text exists in the HTML')
+    expect(prompt).toContain('Is the claimed text actually present in the HTML')
     expect(prompt).toContain('claimed error')
     expect(prompt).toContain('stylistic choices')
-    expect(prompt).toContain('Regional spelling')
+    expect(prompt).toContain('British/Commonwealth spelling')
   })
 
   it('uses Facts-specific verification criteria when category is Facts & Consistency', () => {
