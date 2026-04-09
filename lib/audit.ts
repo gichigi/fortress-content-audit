@@ -243,7 +243,7 @@ async function runCheckerPass(
         input: prompt,
         max_output_tokens: maxOutputTokens,
         text: { format: { type: "text" } },
-        reasoning: { effort: "low", summary: "auto" },
+        reasoning: { effort: "medium", summary: "auto" },
         store: true,
       }
 
