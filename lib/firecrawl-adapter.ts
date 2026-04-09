@@ -5,10 +5,17 @@
 
 import { mapWebsite, scrapePage, isFirecrawlAvailable, FirecrawlPage } from './firecrawl-client'
 import { selectPagesToAudit } from './page-selector'
-import { crawlLinks, type CrawlerIssue } from './link-crawler'
+import { type CrawlerIssue } from './link-crawler'
 import * as cheerio from 'cheerio'
 import Logger from './logger'
 import { compressHtmlWithLogging, compressHtmlToChunks } from './html-compressor'
+import { htmlToAnnotatedTextChunks } from './html-to-annotated-text'
+
+// Feature flag: use annotated text instead of compressed HTML for model input.
+// Annotated text is 3-5x fewer tokens than compressed HTML while preserving
+// semantic structure via prefixes like [NAV], [H1], [SECTION], [Badge: X].
+// Set USE_ANNOTATED_TEXT=true in env to enable.
+const USE_ANNOTATED_TEXT = process.env.USE_ANNOTATED_TEXT === 'true'
 
 // Feature flag: use Playwright DOM extraction instead of HTML compress step.
 // When enabled, Firecrawl still handles map + page selection; Playwright replaces
@@ -137,16 +144,8 @@ async function extractWithLegacyManifest(
       }
     })
 
-  // Run link crawler even in fallback mode (uses hybrid approach)
-  Logger.debug(`[Fallback] Running link crawler on ${pages.length} pages...`)
-  const linkValidationIssues = await crawlLinks(pages, domain, {
-    concurrency: tier === 'FREE' ? 3 : 5,
-    checkExternal: false, // Disabled: external sites use bot protection (403 errors)
-    maxLinks: tier === 'FREE' ? 50 : 200,
-    timeoutMs: 8000,
-    auditedUrls: pages.map(p => p.url) // Only check links to audited pages
-  })
-  Logger.info(`[LinkCrawler] Found ${linkValidationIssues.length} link issues`)
+  // Link crawler disabled on this eval branch (Links category dropped for pipeline comparison)
+  const linkValidationIssues: CrawlerIssue[] = []
 
   return {
     pages,
@@ -231,16 +230,8 @@ export async function extractWithFirecrawl(
 
     Logger.info(`[Firecrawl] Successfully scraped ${pages.length}/${selectedUrls.length} pages (discovered ${allUrls.length} total URLs)`)
 
-    // Phase 4: HTTP Link Crawler - Check links via actual HTTP requests
-    Logger.debug(`[Firecrawl] Phase 4: Crawling links from scraped pages...`)
-    const linkValidationIssues = await crawlLinks(pages, domain, {
-      concurrency: tier === 'FREE' ? 3 : 5,
-      checkExternal: false, // Disabled: external sites use bot protection (403 errors)
-      maxLinks: tier === 'FREE' ? 50 : 200,
-      timeoutMs: 8000,
-      auditedUrls: pages.map(p => p.url) // Only check links to audited pages
-    })
-    Logger.info(`[LinkCrawler] Found ${linkValidationIssues.length} link issues`)
+    // Link crawler disabled on this eval branch (Links category dropped for pipeline comparison)
+    const linkValidationIssues: CrawlerIssue[] = []
 
     // Count unique pages, excluding non-page URLs (sitemaps, feeds, etc.)
     const uniquePageUrls = deduplicateAndFilterUrls(allUrls)
@@ -531,7 +522,29 @@ export function formatFirecrawlForPrompt(manifest: AuditManifest): string {
       output += `**Description:** ${page.metadata.description}\n\n`
     }
 
-    if (USE_PLAYWRIGHT_EXTRACTION && page.renderedText) {
+    if (USE_ANNOTATED_TEXT && page.html) {
+      // Annotated text path: strip noise then convert to semantic plain text.
+      // 3-5x fewer tokens than compressed HTML while preserving structure.
+      const chunks = htmlToAnnotatedTextChunks(stripHtmlNoise(page.html), page.url)
+
+      // Nav/header/footer dedup for annotated text: regex out [NAV]/[HEADER]/[FOOTER] blocks,
+      // fingerprint first 200 chars, replace page 2+ duplicates with [Same as Page 1].
+      const annotatedDedup = (text: string): string => {
+        return text.replace(/^\[(NAV|HEADER|FOOTER)\][^\n]*(?:\n(?!\[(?:NAV|HEADER|FOOTER|H[1-6]|SECTION|CARD|TABLE|Badge))[^\n]*)*/gm, (match, blockType) => {
+          const fp = `${blockType}:${match.slice(0, 200)}`
+          if (seenBlocks.has(fp)) return `[${blockType}] [Same as Page 1]`
+          seenBlocks.add(fp)
+          return match
+        })
+      }
+
+      if (chunks.length === 1) {
+        output += `**Content (Annotated Text):**\n${annotatedDedup(chunks[0])}\n\n`
+      } else {
+        output += `**Content (Annotated Text, part 1 of 2):**\n${annotatedDedup(chunks[0])}\n\n`
+        output += `**Content (Annotated Text, part 2 of 2):**\n${annotatedDedup(chunks[1])}\n\n`
+      }
+    } else if (USE_PLAYWRIGHT_EXTRACTION && page.renderedText) {
       // Playwright path: use pre-extracted structured DOM text instead of compressed HTML.
       // CSS-resolved, JS-rendered, hidden elements already stripped.
       output += `**Content (Playwright DOM):**\n${page.renderedText}\n\n`
@@ -575,9 +588,11 @@ export function formatFirecrawlForPrompt(manifest: AuditManifest): string {
     }
 
     // Append element manifest from HTML if available.
+    // Skipped in annotated text mode — the annotated text already surfaces links/buttons
+    // inline, so the manifest would be redundant and burn tokens.
     // Uses raw (pre-compression) HTML — element manifest must not be deduplicated
     // because nav links may differ per page even when text looks the same.
-    if (page.html) {
+    if (page.html && !USE_ANNOTATED_TEXT) {
       const elementManifest = extractElementManifestFromHtml(page.html, page.url)
       if (elementManifest) {
         output += `**Element Manifest (from HTML):**\n${elementManifest}\n\n`
